@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Ads Helper — store screenshot (one view)</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;800&display=swap" rel="stylesheet">
+<style>
+  @font-face { font-family: Golos; font-weight: 400 600; src: url(../../fb-helper/fonts/golostext-latin.woff2) format("woff2"); unicode-range: U+0000-00FF, U+2000-206F; }
+  @font-face { font-family: Golos; font-weight: 400 600; src: url(../../fb-helper/fonts/golostext-cyrillic.woff2) format("woff2"); unicode-range: U+0400-04FF; }
+  /* Store screenshot, exactly 1280×800 at 1×: a caption on the left, one real popup view on the right (560 px wide popup at 1.1×).
+     Parameters in the hash: img (raw capture), t (title), s (subtitle). */
+  * { box-sizing: border-box; margin: 0; }
+  body { width: 1280px; height: 800px; overflow: hidden; background: #F0F2F5; color: #1C1E21; font-family: Manrope, Golos, sans-serif;
+         display: grid; grid-template-columns: minmax(0, 1fr) 616px; align-items: center; column-gap: 64px; padding: 0 80px; }
+  .logo { display: flex; align-items: center; gap: 12px; margin-bottom: 40px; font-weight: 800; font-size: 26px; letter-spacing: -.02em; }
+  .logo img { width: 40px; height: 40px; }
+  h1 { font-size: 54px; line-height: 1.08; font-weight: 800; letter-spacing: -.035em; }
+  p { margin-top: 22px; font-size: 24px; line-height: 1.4; font-weight: 500; color: #606770; letter-spacing: -.01em; }
+  .card { background: #fff; border-radius: 16px; overflow: hidden; box-shadow: 0 1px 2px rgba(28, 30, 33, .06), 0 12px 40px rgba(28, 30, 33, .10); }
+  .card img { display: block; width: 100%; }
+</style>
+<div>
+  <div class="logo"><img src="../icons/logo.webp" alt="">Ads Helper</div>
+  <h1 id="t"></h1>
+  <p id="s"></p>
+</div>
+<div class="card"><img id="img" alt=""></div>
+<script>
+  const q = new URLSearchParams(location.hash.slice(1));
+  document.documentElement.lang = q.get("lang") || "en";
+  document.getElementById("t").textContent = q.get("t") || "";
+  document.getElementById("s").textContent = q.get("s") || "";
+  document.getElementById("img").src = q.get("img") || "";
+</script>
+</html>

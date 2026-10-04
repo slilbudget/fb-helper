@@ -1,7 +1,7 @@
 // Unit tests for fb-helper/js/pure.js — plain Node, no browser: `node --test test/*.test.mjs`
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isSessionError, sessionLabel, verNum, latestVersion, adRank, reviewLines, ownerVerdict, lifetimeSpend, spendFloor, insightRow } from "../fb-helper/js/pure.js";
+import { isSessionError, sessionLabel, verNum, latestVersion, adRank, reviewLines, ownerVerdict, isUserAgent, lifetimeSpend, spendFloor, insightRow } from "../fb-helper/js/pure.js";
 
 test("session errors: code 190 (any subcode) and 102; subcodes alone are not enough", () => {
   for (const c of [190, "190", 102]) assert.ok(isSessionError(c), String(c));
@@ -95,4 +95,14 @@ test("insightRow: one nested insights period -> numbers; no key = a real 0; a ba
   assert.deepEqual(insightRow({ data: [] }), { spend: 0, imp: 0, clicks: 0 });
   assert.equal(insightRow({ data: [{ spend: "n/a" }] }), null);
   assert.deepEqual(insightRow({ data: [{ spend: "5" }] }), { spend: 5, imp: 0, clicks: 0, from: undefined, to: undefined }, "missing counters are 0");
+});
+
+test("isUserAgent: printable ASCII, 8..512 characters, nothing else", () => {
+  const ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+  assert.ok(isUserAgent(ua));
+  assert.ok(isUserAgent("x".repeat(8)) && !isUserAgent("x".repeat(7)), "lower bound 8");
+  assert.ok(isUserAgent("x".repeat(512)) && !isUserAgent("x".repeat(513)), "upper bound 512");
+  assert.ok(isUserAgent("Mozilla/5.0 <b>x</b>"), "markup-shaped text is fine as text: the popup never uses innerHTML");
+  for (const bad of ["Mozilla/5.0\n(X11)", "Mozilla/5.0\r\n(X11)", "Mozilla/5.0\t(X11)", "Mozilla/5.0\x7f(X11)", "Mozilla/5.0 (Ü)", "Mozilla/5.0 \u2028 (X11)", ""]) assert.ok(!isUserAgent(bad), JSON.stringify(bad));
+  for (const bad of [5, null, undefined, {}, ["Mozilla/5.0 (X11)"], true]) assert.ok(!isUserAgent(bad), String(bad));
 });

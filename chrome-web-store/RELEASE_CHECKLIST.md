@@ -3,19 +3,19 @@
 The repo and GitHub stay **FB Helper** (`fb-helper/`). Only the store build is **Ads Helper** with the neutral logo (`chrome-web-store/icons/logo-source.png`, `chrome-web-store/icons/`).
 
 ## 1. Build
-- [ ] `chrome-web-store/build.sh` → `chrome-web-store/release/unpacked/` (exact ZIP contents) and `chrome-web-store/release/ads-helper-2.2.0.zip`
+- [ ] `chrome-web-store/build.sh` → `chrome-web-store/release/unpacked/` (exact ZIP contents) and `chrome-web-store/release/ads-helper-2.3.0.zip`
 - [ ] `node --test test/*.test.mjs` passes
 - [ ] `EXT_DIR=chrome-web-store/release/unpacked node test/e2e.mjs` passes (runs the store build, not the repo)
-- [ ] `manifest.json` is at the ZIP root (`unzip -l chrome-web-store/release/ads-helper-2.2.0.zip | grep -x '.*manifest.json'`), no comments in it
-- [ ] Version is higher than any previously uploaded version (2.1.0 is the first upload; every later upload needs a bump — this one is 2.2.0)
+- [ ] `manifest.json` is at the ZIP root (`unzip -l chrome-web-store/release/ads-helper-2.3.0.zip | grep -x '.*manifest.json'`), no comments in it
+- [ ] Version is higher than any previously uploaded version (2.1.0 and 2.2.0 are already in the store; every upload needs a bump — this one is 2.3.0)
 - [ ] No `FB Helper`, no Facebook "f" logo in the package (the build script fails if the old name is left; icons come from `chrome-web-store/icons/`)
 
 ## 2. Manual test of the unpacked store build
 - [ ] `chrome://extensions` → Developer mode → Load unpacked → `chrome-web-store/release/unpacked/`
 - [ ] Toolbar icon and tooltip say "Ads Helper"; popup header shows the new logo
 - [ ] With a Facebook tab open: token appears, type badge correct, **Check** works, **Copy token** works
-- [ ] Cookies tab: header string and JSON copy
-- [ ] **Token + cookies** copies; with another account's token it refuses
+- [ ] Cookies tab: header string and JSON copy; the User-Agent field shows the FB tab's UA and **Copy UA** copies it
+- [ ] **Token + cookies + UA** copies three paragraphs (token, cookies, UA); with another account's token, or with no readable UA, it refuses
 - [ ] Ad accounts: first open after a page reload loads once; reopening the popup and switching tabs send nothing (DevTools → Network on the popup)
 - [ ] Network tab of the popup shows requests **only** to `graph.facebook.com`
 - [ ] No errors in `chrome://extensions` → Errors, no console errors in the popup
@@ -36,7 +36,7 @@ The repo and GitHub stay **FB Helper** (`fb-helper/`). Only the store build is *
 - [ ] Trader / non-trader status declared honestly (Dashboard → Account)
 
 ## 5. Dashboard (copy from `STORE_LISTING.md`)
-- [ ] Package: upload `chrome-web-store/release/ads-helper-2.2.0.zip`
+- [ ] Package: upload `chrome-web-store/release/ads-helper-2.3.0.zip`
 - [ ] Store listing: description, category, language, store icon `chrome-web-store/icons/icon_128.png`, screenshots, small promo tile
 - [ ] Privacy: single purpose, justification for `cookies`, `storage`, `scripting`, host permission, remote code = **No**, data usage boxes (Authentication information, PII, Financial and payment information), three certifications, privacy policy URL
 - [ ] Distribution: visibility and regions
@@ -54,7 +54,7 @@ The repo and GitHub stay **FB Helper** (`fb-helper/`). Only the store build is *
 |---|---|---|---|
 | Store icon | 128×128 PNG | yes | **Done:** `chrome-web-store/icons/icon_128.png` — 96×96 artwork inside 16 px transparent padding per side |
 | Extension icons in the package | 16, 32, 48, 128 PNG | yes | **Done** (built into the ZIP from `chrome-web-store/icons/`) |
-| Screenshot | 1280×800, JPEG or 24-bit PNG without alpha (as the Dashboard form states) | at least 1 | **Done:** `chrome-web-store/art/out/store-screenshot-1280x800.png` (the cover design at the store size; `cover.png` is 2100×1182 and is rejected by the form) |
+| Screenshots | 1280×800, JPEG or 24-bit PNG without alpha (as the Dashboard form states), 1 to 5 | at least 1 | **Done (2.3.0 UI):** English listing `chrome-web-store/art/out/screenshots/en/01-accounts … 04-cookies.png`, Russian listing `…/screenshots/ru/…`, plus the overview `chrome-web-store/art/out/store-screenshot-1280x800.png` as an optional 5th (`cover.png` is 2100×1182 and is rejected by the form) |
 | Small promo tile | 440×280, JPEG or 24-bit PNG without alpha | yes | **Done:** `chrome-web-store/art/out/promo-tile-440x280.png` |
 | Marquee promo tile | 1400×560 | optional | Not made; needed only to be featured |
 | Global promo video | YouTube URL | optional in the Dashboard form | Skip |
@@ -62,7 +62,7 @@ The repo and GitHub stay **FB Helper** (`fb-helper/`). Only the store build is *
 Rules from the Chrome docs: avoid text in promo images, fill the whole area, make the edges clear, no Facebook logo.
 
 ## 8. Known rejection risks (not fixable by paperwork)
-1. **Cookie and token export.** The extension reads Facebook session cookies and the access token and copies them to the clipboard (including a JSON form for importing a session into another browser profile). Reviewers may treat that as credential handling or as facilitating access to an account. The listing describes it plainly; that is the honest position, but the risk of rejection or a long in-depth review is real. The lowest-risk variant would drop the cookie JSON and **Token + cookies** buttons (a code change, not done).
+1. **Cookie and token export.** The extension reads Facebook session cookies and the access token and copies them to the clipboard (including a JSON form for importing a session into another browser profile). Reviewers may treat that as credential handling or as facilitating access to an account. The listing describes it plainly; that is the honest position, but the risk of rejection or a long in-depth review is real. The lowest-risk variant would drop the cookie JSON and **Token + cookies + UA** buttons (a code change, not done).
 2. **Broad Facebook host access plus `cookies` plus code injection into the page** (`scripting`, MAIN world) trigger the longer review the docs describe.
 3. **Prominent disclosure.** The Chrome FAQ says a disclosure of sensitive data handling must be shown in the product before use and not only in the policy. The popup already shows the token and cookies openly, but has no first-run notice. Adding a one-line notice under the tabs is the cheap fix if a reviewer asks.
 4. **Brand.** The store build carries no "FB"/"Facebook" in the name or the icon. The homepage/privacy URL still points at the repo called `fb-helper` with the FB Helper name; a reviewer who clicks through sees it. Renaming the repo or hosting the policy on a neutral URL removes the mismatch.

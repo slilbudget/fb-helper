@@ -1,5 +1,5 @@
 // End-to-end: real Chromium + the unpacked extension, Facebook and Graph answered by route() mocks (fictional data,
-// nothing leaves the machine). Local only — CI runs the unit tests. Run: `node test/e2e.mjs`
+// nothing leaves the machine). CI runs it too (job e2e). Run: `node test/e2e.mjs`
 // Needs playwright-core (`npm i -g playwright-core`, or PLAYWRIGHT_CORE=/path/to/playwright-core) and a Chromium.
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -470,15 +470,16 @@ async function exportFlows() {
   console.log("\n# token + cookies export");
   const run = async (name, tok, meReply, check) => {
     const b = await boot({ user: "1001", fb: adsFb(tok), graph: () => meReply });
-    await adsPage(b);
+    const ua = await (await adsPage(b)).evaluate(() => navigator.userAgent);
     const pop = await popup(b, "token"); await captureClipboard(pop);
     const toast = await clickToast(pop, "#copyEnv");
     const out = await clip(pop);
-    ok(name, check(out, toast, b.hits), `clip=${JSON.stringify(out).slice(0, 80)} toast=${toast} hits=${b.hits}`);
+    ok(name, check(out, toast, b.hits, ua), `clip=${JSON.stringify(out).slice(0, 80)} toast=${toast} hits=${b.hits}`);
     await b.ctx.close();
   };
   await run("same account -> copied, one /me read", TOK, { body: { id: "1001" } },
-    (c, t, h) => c.length === 1 && c[0].startsWith(TOK) && has(c[0], "c_user=1001") && has(t, "Token + cookies copied") && !has(t, "not verified") && h.length === 1);
+    (c, t, h, ua) => c.length === 1 && c[0].startsWith(TOK) && has(c[0], "c_user=1001") && has(t, "Token + cookies + UA copied") && !has(t, "not verified") && h.length === 1
+      && c[0].split("\n\n").length === 3 && c[0].split("\n\n")[0] === TOK && c[0].split("\n\n")[2] === ua);
   await run("token of another account -> NOT copied, both ids in the toast", TOK, { body: { id: "999" } },
     (c, t) => c.length === 0 && has(t, "999") && has(t, "1001"));
   await run("custom-app token (app-scoped /me.id) -> copied, marked unverified", TOK_W, { body: { id: "122190171494905792" } },
@@ -487,6 +488,33 @@ async function exportFlows() {
     (c, t) => c.length === 1 && has(t, "not verified"));
   await run("/me says the session is dead -> NOT copied", TOK, { status: 400, body: { error: { code: 190, error_subcode: 463, message: "expired" } } },
     (c, t) => c.length === 0 && has(t, "190/463"));
+
+  // the block carries the UA the PAGE reports (an antidetect profile's spoofed one), not the popup's own navigator
+  {
+    const SPOOFED = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+    const b = await boot({ user: "1001", fb: adsFb(TOK), graph: () => ({ body: { id: "1001" } }) });
+    const pg = await b.ctx.newPage();
+    await pg.addInitScript((v) => Object.defineProperty(Navigator.prototype, "userAgent", { get: () => v }), SPOOFED);
+    await pg.goto("https://adsmanager.facebook.com/adsmanager/manage/campaigns");
+    const pop = await popup(b, "token"); await captureClipboard(pop);
+    await clickToast(pop, "#copyEnv");
+    const out = (await clip(pop))[0] || "";
+    const parts = out.split("\n\n");
+    ok("block = token, cookies, the page's (spoofed) UA — three paragraphs", parts.length === 3 && parts[0] === TOK && has(parts[1], "c_user=1001") && parts[2] === SPOOFED && parts[2] !== await pop.evaluate(() => navigator.userAgent), JSON.stringify(parts.map((p) => p.slice(0, 30))));
+    await b.ctx.close();
+  }
+
+  // no readable UA on the page -> the block is not copied (it would be an incomplete set), and no /me request is spent
+  {
+    const b = await boot({ user: "1001", fb: adsFb(TOK), graph: () => ({ body: { id: "1001" } }) });
+    const pg = await b.ctx.newPage();
+    await pg.addInitScript(() => Object.defineProperty(Navigator.prototype, "userAgent", { get: () => "bad\nua" }));
+    await pg.goto("https://adsmanager.facebook.com/adsmanager/manage/campaigns");
+    const pop = await popup(b, "token"); await captureClipboard(pop);
+    const toast = await clickToast(pop, "#copyEnv");
+    ok("unreadable UA -> NOT copied, says why, no /me request", (await clip(pop)).length === 0 && has(toast, "No access") && b.hits.length === 0, `${JSON.stringify(await clip(pop))} / ${toast} / ${b.hits}`);
+    await b.ctx.close();
+  }
 
   // the answer is remembered for the token + login: the second export makes no request
   const b = await boot({ user: "1001", fb: adsFb(TOK), graph: () => ({ body: { id: "1001" } }) });
@@ -693,13 +721,93 @@ async function layoutFlows() {
     const m = await widthOf(w);
     ok(`no horizontal scroll at ${w}px (long names, ads, BM, pixels)`, m.sw <= m.cw, JSON.stringify(m));
   }
+  for (const tab of ["token", "cookies"]) {               // the copy buttons (incl. "Token + cookies + UA") and the UA box
+    await pop.click(`[data-tab="${tab}"]`);
+    for (const w of [560, 360, 320]) {
+      const m = await widthOf(w);
+      ok(`no horizontal scroll at ${w}px on the ${tab} tab`, m.sw <= m.cw, JSON.stringify(m));
+    }
+  }
   const body600 = await pop.evaluate(() => { document.documentElement.style.width = "1000px"; return document.body.getBoundingClientRect().width; });
   ok("the popup body is 560px wide", body600 === 560, String(body600));
   await b.ctx.close();
 }
 
+// ---------- User-Agent (cookie tab) ----------
+async function uaFlows() {
+  console.log("\n# user agent");
+  const SPOOF = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 <b>spoofed</b>";
+  const uaPage = async (b, value) => {                    // an FB tab whose own JS reports `value` as its User-Agent
+    const pg = await b.ctx.newPage();
+    if (value !== undefined) await pg.addInitScript((v) => Object.defineProperty(Navigator.prototype, "userAgent", { get: () => v }), value);
+    await pg.goto("https://adsmanager.facebook.com/adsmanager/manage/campaigns");
+    return pg;
+  };
+  const boxIs = (p, re) => until(p, (src) => new RegExp(src).test(document.querySelector("#uaBox").textContent.trim()), re.source);
+  const b = await boot({ fb: adsFb(TOK) });
+
+  let pop = await popup(b, "cookies");
+  ok("no FB tab -> the box says why", await boxIs(pop, /^Open Facebook/), await text(pop, "#uaBox"));
+  await captureClipboard(pop);
+  const noTab = await clickToast(pop, "#copyUa");
+  ok("no FB tab -> the click says why and copies nothing", (await clip(pop)).length === 0 && has(noTab, "Open Facebook"), `${noTab} / ${JSON.stringify(await clip(pop))}`);
+
+  // the page's own User-Agent, shown and copied
+  let pg = await uaPage(b);
+  const real = await pg.evaluate(() => navigator.userAgent);
+  // the button is also the retry: the popup is still open from before the FB tab existed, one click re-reads it
+  await captureClipboard(pop);
+  const retry = await clickToast(pop, "#copyUa");
+  ok("FB tab opened after the popup -> one click reads and copies the UA (retry works)", JSON.stringify(await clip(pop)) === JSON.stringify([real]) && has(retry, "User-Agent copied"), `${retry} / ${JSON.stringify(await clip(pop))}`);
+  pop = await popup(b, "cookies");
+  ok("shows the UA of the FB tab", await boxIs(pop, new RegExp("^" + real.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$")), await text(pop, "#uaBox"));
+  await captureClipboard(pop);
+  const toast = await clickToast(pop, "#copyUa");
+  ok("copy puts exactly that UA on the clipboard", JSON.stringify(await clip(pop)) === JSON.stringify([real]) && has(toast, "User-Agent copied"), `${JSON.stringify(await clip(pop))} / ${toast}`);
+
+  // an antidetect profile spoofs the UA for pages: the extension must show what the page reports, not its own navigator
+  await pg.close(); pg = await uaPage(b, SPOOF);
+  pop = await popup(b, "cookies");
+  const own = await pop.evaluate(() => navigator.userAgent);
+  ok("popup's own navigator differs from the spoofed one (test is meaningful)", own !== SPOOF);
+  ok("spoofed UA of the page is shown, not the popup's", await boxIs(pop, /^Mozilla\/5\.0 \(Windows NT 10\.0.*<b>spoofed<\/b>$/) && (await text(pop, "#uaBox")) === SPOOF, await text(pop, "#uaBox"));
+  ok("spoofed UA is text, not markup", (await pop.locator("#uaBox b").count()) === 0);
+  await captureClipboard(pop); await clickToast(pop, "#copyUa");
+  ok("spoofed UA is what gets copied", JSON.stringify(await clip(pop)) === JSON.stringify([SPOOF]));
+  const box = await pop.evaluate(() => { const r = document.querySelector("#uaBox").getBoundingClientRect(); return { w: r.width, sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }; });
+  ok("long UA wraps inside the popup, no horizontal scroll", box.sw <= box.cw && box.w > 100, JSON.stringify(box));
+
+  // the page's JS can return anything: only a printable-ASCII string of sane length is accepted
+  for (const [name, bad] of [["a control character", "Mozilla/5.0\n(X11)"], ["a number", 5], ["an empty string", ""], ["600 characters", "M".repeat(600)]]) {
+    await pg.close(); pg = await uaPage(b, bad);
+    pop = await popup(b, "cookies");
+    await captureClipboard(pop);
+    const tst = await clickToast(pop, "#copyUa");
+    ok(`UA with ${name} -> rejected: the box and the click say why, nothing copied`, (await boxIs(pop, /^No access/)) && has(tst, "No access") && (await clip(pop)).length === 0, `${await text(pop, "#uaBox")} / ${tst}`);
+  }
+  ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
+  await b.ctx.close();
+}
+
+// ---------- a token change while the ads are loading ----------
+async function staleFlows() {
+  console.log("\n# token change while ads load");
+  let tok = TOK;
+  const b = await boot({ fb: (u) => adsFb(tok)(u), graph: (u) => isAds(u) ? { delay: 2500, body: { data: [{ id: "a1", name: "Ad", effective_status: "ACTIVE" }] } } : { body: accountsJson } });
+  const ads = await adsPage(b);
+  const pop = await popup(b, "accounts");
+  await loadAccounts(pop, 1);
+  await pop.click(".acc .acc-title"); await pop.click(".acc.open [data-ads]");
+  ok("ads are loading", await until(pop, () => /Loading/.test(document.querySelector(".acc.open .ads")?.textContent || "")));
+  tok = TOK2; await ads.reload();
+  await pop.evaluate(() => document.querySelector("#refreshToken").click());
+  ok("token changed meanwhile -> no 'Loading' left on screen", await until(pop, () => !/Loading/.test(document.querySelector(".acc.open .ads")?.textContent || "")), await text(pop, ".acc.open .ads"));
+  ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
+  await b.ctx.close();
+}
+
 const only = process.argv[2];
-const flows = { token: tokenFlows, fallback: fallbackFlows, version: versionFlows, cache: cacheFlows, session: sessionFlows, ads: adsFlows, export: exportFlows, deadexport: deadExportFlows, auto: autoFlows, alltime: allTimeFlows, layout: layoutFlows, hung: hungFlows };
+const flows = { token: tokenFlows, fallback: fallbackFlows, version: versionFlows, cache: cacheFlows, session: sessionFlows, ads: adsFlows, export: exportFlows, deadexport: deadExportFlows, auto: autoFlows, alltime: allTimeFlows, layout: layoutFlows, hung: hungFlows, ua: uaFlows, stale: staleFlows };
 try {
   for (const [name, fn] of Object.entries(flows)) if (!only || only === name) await fn();
 } catch (e) { console.error("CRASH", e); fails++; }

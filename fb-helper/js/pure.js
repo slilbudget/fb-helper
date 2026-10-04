@@ -85,3 +85,7 @@ export function ownerVerdict(firstParty, meId, cookieUser) {
   if (String(meId) === String(cookieUser)) return "ok";
   return firstParty ? "mismatch" : "unknown";
 }
+
+// A User-Agent as read from the page. The page's JS can return anything, so only a printable-ASCII string of a sane
+// length passes: no control characters (a newline would forge extra paragraphs in the copied block), no markup-length blobs.
+export const isUserAgent = (s) => typeof s === "string" && /^[\x20-\x7e]{8,512}$/.test(s);

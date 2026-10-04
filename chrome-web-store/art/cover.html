@@ -19,7 +19,7 @@
   .card img { display: block; width: 100%; }
 </style>
 <div class="head">
-  <h1><img src="../icons/logo.webp" alt="">Ads Helper <span class="v">2.2.0</span></h1>
+  <h1><img src="../icons/logo.webp" alt="">Ads Helper <span class="v">2.3.0</span></h1>
   <h2>Chrome extension</h2>
 </div>
 <div class="row">
@@ -27,4 +27,12 @@
   <div class="card"><img src="raw/cookies.png" alt=""></div>
   <div class="card"><img src="raw/accounts-cover.png" alt=""></div>
 </div>
+<script>
+  // #dev: the README cover of the repo's own build (FB Helper, original logo, popup shots from raw/dev)
+  if (location.hash === "#dev") {
+    document.querySelector("h1").firstChild.src = "../../fb-helper/images/logo.webp";
+    document.querySelector("h1").childNodes[1].textContent = "FB Helper ";
+    document.querySelectorAll(".card img").forEach((i) => { i.src = i.getAttribute("src").replace("raw/", "raw/dev/"); });
+  }
+</script>
 </html>

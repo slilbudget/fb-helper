@@ -5,10 +5,11 @@
 // Token and account cache live in chrome.storage.session (gone when the browser closes). The account cache
 // belongs to the FB user (c_user), not to a token string: FB pages hand out different tokens, and switching
 // or reloading them must not throw away accounts you just loaded. Another user in the profile drops it;
-// storage.local holds only a newer Graph API version learned from Graph itself.
+// storage.local holds the interface language and a newer Graph API version learned from Graph itself; the popup's
+// localStorage holds the last tab and the spend period. Cookies and the User-Agent are read live, never stored.
 
 import { t, tn, has, locale, getLang, setLang, loadLang, applyStatic } from "./i18n.js";
-import { isSessionError, sessionLabel, verNum, latestVersion, AD_PROBLEMS, adRank, reviewLines, ownerVerdict, lifetimeSpend, spendFloor, insightRow } from "./pure.js";
+import { isSessionError, sessionLabel, verNum, latestVersion, AD_PROBLEMS, adRank, reviewLines, ownerVerdict, isUserAgent, lifetimeSpend, spendFloor, insightRow } from "./pure.js";
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -105,7 +106,7 @@ const AD_STATUS = {
 
 const state = {
   token: null, apiVersion: API_VERSION, accounts: [], fetchedAt: 0, truncated: false, owner: null,
-  filter: "", statusFilter: null, cooldownUntil: 0, usage: null, cookies: [], accLoading: false,
+  filter: "", statusFilter: null, cooldownUntil: 0, usage: null, cookies: [], ua: null, uaHint: "", accLoading: false,
   // Tokens Graph reported as dead ([{ token, code }], newest last, at most 5): no request is sent with them again.
   // The ⟳ next to the token clears the current one's mark (the deliberate retry). Persisted in storage.session.
   dead: [],
@@ -580,7 +581,7 @@ async function checkToken() {
 
 // ---------- cookies ----------
 // Exactly the cookies Chrome would send to graph.facebook.com (URL-matched by Chrome itself),
-// one per name. The cookie box, the header string, the token + cookie block and the JSON all use this set.
+// one per name. The cookie box, the header string, the token + cookies + UA block and the JSON all use this set.
 async function readCookies() {
   const all = await chrome.cookies.getAll({ url: GRAPH_URL });
   const byName = {};
@@ -621,7 +622,37 @@ async function copyCookies(asJson) {
   if (!hasSession()) return toast(t("ck.noSession"), true);
   copy(asJson ? cookiesJson() : cookieHeader(), asJson ? t("ck.jsonCopied") : t("ck.copied"));
 }
-// ---------- token + cookie block ----------
+// ---------- user agent ----------
+// The User-Agent of this browser profile, as the Facebook page itself sees it. Read from a live FB tab in the MAIN
+// world, like the token: an antidetect profile spoofs it for pages, and the popup's own navigator may not be spoofed —
+// a UA copied from there could differ from the one Facebook has been seeing. Without a readable FB tab there is no UA.
+function uaInPage() { return navigator.userAgent; }
+async function readUa() {
+  const tabs = (await facebookTabs()).slice(0, 5);
+  if (!tabs.length) { Object.assign(state, { ua: null, uaHint: t("grab.noTab") }); renderUa(); return null; }
+  const ask = async (tab) => {
+    const u = (await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: "MAIN", func: uaInPage }))?.[0]?.result;
+    if (isUserAgent(u)) return u;
+    throw new Error("no UA");
+  };
+  // Every tab of the profile reports the same UA: the first valid answer wins, a frozen tab can't stall the rest.
+  let timer;
+  const ua = await Promise.race([Promise.any(tabs.map(ask)).catch(() => null), new Promise((r) => { timer = setTimeout(r, TAB_WAIT_MS, null); })]);
+  clearTimeout(timer);
+  Object.assign(state, { ua, uaHint: ua ? "" : t("grab.noAccess") });
+  renderUa();
+  return ua;
+}
+function renderUa() {
+  $("#uaBox").textContent = state.ua || state.uaHint || "—";
+  $("#uaBox").classList.toggle("filled", !!state.ua);   // the button stays enabled: a click re-reads the tab (the retry)
+}
+async function copyUa() {
+  const ua = await readUa();
+  if (!ua) return toast(state.uaHint || t("grab.noAccess"), true);
+  copy(ua, t("ua.copied"));
+}
+// ---------- token + cookies + UA block ----------
 // Whose token is it — the logged-in user's (c_user)? One /me read, remembered per token + login.
 // An open FB tab can keep a token from before the profile switched accounts; exporting it next to the new
 // cookies would hand out a pair that never worked. Throws Stale / a dead-session error; any other failure
@@ -645,17 +676,22 @@ async function copyEnv() {
   const token = await grabToken({ toClipboard: false });
   if (!token) return;
   const gen = state.gen;
+  // The block is what you hand to whoever connects with this token: without the UA it would be an incomplete set.
+  const ua = await readUa();
+  if (gen !== state.gen || state.token !== token) return;
+  if (!ua) return toast(state.uaHint || t("grab.noAccess"), true);
   await readCookies();
   if (gen !== state.gen || state.token !== token) return;
   if (!hasSession()) return toast(t("ck.noSession"), true);
   if (isDead()) return toast(t("err.session", { c: deadCode() }), true);   // even when the owner check is cached
+  const cookies = cookieHeader();                       // frozen here: the owner check below reads the same snapshot's c_user
   let own;
   try { own = await ownerCheck(token); }
   catch (e) { if (!(e instanceof Stale)) toast(e.message, true); return; }
   if (gen !== state.gen || state.token !== token) return;
   if (own.verdict === "mismatch") return toast(t("env.mismatch", { a: own.meId, b: own.user }), true);
-  // token, blank line, cookie header — nothing else
-  copy(`${token}\n\n${cookieHeader()}`, own.verdict === "ok" ? t("env.copied") : t("env.unverified"));
+  // token, blank line, cookie header, blank line, User-Agent — nothing else
+  copy(`${token}\n\n${cookies}\n\n${ua}`, own.verdict === "ok" ? t("env.copied") : t("env.unverified"));
 }
 
 // ---------- accounts ----------
@@ -922,7 +958,7 @@ function renderAccount(a, st) {
       a.disable_reason ? el("span", { class: "err-text" }, `${has(`reason.${a.disable_reason}`) ? t(`reason.${a.disable_reason}`) : t("reason.other")} (${a.disable_reason})`) : null),
     st && st.imp !== null && (st.imp || st.clicks)
       ? el("div", { class: "acc-sub", title: t("acc.imp", { n: numFmt().format(st.imp) }) },
-          numEl(numFmt().format(st.clicks)), t("acc.clicks"), cpc !== null ? [" · CPC ", numEl(fmt(cpc, cur))] : null)
+          numEl(numFmt().format(st.clicks)), ` ${tn(st.clicks, "ads.clk")}`, cpc !== null ? [" · CPC ", numEl(fmt(cpc, cur))] : null)
       : el("div", { class: "acc-sub" }),
   );
   const adsBox = el("div", { class: "ads", "data-ads-box": a.account_id });
@@ -1054,7 +1090,7 @@ async function loadAdStats(id, gen, entry) {
     }));
     patch = { stats, statsAt: Date.now(), statsAll: withAll, statsFail: undefined };
   } catch (e) {
-    if (e instanceof Stale) return;                       // a newer token owns the sets now
+    if (e instanceof Stale) { renderAccounts(); return; }   // a newer token owns the sets now; drop our "Loading numbers…"
     if (refused(e)) state.noStats.add(id);
     patch = { statsFail: true };
   }
@@ -1069,6 +1105,7 @@ async function loadAds(id) {
   await settledGrab();
   if (!state.token && !(await grabToken({ toClipboard: false }))) return;
   if (isDead()) return toast(t("err.session", { c: deadCode() }), true);
+  if (state.adsBusy.has(id)) return;                  // a second click that waited for the same grab
   const gen = state.gen, busy = state.adsBusy;        // fixed before waiting for the lock
   busy.add(id);
   syncAdsButtons();
@@ -1103,7 +1140,7 @@ async function loadAds(id) {
     const prev = state.ads[id];                         // the earlier numbers stay (dated) until the new ones arrive
     state.ads[id] = entry = { ads: list, more: !!res.paging?.next, stats: prev?.stats, statsAt: prev?.statsAt, statsAll: prev?.statsAll };
   } catch (e) {
-    if (e instanceof Stale) return;
+    if (e instanceof Stale) { renderAccounts(); return; }   // our "Loading ads…" must not outlive the token it was for
     // A failed refresh must not wipe the list you already have (a pause, a dead session, a timeout),
     // but the row says the list is old.
     const prev = state.ads[id];
@@ -1162,6 +1199,7 @@ async function switchLang(l) {
   applyStatic();
   $("#tokenInfo").classList.add("hidden");
   renderToken(); renderPeriods(); renderAccounts(); renderUsage(); renderCookies();
+  readUa().catch(console.error);                       // re-reads: a hint (no FB tab) is in the old language
   grabToken({ toClipboard: false, silent: true });
 }
 
@@ -1186,6 +1224,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("#copyEnv").addEventListener("click", copyEnv);
   $("#copyCookies").addEventListener("click", () => copyCookies(false));
   $("#copyCookieJson").addEventListener("click", () => copyCookies(true));
+  $("#copyUa").addEventListener("click", copyUa);
   $("#loadAccounts").addEventListener("click", () => fetchAccounts());
   $("#copyLiveIds").addEventListener("click", copyLiveIds);
   $("#accountFilter").addEventListener("input", (e) => { state.filter = e.target.value; renderAccounts(); });
@@ -1194,6 +1233,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   await checkOwner();                                   // cache from another FB login: don't show it
   renderToken(); renderAccounts(); renderUsage();
   readCookies();
+  readUa().catch(console.error);
   // Show the token right away: read it from the open FB tab (local page read, no network request).
   grabToken({ toClipboard: false, silent: true }).catch(console.error).finally(tokenReadyDone);
   started = true;

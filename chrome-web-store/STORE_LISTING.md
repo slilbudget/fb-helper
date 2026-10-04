@@ -1,4 +1,4 @@
-# Chrome Web Store listing — Ads Helper 2.2.0
+# Chrome Web Store listing — Ads Helper 2.3.0
 
 Copy each block into the Developer Dashboard. Every statement below matches the code of this version.
 
@@ -21,7 +21,7 @@ Ads Helper shows three things about the Facebook profile you are logged in to in
 
 WHAT IT DOES
 • Token: reads the access token from a Facebook tab you already have open and shows its type (EAAB Ads Manager, EAAI Automated Rules, EAAG Business Manager, EAAH Commerce Manager, EAAd Events Manager). "Check" shows the profile, the app and the permissions behind the token. One click copies it.
-• Cookies: the Facebook session cookies of this browser profile, as a header string or as JSON. "Token + cookies" copies both in one block, after confirming the token belongs to the logged-in user.
+• Cookies: the Facebook session cookies of this browser profile, as a header string or as JSON. "Token + cookies + UA" copies the token, the cookies and the browser profile's User-Agent (as the Facebook page sees it) in one block, after confirming the token belongs to the logged-in user. The User-Agent also has its own copy button.
 • Ad accounts: every ad account of the profile with status, disable reason, spend for today / yesterday / 7 / 30 days / all time, clicks and CPC, daily limit, billing threshold, payment method label, pixels and business owner. Search; active accounts first, then by spend; one button copies the IDs of all active accounts.
 • Ads: the ads of an account with their statuses and review results, every rejection reason with the placement it applies to, disapproved ads first, and each ad's spend, impressions, clicks and CPC for the selected period, including all time.
 • English and Russian interface.
@@ -30,7 +30,7 @@ PRIVACY AND SAFETY
 • Everything happens in your browser. There is no developer server, no analytics, no ads, no tracking. Nothing is sent to the developer.
 • The only network requests go from your browser to graph.facebook.com (Meta's own API), read-only, and only when you use the extension: on a button press, when you open the Ad accounts tab with nothing loaded yet, or after you reloaded the Facebook page. Opening the popup again or switching tabs sends nothing.
 • Built-in limits protect your token: the account list refreshes at most once a minute, one account's ads at most once per 30 seconds, and after a Meta rate-limit error every request pauses for 30 minutes. A dead session stops all requests with that token.
-• Token, cookies and cached accounts stay in the browser's session storage and disappear when the browser closes. The token and cookies reach the clipboard only when you press a copy button.
+• The token and the cached accounts stay in the browser's session storage and disappear when the browser closes; cookies and the User-Agent are read live and never stored. The token, cookies and User-Agent reach the clipboard only when you press a copy button.
 • No remote code. The source code is open: https://github.com/slilbudget/fb-helper
 
 IMPORTANT
@@ -45,16 +45,16 @@ Ads Helper показывает три вещи о профиле Facebook, в �
 
 ЧТО УМЕЕТ
 • Токен: читает токен из уже открытой вкладки Facebook и показывает его тип (EAAB, EAAI, EAAG, EAAH, EAAd). «Проверить» показывает профиль, приложение и права токена. Копируется одним кликом.
-• Cookie: cookie сессии Facebook этого профиля браузера строкой заголовка или JSON. «Токен + cookie» копирует всё одним блоком, предварительно убедившись, что токен принадлежит вошедшему пользователю.
+• Cookie: cookie сессии Facebook этого профиля браузера строкой заголовка или JSON. «Токен + cookie + UA» копирует токен, cookie и User-Agent профиля браузера (как его видит страница Facebook) одним блоком, предварительно убедившись, что токен принадлежит вошедшему пользователю. У User-Agent есть и своя кнопка копирования.
 • Кабинеты: все рекламные кабинеты профиля со статусом, причиной блокировки, расходом за сегодня / вчера / 7 / 30 дней / всё время, кликами и CPC, дневным лимитом, порогом оплаты, способом оплаты, пикселями и владельцем БМ. Поиск; сначала активные, затем по расходу; одна кнопка копирует ID всех активных кабинетов.
 • Объявления: объявления кабинета со статусами и результатом проверки, каждая причина отклонения с плейсментом, отклонённые сверху, и расход, показы, клики и CPC по каждому объявлению за выбранный период, включая всё время.
 • Интерфейс на русском и английском.
 
 КОНФИДЕНЦИАЛЬНОСТЬ
 • Всё происходит в вашем браузере. Нет сервера разработчика, аналитики, рекламы и трекинга. Разработчику ничего не отправляется.
-• Единственные запросы идут из браузера на graph.facebook.com (API самой Meta), только на чтение и только когда вы пользуетесь расширением: по кнопке, при открытии вкладки «Ad accounts» без загруженных данных или после перезагрузки страницы Facebook. Повторное открытие окна и переключение вкладок ничего не отправляют.
+• Единственные запросы идут из браузера на graph.facebook.com (API самой Meta), только на чтение и только когда вы пользуетесь расширением: по кнопке, при открытии вкладки «Кабинеты» без загруженных данных или после перезагрузки страницы Facebook. Повторное открытие окна и переключение вкладок ничего не отправляют.
 • Встроенные лимиты берегут токен: список кабинетов не чаще раза в минуту, объявления кабинета не чаще раза в 30 секунд, после ошибки лимита Meta все запросы стоят 30 минут. Закрытая сессия останавливает запросы с этим токеном.
-• Токен, cookie и кэш кабинетов лежат в session storage браузера и исчезают при закрытии. В буфер обмена они попадают только по вашей кнопке копирования.
+• Токен и кэш кабинетов лежат в session storage браузера и исчезают при закрытии; cookie и User-Agent читаются каждый раз заново и нигде не хранятся. В буфер обмена токен, cookie и User-Agent попадают только по вашей кнопке копирования.
 • Удалённого кода нет. Исходный код открыт: https://github.com/slilbudget/fb-helper
 
 ВАЖНО
@@ -85,12 +85,12 @@ Reads the user's own facebook.com cookies to show them in the popup and to copy 
 
 **storage**
 ```
-Keeps the loaded ad account list and the token in session storage until the browser closes, and the interface language in local storage.
+Keeps the loaded ad account list and the token in session storage until the browser closes, and the interface language and a newer Graph API version learned from Meta in local storage (the last open tab and the spend period stay in the popup's own localStorage).
 ```
 
 **scripting**
 ```
-Runs a function packaged in the extension in the user's open Facebook tab to find the access token that the page already holds. No remote code. Runs only on Facebook tabs.
+Runs a function packaged in the extension in the user's open Facebook tab to find the access token that the page already holds and to read the browser's User-Agent as the page sees it. No remote code. Runs only on Facebook tabs.
 ```
 
 ### Host permission justification (`https://*.facebook.com/*`)

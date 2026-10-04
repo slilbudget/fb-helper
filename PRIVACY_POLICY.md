@@ -1,8 +1,8 @@
 # Privacy Policy — Ads Helper
 
-Last updated: 2026-09-30
+Last updated: 2026-10-04
 
-Ads Helper is a Chrome extension that shows, for the Facebook profile you are logged in to in your own browser, the access token, the session cookies and the status and spend of your ad accounts. This policy describes exactly what the extension does with data.
+Ads Helper is a Chrome extension that shows, for the Facebook profile you are logged in to in your own browser, the access token, the session cookies, the browser's User-Agent and the status and spend of your ad accounts. This policy describes exactly what the extension does with data.
 
 **Short version:** everything happens in your browser. The developer has no server and receives no data. The only network requests the extension makes go from your browser to `graph.facebook.com` (Meta's own API), and only when you use the extension.
 
@@ -12,7 +12,8 @@ Ads Helper is a Chrome extension that shows, for the Facebook profile you are lo
 |---|---|---|
 | Facebook access token | Read from the Facebook tab you have open (the page's own script variables and HTML) | Shown in the popup; kept in `chrome.storage.session`; sent to `graph.facebook.com` as an `Authorization` header to read your ad accounts; copied to the clipboard only when you press a copy button |
 | Facebook session cookies | `chrome.cookies` for `facebook.com` | Shown in the popup; copied to the clipboard (as a header string or JSON) only when you press a copy button. The `c_user` cookie is also read to notice that you switched Facebook accounts, so cached data of the previous account is dropped |
-| Profile, app and permission data | `graph.facebook.com` (`me`, `app`, `me/permissions`) | Shown in the popup when you press **Check** or copy **Token + cookies** (one `me` read confirms the token belongs to the logged-in user) |
+| Browser User-Agent | `navigator.userAgent` as reported by your open Facebook tab (the value Facebook's page itself sees) | Shown in the popup; copied to the clipboard (alone, or with the token and cookies) only when you press a copy button. Never stored, never sent anywhere |
+| Profile, app and permission data | `graph.facebook.com` (`me`, `app`, `me/permissions`) | Shown in the popup when you press **Check** or copy **Token + cookies + UA** (one `me` read confirms the token belongs to the logged-in user) |
 | Ad account data: names, IDs, status, disable reason, spend, clicks, limits, payment-method label, pixels, business owner, ads with their review status, and each ad's spend, impressions and clicks | `graph.facebook.com` (`me/adaccounts`, `act_<id>/ads`) | Shown in the popup; cached in `chrome.storage.session` |
 | Settings: interface language, newer Graph API version learned from Meta, last open tab and spend period | Your choices / Meta's API responses | `chrome.storage.local` (language, API version) and the popup's `localStorage` (tab, period) |
 
@@ -36,7 +37,7 @@ The token and cookies are authentication data. The extension treats them as such
 
 ## Storage and retention
 
-- Token, account cache, ads cache, rate-limit counters: `chrome.storage.session`. It lives in memory and is deleted when the browser closes or the extension is reloaded or updated.
+- Token, account cache, ads cache, rate-limit counters: `chrome.storage.session`. It lives in memory and is deleted when the browser closes or the extension is reloaded or updated. Cookies and the User-Agent are read live each time and are not stored.
 - Language and Graph API version: `chrome.storage.local`, until you remove the extension.
 - Last open tab and spend period: popup `localStorage`, until you remove the extension.
 - Removing the extension deletes all of it. Cached accounts are also dropped when you log in to Facebook as a different user.
@@ -45,7 +46,7 @@ The token and cookies are authentication data. The extension treats them as such
 
 - `cookies` — read Facebook cookies to show and copy them on your request, and `c_user` to detect an account switch.
 - `storage` — keep the session cache and your language choice.
-- `scripting` — run a bundled function in your open Facebook tab to find the access token that Facebook's own page holds.
+- `scripting` — run a bundled function in your open Facebook tab to find the access token that Facebook's own page holds and to read the browser's User-Agent as that page sees it.
 - Host access `https://*.facebook.com/*` — the tabs the token is read from, the cookies, and the Graph API (`graph.facebook.com`). No other site is accessible.
 
 ## Compliance with the Chrome Web Store User Data Policy
@@ -68,14 +69,14 @@ Changes to this policy are published in this file with a new date. The source co
 
 # Политика конфиденциальности — Ads Helper
 
-Обновлено: 30.09.2026
+Обновлено: 04.10.2026
 
-Ads Helper показывает для профиля Facebook, в который вы вошли в своём браузере, токен доступа, cookie сессии и статус и расход рекламных кабинетов. Всё происходит в вашем браузере. У разработчика нет сервера, и он не получает никаких данных.
+Ads Helper показывает для профиля Facebook, в который вы вошли в своём браузере, токен доступа, cookie сессии, User-Agent браузера и статус и расход рекламных кабинетов. Всё происходит в вашем браузере. У разработчика нет сервера, и он не получает никаких данных.
 
-- **Что обрабатывается:** токен (читается из открытой вкладки Facebook), cookie facebook.com, данные профиля, приложения и прав токена (`me`, `app`, `me/permissions`), данные кабинетов и объявлений, включая расход, показы и клики по каждому объявлению (`me/adaccounts`, `act_<id>/ads`), язык интерфейса, версия Graph API, последняя открытая вкладка и период.
-- **Куда уходит:** только запросы `GET` из вашего браузера на `graph.facebook.com`, только на чтение. Токен уходит туда в заголовке `Authorization`; браузер, как и на facebook.com, прикладывает ваши cookie Facebook. Запросы идут по кнопке, при первом открытии вкладки «Ad accounts» без загруженных данных или после перезагрузки страницы Facebook. Повторное открытие окна и переключение вкладок ничего не отправляют. Частота ограничена самим расширением.
-- **В буфер обмена** токен и cookie попадают только когда вы сами нажали кнопку копирования.
-- **Хранение:** токен и кэш кабинетов — `chrome.storage.session` (в памяти, стираются при закрытии браузера, перезагрузке или обновлении расширения); язык и версия API — `chrome.storage.local`; последняя вкладка и период — `localStorage` окна. Удаление расширения стирает всё. Кэш кабинетов сбрасывается и при входе в другой аккаунт Facebook.
+- **Что обрабатывается:** токен (читается из открытой вкладки Facebook), cookie facebook.com, User-Agent браузера (как его видит открытая вкладка Facebook; нигде не хранится и никуда не отправляется), данные профиля, приложения и прав токена (`me`, `app`, `me/permissions`), данные кабинетов и объявлений, включая расход, показы и клики по каждому объявлению (`me/adaccounts`, `act_<id>/ads`), язык интерфейса, версия Graph API, последняя открытая вкладка и период.
+- **Куда уходит:** только запросы `GET` из вашего браузера на `graph.facebook.com`, только на чтение. Токен уходит туда в заголовке `Authorization`; браузер, как и на facebook.com, прикладывает ваши cookie Facebook. Запросы идут по кнопке, при первом открытии вкладки «Кабинеты» без загруженных данных или после перезагрузки страницы Facebook. Повторное открытие окна и переключение вкладок ничего не отправляют. Частота ограничена самим расширением.
+- **В буфер обмена** токен, cookie и User-Agent попадают только когда вы сами нажали кнопку копирования.
+- **Хранение:** токен и кэш кабинетов — `chrome.storage.session` (в памяти, стираются при закрытии браузера, перезагрузке или обновлении расширения); язык и версия API — `chrome.storage.local`; последняя вкладка и период — `localStorage` окна. Cookie и User-Agent читаются каждый раз заново и не хранятся. Удаление расширения стирает всё. Кэш кабинетов сбрасывается и при входе в другой аккаунт Facebook.
 - **Чего нет:** передачи данных разработчику или третьим лицам, аналитики, телеметрии, рекламы, продажи данных, удалённого кода, чтения других сайтов и истории браузера.
 - **Доступы:** `cookies`, `storage`, `scripting` и только `https://*.facebook.com/*`.
 - **Не связано с Meta:** Ads Helper — независимый продукт, не связан с Meta Platforms, Inc., не одобрен и не спонсируется ею. Facebook и Meta — товарные знаки Meta Platforms, Inc.

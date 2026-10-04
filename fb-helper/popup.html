@@ -35,7 +35,7 @@
           <button id="refreshToken" class="icon-btn" title="Re-read the token from the FB tab" data-i18n-title="token.refresh" aria-label="Re-read the token from the FB tab" data-i18n-aria="token.refresh"><i class="i i-refresh"></i></button>
           <div class="split">
             <button id="grabToken" class="btn primary"><i class="i i-copy"></i><span data-i18n="copyToken">Copy token</span></button>
-            <button id="copyEnv" class="btn"><i class="i i-copy"></i><span data-i18n="copyEnv">Token + cookies</span></button>
+            <button id="copyEnv" class="btn"><i class="i i-copy"></i><span data-i18n="copyEnv">Token + cookies + UA</span></button>
           </div>
         </div>
         <div id="kindCard" class="kind hidden"></div>
@@ -61,6 +61,10 @@
           <button id="copyCookieJson" class="btn" title="Same cookies with attributes (domain, path, expiry) — for import into an antidetect browser" data-i18n-title="copyJson.title"><i class="i i-copy"></i>JSON</button>
         </div>
         <div id="cookieStatus" class="source"></div>
+        <div class="ua-row">
+          <div class="field data" id="uaBox">—</div>
+          <button id="copyUa" class="btn" title="This profile's User-Agent, as the Facebook page sees it" data-i18n-title="ua.title"><i class="i i-copy"></i><span data-i18n="ua.copy">Copy UA</span></button>
+        </div>
       </div>
     </section>
 

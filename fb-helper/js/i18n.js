@@ -12,7 +12,7 @@ const D = {
     "tab.token": "Токен", "tab.cookies": "Cookie", "tab.accounts": "Кабинеты",
     "check": "Проверить", "check.title": "Профиль, приложение и права токена", "check.aria": "Проверить токен",
     "token.refresh": "Прочитать токен из вкладки FB заново", "token.refreshed": "Токен обновлён", "token.retry": "Токен тот же — отметку «сессия закрыта» снял, следующий запрос попробует его ещё раз",
-    "copyToken": "Скопировать токен", "copyEnv": "Токен + cookie",
+    "copyToken": "Скопировать токен", "copyEnv": "Токен + cookie + UA",
     "guide.title": "Типы токенов", "guide.open": "Открыть — токен этого типа будет на той вкладке",
     "guide.EAAB": "— основной для рекламы: запуск и правка.",
     "guide.EAAI": "— настройка автоправил.",
@@ -21,6 +21,7 @@ const D = {
     "guide.EAAd": "— события: пиксели, датасеты и отслеживание.",
     "copyCookies": "Скопировать cookie", "copyCookies.title": "Строка cookie: c_user=…; xs=…; …",
     "copyJson.title": "Те же cookie с атрибутами (domain, path, срок) — для импорта в антидетект",
+    "ua.copy": "Скопировать UA", "ua.title": "User-Agent этого профиля, как его видит страница Facebook", "ua.copied": "User-Agent скопирован",
     "search": "Поиск", "search.aria": "Поиск кабинетов",
     "liveIds": "ID активных", "liveIds.title": "ID активных кабинетов списком, по одному в строке",
     "refresh": "Обновить", "period.aria": "Период спенда",
@@ -75,9 +76,9 @@ const D = {
 
     "ck.none": "Cookie не найдены", "ck.loggedIn": "Вход выполнен", "ck.until": "сессия до ", "ck.untilClose": "сессия до закрытия браузера",
     "ck.count": ["cookie", "cookie", "cookie"], "ck.loggedOut": "Не залогинен в Facebook", "ck.noSession": "Нет c_user / xs — залогинься в FB",
-    "ck.jsonCopied": "JSON скопирован", "ck.copied": "Cookie скопированы", "env.copied": "Токен + cookie скопированы",
+    "ck.jsonCopied": "JSON скопирован", "ck.copied": "Cookie скопированы", "env.copied": "Токен + cookie + UA скопированы",
     "env.mismatch": "Токен от другого аккаунта ({a}), а cookie — {b}. Обнови вкладку FB",
-    "env.unverified": "Токен + cookie скопированы — владелец токена не проверен",
+    "env.unverified": "Токен + cookie + UA скопированы — владелец токена не проверен",
 
     "acc.wait": "Обновить можно через {n} с", "acc.loaded": "Кабинетов: {n}", "acc.truncated": " (не все — лимит 10 страниц)",
     "acc.noLive": "Активных кабинетов нет", "acc.idsCopied": "Скопировано ID: {n}", "acc.partial": " (список неполный)",
@@ -89,7 +90,7 @@ const D = {
     "acc.noPeriod": "Нет данных за этот период — обнови список",
     "acc.inBm": "Кабинет в БМ {n} · {id}", "acc.bm": "БМ {n}",
     "acc.personalTitle": "Личный кабинет: Graph не вернул БМ-владельца", "acc.personal": "Личный",
-    "acc.tz": "Часовой пояс кабинета: {tz}", "acc.imp": "{n} показов", "acc.clicks": " кликов",
+    "acc.tz": "Часовой пояс кабинета: {tz}", "acc.imp": "{n} показов",
     "acc.spent": "Всего потрачено", "acc.balance": "Не оплачено", "acc.threshold": "Порог списания", "acc.daily": "Лимит в день",
     "acc.noLimit": "без лимита", "acc.spendCap": "Spend cap", "acc.no": "нет", "acc.funding": "Оплата", "acc.pixels": "Пиксели",
     "acc.noPixel": "нет пикселя", "acc.owner": "Владелец", "acc.bmPrefix": "БМ ", "acc.noBm": "без БМ", "acc.country": "Страна / создан",
@@ -106,7 +107,7 @@ const D = {
     "tab.token": "Token", "tab.cookies": "Cookies", "tab.accounts": "Ad accounts",
     "check": "Check", "check.title": "Profile, app and permissions of the token", "check.aria": "Check token",
     "token.refresh": "Re-read the token from the FB tab", "token.refreshed": "Token refreshed", "token.retry": "Same token — the dead-session mark is cleared, the next request will try it again",
-    "copyToken": "Copy token", "copyEnv": "Token + cookies",
+    "copyToken": "Copy token", "copyEnv": "Token + cookies + UA",
     "guide.title": "Token types", "guide.open": "Open — that tab will hold a token of this type",
     "guide.EAAB": "— the main ads token: launch and edit.",
     "guide.EAAI": "— automated rules.",
@@ -115,6 +116,7 @@ const D = {
     "guide.EAAd": "— events: pixels, datasets and tracking.",
     "copyCookies": "Copy cookies", "copyCookies.title": "Cookie string: c_user=…; xs=…; …",
     "copyJson.title": "Same cookies with attributes (domain, path, expiry) — for import into an antidetect browser",
+    "ua.copy": "Copy UA", "ua.title": "This profile's User-Agent, as the Facebook page sees it", "ua.copied": "User-Agent copied",
     "search": "Search", "search.aria": "Search ad accounts",
     "liveIds": "Active IDs", "liveIds.title": "IDs of active ad accounts, one per line",
     "refresh": "Refresh", "period.aria": "Spend period",
@@ -169,9 +171,9 @@ const D = {
 
     "ck.none": "No cookies found", "ck.loggedIn": "Logged in", "ck.until": "session until ", "ck.untilClose": "session until the browser closes",
     "ck.count": ["cookie", "cookies"], "ck.loggedOut": "Not logged in to Facebook", "ck.noSession": "No c_user / xs — log in to FB",
-    "ck.jsonCopied": "JSON copied", "ck.copied": "Cookies copied", "env.copied": "Token + cookies copied",
+    "ck.jsonCopied": "JSON copied", "ck.copied": "Cookies copied", "env.copied": "Token + cookies + UA copied",
     "env.mismatch": "The token belongs to another account ({a}), the cookies to {b}. Reload the FB tab",
-    "env.unverified": "Token + cookies copied — token owner not verified",
+    "env.unverified": "Token + cookies + UA copied — token owner not verified",
 
     "acc.wait": "Refresh available in {n} s", "acc.loaded": "Ad accounts: {n}", "acc.truncated": " (not all — 10-page limit)",
     "acc.noLive": "No active ad accounts", "acc.idsCopied": "Copied IDs: {n}", "acc.partial": " (list incomplete)",
@@ -183,7 +185,7 @@ const D = {
     "acc.noPeriod": "No data for this period — refresh the list",
     "acc.inBm": "Account in business portfolio {n} · {id}", "acc.bm": "{n}",
     "acc.personalTitle": "Personal account: Graph returned no business owner", "acc.personal": "Personal",
-    "acc.tz": "Account timezone: {tz}", "acc.imp": "{n} impressions", "acc.clicks": " clicks",
+    "acc.tz": "Account timezone: {tz}", "acc.imp": "{n} impressions",
     "acc.spent": "Total spent", "acc.balance": "Unpaid balance", "acc.threshold": "Billing threshold", "acc.daily": "Daily limit",
     "acc.noLimit": "no limit", "acc.spendCap": "Spend cap", "acc.no": "none", "acc.funding": "Payment", "acc.pixels": "Pixels",
     "acc.noPixel": "no pixel", "acc.owner": "Owner", "acc.bmPrefix": "Business ", "acc.noBm": "no business", "acc.country": "Country / created",
@@ -203,8 +205,8 @@ export const locale = () => (lang === "ru" ? "ru-RU" : "en-US");
 // t("acc.found", { n: 3, all: 10 }) → "найдено 3 из 10". A missing key falls back to Russian, then to the key.
 export function t(key, vars) {
   let s = D[lang][key] ?? D.ru[key] ?? key;
-  if (vars) for (const [k, v] of Object.entries(vars)) s = s.replaceAll(`{${k}}`, String(v));
-  return s;
+  // One pass: a value that itself contains "{x}" or "$&" (an account name) is inserted as plain text.
+  return vars ? s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m)) : s;
 }
 // Count word for n: Russian one / few / many, English one / other.
 export function tn(n, key) {
