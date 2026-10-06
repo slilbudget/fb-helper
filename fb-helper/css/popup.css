@@ -126,6 +126,7 @@ main { padding-bottom: 0; }
 .btn:hover:not(:disabled), .btn:focus-visible { background: var(--color-hover-fill); }
 .btn:not(.primary):hover:not(:disabled), .btn:not(.primary):focus-visible { color: var(--color-text-primary); }
 .btn:disabled { color: var(--color-text-disabled); cursor: default; }
+.btn[aria-busy="true"] { cursor: progress; }
 .btn.primary { background: var(--color-accent); color: var(--color-on-accent); }
 .btn.primary:hover:not(:disabled), .btn.primary:focus-visible { background: var(--color-accent-hover); }
 .btn.primary:disabled { background: var(--color-background-muted); color: var(--color-text-disabled); }

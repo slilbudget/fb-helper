@@ -1,4 +1,4 @@
-# FB Helper 2.3.0
+# FB Helper 2.3.1
 
 [![CI](https://github.com/slilbudget/fb-helper/actions/workflows/ci.yml/badge.svg)](https://github.com/slilbudget/fb-helper/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/slilbudget/fb-helper)](https://github.com/slilbudget/fb-helper/releases/latest) [![License: MIT](https://img.shields.io/github/license/slilbudget/fb-helper)](LICENSE)
 
@@ -8,7 +8,7 @@ Chrome extension (MV3): Facebook access token, session cookies and ad account st
 
 ## Install
 
-1. Download `fb-helper-2.3.0.zip` from [Releases](https://github.com/slilbudget/fb-helper/releases/latest) and unpack (or `git clone` and use the `fb-helper/` folder)
+1. Download `fb-helper-2.3.1.zip` from [Releases](https://github.com/slilbudget/fb-helper/releases/latest) and unpack (or `git clone` and use the `fb-helper/` folder)
 2. `chrome://extensions` → enable **Developer mode**
 3. **Load unpacked** → pick the unpacked folder (from a clone: `fb-helper/`; keep the folder after installing)
 
@@ -39,7 +39,7 @@ Chrome 121+. A Facebook tab must be open in the same profile; the ads token (EAA
 ## Build the archive
 
 ```
-(cd fb-helper && zip -qrD ../fb-helper-2.3.0.zip . -x '*.DS_Store') && zip -qj fb-helper-2.3.0.zip LICENSE
+(cd fb-helper && zip -qrD ../fb-helper-2.3.1.zip . -x '*.DS_Store') && zip -qj fb-helper-2.3.1.zip LICENSE
 ```
 
 The Chrome Web Store package (`chrome-web-store/release/ads-helper-<version>.zip`) comes from `chrome-web-store/build.sh`.

@@ -40,8 +40,8 @@ const TOKEN_RE = /^EAA[A-Za-z0-9]{62,}$/;
 const TOKEN_KIND = {
   EAAB: { app: "Ads Manager", tone: "ok", ads: true },
   EAAG: { app: "Business Manager", tone: "info", ads: true },
-  EAAH: { app: "Commerce Manager", tone: "info", ads: false },
   EAAd: { app: "Events Manager", tone: "info", ads: false },
+  EAAH: { app: "Commerce Manager", tone: "info", ads: false },
   EAAI: { app: "Automated Rules", tone: "info", ads: true },
 };
 // Every grabbed value already matched the token regex, so it IS a token — just from an app we didn't
@@ -196,10 +196,11 @@ function isFacebookUrl(url) {
 // ---------- storage ----------
 async function loadState() {
   // storage.session is wiped on extension update/reload, so a cache is always from this API_VERSION.
-  const ses = await chrome.storage.session.get(["token", "tokenSource", "dead", ...CACHE_KEYS, "cooldownUntil", "usage", "locks"]);
+  const ses = await chrome.storage.session.get(["token", "tokenSource", "dead", "checked", ...CACHE_KEYS, "cooldownUntil", "usage", "locks"]);
   try { const { apiVersion } = await chrome.storage.local.get("apiVersion"); adoptVersion(apiVersion, false); } catch { /* */ }
   Object.assign(state, {
     token: ses.token || null, tokenSource: ses.tokenSource || null, dead: Array.isArray(ses.dead) ? ses.dead : [],
+    checked: ses.checked?.token ? ses.checked : null,
     accounts: ses.accounts || [], fetchedAt: ses.fetchedAt || 0, truncated: !!ses.truncated, owner: ses.owner || null,
     ads: ses.ads || {}, open: new Set(ses.view?.open), adsHidden: new Set(ses.view?.hidden),
     cooldownUntil: ses.cooldownUntil || 0, usage: ses.usage ?? null,
@@ -668,16 +669,26 @@ async function ownerCheck(token) {
     if (e instanceof Stale || e.session) throw e;
   }
   const res = { token, user, verdict, meId };
-  if (verdict !== "unknown") state.checked = res;
+  // Kept in storage.session, so reopening the popup doesn't cost another /me before the next export.
+  if (verdict !== "unknown") { state.checked = res; saveSession({ checked: res }); }
   return res;
 }
+// The button greys out at once: the reads below take a moment (FB tabs, then /me the first time per token).
 async function copyEnv() {
+  const btn = $("#copyEnv");
+  if (btn.disabled) return;
+  btn.disabled = true; btn.setAttribute("aria-busy", "true");
+  try { await copyEnvNow(); } finally { btn.disabled = false; btn.removeAttribute("aria-busy"); }
+}
+async function copyEnvNow() {
   // Always a fresh token + a cookie snapshot taken right after it; nothing from the old cache.
+  // The UA is read from the FB tabs alongside the token, not after it.
+  const uaRead = readUa().catch(() => null);
   const token = await grabToken({ toClipboard: false });
   if (!token) return;
   const gen = state.gen;
   // The block is what you hand to whoever connects with this token: without the UA it would be an incomplete set.
-  const ua = await readUa();
+  const ua = await uaRead;
   if (gen !== state.gen || state.token !== token) return;
   if (!ua) return toast(state.uaHint || t("grab.noAccess"), true);
   await readCookies();
@@ -1165,6 +1176,7 @@ async function refreshToken() {
   const was = state.token, wasDead = isDead();
   clearDead(was);
   state.checked = null;                                 // the owner is verified again on the next export
+  chrome.storage.session.remove("checked");
   try {
     const got = await grabToken({ toClipboard: false });   // no token: grabToken toasts why
     if (got) toast(wasDead && got === was ? t("token.retry") : t("token.refreshed"));
