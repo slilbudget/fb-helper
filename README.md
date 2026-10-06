@@ -1,4 +1,4 @@
-# FB Helper 2.4.0
+# FB Helper 2.4.1
 
 [![CI](https://github.com/slilbudget/fb-helper/actions/workflows/ci.yml/badge.svg)](https://github.com/slilbudget/fb-helper/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/slilbudget/fb-helper)](https://github.com/slilbudget/fb-helper/releases/latest) [![License: MIT](https://img.shields.io/github/license/slilbudget/fb-helper)](LICENSE)
 
@@ -8,7 +8,7 @@ Chrome extension (MV3): Facebook access token, session cookies and ad account st
 
 ## Install
 
-1. Download `fb-helper-2.4.0.zip` from [Releases](https://github.com/slilbudget/fb-helper/releases/latest) and unpack (or `git clone` and use the `fb-helper/` folder)
+1. Download `fb-helper-2.4.1.zip` from [Releases](https://github.com/slilbudget/fb-helper/releases/latest) and unpack (or `git clone` and use the `fb-helper/` folder)
 2. `chrome://extensions` → enable **Developer mode**
 3. **Load unpacked** → pick the unpacked folder (from a clone: `fb-helper/`; keep the folder after installing)
 
@@ -18,7 +18,7 @@ Chrome 121+. A Facebook tab must be open in the same profile; the ads token (EAA
 
 - **Language** — English and Russian, `RU · EN` toggle in the header. The first run follows the browser's UI language; after that the choice is yours, stored in `chrome.storage.local`, and survives a browser restart. English account statuses and disable reasons use the Marketing API names (`Unsettled`, `Ads integrity policy`, …), the same as Ads Manager.
 - **Token** — reads the token from the open FB tab and shows its type: EAAB (Ads Manager), EAAG (Business Manager), EAAd (Events Manager), EAAH (Commerce Manager), EAAI (Automated Rules). Each type links to the page where that token lives. **Check** shows the profile, the app and the permissions behind the token. The refresh button next to the field re-reads the token from the FB tab (and lets you retry a token that was reported dead).
-- **Cookies** — as a header string or as JSON with attributes for importing into a browser profile; **Token + cookies + UA** (Token tab) copies them in one block — token, blank line, cookie string, blank line, User-Agent, blank line, then `Profile: <name> (<id>)` and `BM: <name> (<id>), …` in English — after one `/me` read confirms the token belongs to the logged-in user (`c_user`) and brings the profile name and its Business Managers (`BM: not available` for tokens without `business_management`, e.g. EAAd / EAAH). A token from another account is not copied, and neither is a block without a readable User-Agent. The Cookies tab also has **Cookies + UA** (cookie string, blank line, User-Agent; no Graph request) and shows the profile's **User-Agent** with its own copy button. It is read from the open Facebook tab, so it is the one the page sees (an antidetect profile's spoofed value, not the popup's own).
+- **Cookies** — **Copy cookies + UA** (cookie string, blank line, the profile's User-Agent; no Graph request) or JSON with attributes for importing into a browser profile; **Token + cookies + UA** (Token tab) copies them in one block — token, blank line, cookie string, blank line, User-Agent, blank line, then `Profile: <name> (<id>)` and `BM: <name> (<id>), …` in English — after one `/me` read confirms the token belongs to the logged-in user (`c_user`) and brings the profile name and its Business Managers (`BM: not available` for tokens without `business_management`, e.g. EAAd / EAAH). A token from another account is not copied, and neither is a block without a readable User-Agent. The User-Agent is not shown in the popup; it is read, when a copy button needs it, from the open Facebook tab, so it is the one the page sees (an antidetect profile's spoofed value, not the popup's own).
 - **Ad accounts** — status, disable reason, spend per period (today / yesterday / 7 / 30 days / all time — the larger of Meta's own total, which lags behind, and the last 30 days + today), clicks and CPC, daily limit, billing threshold, payment method, pixels, business owner; ads with statuses, rejection reasons (every reason with the placement it applies to; disapproved ads first) and, for the selected period, each ad's spend, impressions, clicks and CPC (a second read after the list; switching the period sends nothing; "All time" is Meta's `maximum`, at most 37 months). The refresh button at the top of the tab re-reads the account list only; each account's ads have their own refresh icon in the ads card (so the ads cost nothing unless you ask). The loaded list and ads are kept until the browser closes and survive FB tab or token changes; logging in as another FB user drops them.
 
 ## Safety and limits
@@ -39,7 +39,7 @@ Chrome 121+. A Facebook tab must be open in the same profile; the ads token (EAA
 ## Build the archive
 
 ```
-(cd fb-helper && zip -qrD ../fb-helper-2.4.0.zip . -x '*.DS_Store') && zip -qj fb-helper-2.4.0.zip LICENSE
+(cd fb-helper && zip -qrD ../fb-helper-2.4.1.zip . -x '*.DS_Store') && zip -qj fb-helper-2.4.1.zip LICENSE
 ```
 
 The Chrome Web Store package (`chrome-web-store/release/ads-helper-<version>.zip`) comes from `chrome-web-store/build.sh`.

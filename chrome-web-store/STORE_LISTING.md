@@ -1,4 +1,4 @@
-# Chrome Web Store listing — Ads Helper 2.4.0
+# Chrome Web Store listing — Ads Helper 2.4.1
 
 Copy each block into the Developer Dashboard. Every statement below matches the code of this version.
 
@@ -21,7 +21,7 @@ Ads Helper shows three things about the Facebook profile you are logged in to in
 
 WHAT IT DOES
 • Token: reads the access token from a Facebook tab you already have open and shows its type (EAAB Ads Manager, EAAG Business Manager, EAAd Events Manager, EAAH Commerce Manager, EAAI Automated Rules). "Check" shows the profile, the app and the permissions behind the token. One click copies it.
-• Cookies: the Facebook session cookies of this browser profile, as a header string or as JSON. "Token + cookies + UA" copies the token, the cookies and the browser profile's User-Agent (as the Facebook page sees it) in one block, followed by the profile name and its Business Managers with IDs, after confirming the token belongs to the logged-in user. "Cookies + UA" copies the cookie string and the User-Agent together; the User-Agent also has its own copy button.
+• Cookies: the Facebook session cookies of this browser profile, copied together with the User-Agent ("Copy cookies + UA") or as JSON. "Token + cookies + UA" copies the token, the cookies and the browser profile's User-Agent (as the Facebook page sees it) in one block, followed by the profile name and its Business Managers with IDs, after confirming the token belongs to the logged-in user.
 • Ad accounts: every ad account of the profile with status, disable reason, spend for today / yesterday / 7 / 30 days / all time, clicks and CPC, daily limit, billing threshold, payment method label, pixels and business owner. Search; active accounts first, then by spend; one button copies the IDs of all active accounts.
 • Ads: the ads of an account with their statuses and review results, every rejection reason with the placement it applies to, disapproved ads first, and each ad's spend, impressions, clicks and CPC for the selected period, including all time.
 • English and Russian interface.
@@ -45,7 +45,7 @@ Ads Helper показывает три вещи о профиле Facebook, в �
 
 ЧТО УМЕЕТ
 • Токен: читает токен из уже открытой вкладки Facebook и показывает его тип (EAAB, EAAI, EAAG, EAAH, EAAd). «Проверить» показывает профиль, приложение и права токена. Копируется одним кликом.
-• Cookie: cookie сессии Facebook этого профиля браузера строкой заголовка или JSON. «Токен + cookie + UA» копирует токен, cookie и User-Agent профиля браузера (как его видит страница Facebook) одним блоком, а в конце — имя профиля и его Business Manager'ы с ID, предварительно убедившись, что токен принадлежит вошедшему пользователю. «Cookie + UA» копирует строку cookie и User-Agent вместе; у User-Agent есть и своя кнопка копирования.
+• Cookie: cookie сессии Facebook этого профиля браузера вместе с User-Agent («Скопировать cookie + UA») или JSON. «Токен + cookie + UA» копирует токен, cookie и User-Agent профиля браузера (как его видит страница Facebook) одним блоком, а в конце — имя профиля и его Business Manager'ы с ID, предварительно убедившись, что токен принадлежит вошедшему пользователю.
 • Кабинеты: все рекламные кабинеты профиля со статусом, причиной блокировки, расходом за сегодня / вчера / 7 / 30 дней / всё время, кликами и CPC, дневным лимитом, порогом оплаты, способом оплаты, пикселями и владельцем БМ. Поиск; сначала активные, затем по расходу; одна кнопка копирует ID всех активных кабинетов.
 • Объявления: объявления кабинета со статусами и результатом проверки, каждая причина отклонения с плейсментом, отклонённые сверху, и расход, показы, клики и CPC по каждому объявлению за выбранный период, включая всё время.
 • Интерфейс на русском и английском.

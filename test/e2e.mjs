@@ -739,9 +739,9 @@ async function layoutFlows() {
   await b.ctx.close();
 }
 
-// ---------- User-Agent (cookie tab) ----------
+// ---------- Cookies tab: "Copy cookies + UA" ----------
 async function uaFlows() {
-  console.log("\n# user agent");
+  console.log("\n# cookies + user agent");
   const SPOOF = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 <b>spoofed</b>";
   const uaPage = async (b, value) => {                    // an FB tab whose own JS reports `value` as its User-Agent
     const pg = await b.ctx.newPage();
@@ -749,57 +749,42 @@ async function uaFlows() {
     await pg.goto("https://adsmanager.facebook.com/adsmanager/manage/campaigns");
     return pg;
   };
-  const boxIs = (p, re) => until(p, (src) => new RegExp(src).test(document.querySelector("#uaBox").textContent.trim()), re.source);
+  const parts = async (pop) => ((await clip(pop))[0] || "").split("\n\n");
   const b = await boot({ fb: adsFb(TOK) });
 
   let pop = await popup(b, "cookies");
-  ok("no FB tab -> the box says why", await boxIs(pop, /^Open Facebook/), await text(pop, "#uaBox"));
+  ok("Cookies tab: one main button + JSON, no UA field or Copy UA / Copy cookies buttons",
+    (await pop.locator("#copyCookiesUa.primary").count()) === 1 && (await pop.locator("#copyCookieJson").count()) === 1
+      && (await pop.locator("#uaBox, #copyUa, #copyCookies").count()) === 0);
   await captureClipboard(pop);
-  const noTab = await clickToast(pop, "#copyUa");
+  const noTab = await clickToast(pop, "#copyCookiesUa");
   ok("no FB tab -> the click says why and copies nothing", (await clip(pop)).length === 0 && has(noTab, "Open Facebook"), `${noTab} / ${JSON.stringify(await clip(pop))}`);
 
-  // the page's own User-Agent, shown and copied
+  // the button is also the retry: the popup is still open from before the FB tab existed, one click re-reads it
   let pg = await uaPage(b);
   const real = await pg.evaluate(() => navigator.userAgent);
-  // the button is also the retry: the popup is still open from before the FB tab existed, one click re-reads it
-  await captureClipboard(pop);
-  const retry = await clickToast(pop, "#copyUa");
-  ok("FB tab opened after the popup -> one click reads and copies the UA (retry works)", JSON.stringify(await clip(pop)) === JSON.stringify([real]) && has(retry, "User-Agent copied"), `${retry} / ${JSON.stringify(await clip(pop))}`);
-  pop = await popup(b, "cookies");
-  ok("shows the UA of the FB tab", await boxIs(pop, new RegExp("^" + real.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$")), await text(pop, "#uaBox"));
-  await captureClipboard(pop);
-  const toast = await clickToast(pop, "#copyUa");
-  ok("copy puts exactly that UA on the clipboard", JSON.stringify(await clip(pop)) === JSON.stringify([real]) && has(toast, "User-Agent copied"), `${JSON.stringify(await clip(pop))} / ${toast}`);
-
-  // an antidetect profile spoofs the UA for pages: the extension must show what the page reports, not its own navigator
-  await pg.close(); pg = await uaPage(b, SPOOF);
-  pop = await popup(b, "cookies");
-  const own = await pop.evaluate(() => navigator.userAgent);
-  ok("popup's own navigator differs from the spoofed one (test is meaningful)", own !== SPOOF);
-  ok("spoofed UA of the page is shown, not the popup's", await boxIs(pop, /^Mozilla\/5\.0 \(Windows NT 10\.0.*<b>spoofed<\/b>$/) && (await text(pop, "#uaBox")) === SPOOF, await text(pop, "#uaBox"));
-  ok("spoofed UA is text, not markup", (await pop.locator("#uaBox b").count()) === 0);
-  await captureClipboard(pop); await clickToast(pop, "#copyUa");
-  ok("spoofed UA is what gets copied", JSON.stringify(await clip(pop)) === JSON.stringify([SPOOF]));
-  const box = await pop.evaluate(() => { const r = document.querySelector("#uaBox").getBoundingClientRect(); return { w: r.width, sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }; });
-  ok("long UA wraps inside the popup, no horizontal scroll", box.sw <= box.cw && box.w > 100, JSON.stringify(box));
-  // Cookies + UA: cookie string, blank line, the page's UA; no Graph request
   await captureClipboard(pop);
   const hitsBefore = b.hits.length;
-  const ckUa = await clickToast(pop, "#copyCookiesUa");
-  const ckParts = ((await clip(pop))[0] || "").split("\n\n");
-  ok("Cookies + UA -> cookie string, blank line, the page's (spoofed) UA; no Graph request", ckParts.length === 2 && has(ckParts[0], "c_user=1001") && has(ckParts[0], "xs=") && ckParts[1] === SPOOF && has(ckUa, "Cookies + UA copied") && b.hits.length === hitsBefore, `${JSON.stringify(ckParts.map((x) => x.slice(0, 30)))} / ${ckUa}`);
+  const retry = await clickToast(pop, "#copyCookiesUa");
+  let p = await parts(pop);
+  ok("FB tab opened after the popup -> cookie string, blank line, the page's UA; no Graph request", p.length === 2 && has(p[0], "c_user=1001") && has(p[0], "xs=") && p[1] === real && has(retry, "Cookies + UA copied") && b.hits.length === hitsBefore, `${retry} / ${JSON.stringify(p.map((x) => x.slice(0, 30)))}`);
+
+  // an antidetect profile spoofs the UA for pages: the extension must copy what the page reports, not its own navigator
+  await pg.close(); pg = await uaPage(b, SPOOF);
+  pop = await popup(b, "cookies");
+  ok("popup's own navigator differs from the spoofed one (test is meaningful)", (await pop.evaluate(() => navigator.userAgent)) !== SPOOF);
+  await captureClipboard(pop); await clickToast(pop, "#copyCookiesUa");
+  p = await parts(pop);
+  ok("spoofed UA of the page is what gets copied", p.length === 2 && p[1] === SPOOF, JSON.stringify(p.map((x) => x.slice(0, 30))));
 
   // the page's JS can return anything: only a printable-ASCII string of sane length is accepted
   for (const [name, bad] of [["a control character", "Mozilla/5.0\n(X11)"], ["a number", 5], ["an empty string", ""], ["600 characters", "M".repeat(600)]]) {
     await pg.close(); pg = await uaPage(b, bad);
     pop = await popup(b, "cookies");
     await captureClipboard(pop);
-    const tst = await clickToast(pop, "#copyUa");
-    ok(`UA with ${name} -> rejected: the box and the click say why, nothing copied`, (await boxIs(pop, /^No access/)) && has(tst, "No access") && (await clip(pop)).length === 0, `${await text(pop, "#uaBox")} / ${tst}`);
+    const tst = await clickToast(pop, "#copyCookiesUa");
+    ok(`UA with ${name} -> rejected: the click says why, nothing copied`, has(tst, "No access") && (await clip(pop)).length === 0, `${tst} / ${JSON.stringify(await clip(pop))}`);
   }
-  await captureClipboard(pop);
-  const ckBad = await clickToast(pop, "#copyCookiesUa");
-  ok("Cookies + UA without a readable UA -> nothing copied, says why", (await clip(pop)).length === 0 && has(ckBad, "No access"), `${ckBad} / ${JSON.stringify(await clip(pop))}`);
   ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
   await b.ctx.close();
 }

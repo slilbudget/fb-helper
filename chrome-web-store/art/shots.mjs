@@ -109,7 +109,7 @@ async function capture(lang, dir) {
   await pop.click("#checkToken"); await pop.waitForFunction(() => document.querySelectorAll("#tokenInfo dd").length >= 3 && !/…/.test(document.querySelector("#tokenInfo").textContent));
   await settle(); await shot("check");
   // 2 cookies
-  await pop.click('[data-tab="cookies"]'); await pop.waitForFunction(() => document.querySelector("#cookieBox").classList.contains("filled") && /^Mozilla/.test(document.querySelector("#uaBox").textContent)); await settle(); await shot("cookies");
+  await pop.click('[data-tab="cookies"]'); await pop.waitForFunction(() => document.querySelector("#cookieBox").classList.contains("filled")); await settle(); await shot("cookies");
   // 3 accounts
   await pop.click('[data-tab="accounts"]'); await pop.waitForFunction(() => document.querySelectorAll(".acc").length === 5, null, { timeout: 15000 }).catch(async () => {
     await pop.click("#loadAccounts"); await pop.waitForFunction(() => document.querySelectorAll(".acc").length === 5, null, { timeout: 15000 }); });
@@ -161,8 +161,8 @@ const SCREENS = [
     ru: ["Объявления со своими метриками", "Статус, причины отклонения, спенд, показы, клики и CPC по каждому объявлению."] },
   { f: "03-token", img: "check", en: ["The token, checked", "Its type, owner, app and permissions, plus where to find each of the five token types."],
     ru: ["Токен с проверкой", "Тип, владелец, приложение и права, плюс где взять каждый из пяти типов токенов."] },
-  { f: "04-cookies", img: "cookies", en: ["Cookies and User-Agent in one click", "Cookies as a string or JSON — or the token, cookies and User-Agent in one block."],
-    ru: ["Cookie и User-Agent в один клик", "Cookie строкой или JSON — либо токен, cookie и User-Agent одним блоком."] },
+  { f: "04-cookies", img: "cookies", en: ["Cookies and User-Agent in one click", "Cookies with the User-Agent, or JSON — or the token, cookies and User-Agent in one block."],
+    ru: ["Cookie и User-Agent в один клик", "Cookie вместе с User-Agent или JSON — либо токен, cookie и User-Agent одним блоком."] },
 ];
 for (const lang of ["en", "ru"]) for (const sc of SCREENS) {
   const q = new URLSearchParams({ img: (lang === "ru" ? "raw/ru/" : "raw/") + sc.img + ".png", t: sc[lang][0], s: sc[lang][1], lang });

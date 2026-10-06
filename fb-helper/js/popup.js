@@ -595,7 +595,7 @@ const cookieMap = () => Object.fromEntries(state.cookies.map((c) => [c.name, c])
 const hasSession = () => { const m = cookieMap(); return !!(m.c_user && m.xs); };
 function renderCookies() {
   const byName = cookieMap();
-  for (const id of ["#copyCookies", "#copyCookiesUa", "#copyCookieJson"]) if (!$(id).hasAttribute("aria-busy")) $(id).disabled = !state.cookies.length;
+  for (const id of ["#copyCookiesUa", "#copyCookieJson"]) if (!$(id).hasAttribute("aria-busy")) $(id).disabled = !state.cookies.length;
   // The whole cookie string, one colour like the token, in a short scrollable box;
   // the status line under it says whether the profile is logged in and how many cookies go out.
   const n = state.cookies.length;
@@ -618,19 +618,20 @@ function cookiesJson() {
     ...(c.expirationDate ? { expirationDate: c.expirationDate } : {}),
   })), null, 2);
 }
-async function copyCookies(asJson) {
+async function copyCookieJson() {
   await readCookies();
   if (!hasSession()) return toast(t("ck.noSession"), true);
-  copy(asJson ? cookiesJson() : cookieHeader(), asJson ? t("ck.jsonCopied") : t("ck.copied"));
+  copy(cookiesJson(), t("ck.jsonCopied"));
 }
 // ---------- user agent ----------
 // The User-Agent of this browser profile, as the Facebook page itself sees it. Read from a live FB tab in the MAIN
 // world, like the token: an antidetect profile spoofs it for pages, and the popup's own navigator may not be spoofed —
 // a UA copied from there could differ from the one Facebook has been seeing. Without a readable FB tab there is no UA.
+// Not shown in the popup: it is read only when a copy button needs it.
 function uaInPage() { return navigator.userAgent; }
 async function readUa() {
   const tabs = (await facebookTabs()).slice(0, 5);
-  if (!tabs.length) { Object.assign(state, { ua: null, uaHint: t("grab.noTab") }); renderUa(); return null; }
+  if (!tabs.length) { Object.assign(state, { ua: null, uaHint: t("grab.noTab") }); return null; }
   const ask = async (tab) => {
     const u = (await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: "MAIN", func: uaInPage }))?.[0]?.result;
     if (isUserAgent(u)) return u;
@@ -641,19 +642,10 @@ async function readUa() {
   const ua = await Promise.race([Promise.any(tabs.map(ask)).catch(() => null), new Promise((r) => { timer = setTimeout(r, TAB_WAIT_MS, null); })]);
   clearTimeout(timer);
   Object.assign(state, { ua, uaHint: ua ? "" : t("grab.noAccess") });
-  renderUa();
   return ua;
 }
-function renderUa() {
-  $("#uaBox").textContent = state.ua || state.uaHint || "—";
-  $("#uaBox").classList.toggle("filled", !!state.ua);   // the button stays enabled: a click re-reads the tab (the retry)
-}
-async function copyUa() {
-  const ua = await readUa();
-  if (!ua) return toast(state.uaHint || t("grab.noAccess"), true);
-  copy(ua, t("ua.copied"));
-}
-// Cookie string, blank line, User-Agent: both read live (the UA from the FB tab, alongside the cookies). No Graph request.
+// The Cookies tab's main button. Cookie string, blank line, User-Agent: both read live (the UA from the FB tab,
+// alongside the cookies). No Graph request. Without a readable UA nothing is copied (an incomplete set).
 async function copyCookiesUa() {
   const btn = $("#copyCookiesUa");
   if (btn.disabled) return;
@@ -1237,7 +1229,6 @@ async function switchLang(l) {
   applyStatic();
   $("#tokenInfo").classList.add("hidden");
   renderToken(); renderPeriods(); renderAccounts(); renderUsage(); renderCookies();
-  readUa().catch(console.error);                       // re-reads: a hint (no FB tab) is in the old language
   grabToken({ toClipboard: false, silent: true });
 }
 
@@ -1260,10 +1251,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("#grabToken").addEventListener("click", () => grabToken());
   $("#checkToken").addEventListener("click", checkToken);
   $("#copyEnv").addEventListener("click", copyEnv);
-  $("#copyCookies").addEventListener("click", () => copyCookies(false));
-  $("#copyCookieJson").addEventListener("click", () => copyCookies(true));
-  $("#copyUa").addEventListener("click", copyUa);
   $("#copyCookiesUa").addEventListener("click", copyCookiesUa);
+  $("#copyCookieJson").addEventListener("click", copyCookieJson);
   $("#loadAccounts").addEventListener("click", () => fetchAccounts());
   $("#copyLiveIds").addEventListener("click", copyLiveIds);
   $("#accountFilter").addEventListener("input", (e) => { state.filter = e.target.value; renderAccounts(); });
@@ -1272,7 +1261,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   await checkOwner();                                   // cache from another FB login: don't show it
   renderToken(); renderAccounts(); renderUsage();
   readCookies();
-  readUa().catch(console.error);
   // Show the token right away: read it from the open FB tab (local page read, no network request).
   grabToken({ toClipboard: false, silent: true }).catch(console.error).finally(tokenReadyDone);
   started = true;

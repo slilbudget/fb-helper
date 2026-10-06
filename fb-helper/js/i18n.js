@@ -19,10 +19,8 @@ const D = {
     "guide.EAAd": "— события: пиксели, датасеты и отслеживание.",
     "guide.EAAH": "— каталоги: товары и расширенное управление.",
     "guide.EAAI": "— настройка автоправил.",
-    "copyCookies": "Скопировать cookie", "copyCookies.title": "Строка cookie: c_user=…; xs=…; …",
     "copyJson.title": "Те же cookie с атрибутами (domain, path, срок) — для импорта в антидетект",
-    "ckUa": "Cookie + UA", "ckUa.title": "Строка cookie, пустая строка, User-Agent этого профиля", "ckUa.copied": "Cookie + UA скопированы",
-    "ua.copy": "Скопировать UA", "ua.title": "User-Agent этого профиля, как его видит страница Facebook", "ua.copied": "User-Agent скопирован",
+    "ckUa": "Скопировать cookie + UA", "ckUa.title": "Строка cookie, пустая строка, User-Agent этого профиля (как его видит страница Facebook)", "ckUa.copied": "Cookie + UA скопированы",
     "search": "Поиск", "search.aria": "Поиск кабинетов",
     "liveIds": "ID активных", "liveIds.title": "ID активных кабинетов списком, по одному в строке",
     "refresh": "Обновить", "period.aria": "Период спенда",
@@ -77,7 +75,7 @@ const D = {
 
     "ck.none": "Cookie не найдены", "ck.loggedIn": "Вход выполнен", "ck.until": "сессия до ", "ck.untilClose": "сессия до закрытия браузера",
     "ck.count": ["cookie", "cookie", "cookie"], "ck.loggedOut": "Не залогинен в Facebook", "ck.noSession": "Нет c_user / xs — залогинься в FB",
-    "ck.jsonCopied": "JSON скопирован", "ck.copied": "Cookie скопированы", "env.copied": "Токен + cookie + UA скопированы",
+    "ck.jsonCopied": "JSON скопирован", "env.copied": "Токен + cookie + UA скопированы",
     "env.mismatch": "Токен от другого аккаунта ({a}), а cookie — {b}. Обнови вкладку FB",
     "env.unverified": "Токен + cookie + UA скопированы — владелец токена не проверен",
 
@@ -115,10 +113,8 @@ const D = {
     "guide.EAAd": "— events: pixels, datasets and tracking.",
     "guide.EAAH": "— catalogs: products and advanced management.",
     "guide.EAAI": "— automated rules.",
-    "copyCookies": "Copy cookies", "copyCookies.title": "Cookie string: c_user=…; xs=…; …",
     "copyJson.title": "Same cookies with attributes (domain, path, expiry) — for import into an antidetect browser",
-    "ckUa": "Cookies + UA", "ckUa.title": "Cookie string, blank line, this profile's User-Agent", "ckUa.copied": "Cookies + UA copied",
-    "ua.copy": "Copy UA", "ua.title": "This profile's User-Agent, as the Facebook page sees it", "ua.copied": "User-Agent copied",
+    "ckUa": "Copy cookies + UA", "ckUa.title": "Cookie string, blank line, this profile's User-Agent (as the Facebook page sees it)", "ckUa.copied": "Cookies + UA copied",
     "search": "Search", "search.aria": "Search ad accounts",
     "liveIds": "Active IDs", "liveIds.title": "IDs of active ad accounts, one per line",
     "refresh": "Refresh", "period.aria": "Spend period",
@@ -173,7 +169,7 @@ const D = {
 
     "ck.none": "No cookies found", "ck.loggedIn": "Logged in", "ck.until": "session until ", "ck.untilClose": "session until the browser closes",
     "ck.count": ["cookie", "cookies"], "ck.loggedOut": "Not logged in to Facebook", "ck.noSession": "No c_user / xs — log in to FB",
-    "ck.jsonCopied": "JSON copied", "ck.copied": "Cookies copied", "env.copied": "Token + cookies + UA copied",
+    "ck.jsonCopied": "JSON copied", "env.copied": "Token + cookies + UA copied",
     "env.mismatch": "The token belongs to another account ({a}), the cookies to {b}. Reload the FB tab",
     "env.unverified": "Token + cookies + UA copied — token owner not verified",
 

@@ -188,7 +188,6 @@ main { padding-bottom: 0; }
    same distance from the left and right edges. */
 .split { display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-1-5); min-width: 0; }
 .split .btn { justify-content: center; }
-.split.three { grid-template-columns: 1fr 1fr 1fr; }
 /* Token field + "Check" + refresh on top; the copy buttons under them span all three columns. */
 .token-grid {
   display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center;
@@ -196,12 +195,6 @@ main { padding-bottom: 0; }
 }
 .token-grid > .split { grid-column: 1 / -1; }
 /* User-Agent (cookie tab): the string wraps in the box, never clipped — it is what gets sent on, so it must be readable. */
-.ua-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: var(--spacing-1-5); min-width: 0; }
-#uaBox {
-  height: auto; min-height: var(--size-element-md); padding: calc((var(--size-element-md) - 1.6em) / 2) var(--spacing-3);
-  line-height: 1.6; overflow-wrap: anywhere; color: var(--color-text-disabled);   /* breaks at spaces first */
-}
-#uaBox.filled { color: var(--color-text-primary); }
 .source { display: flex; flex-wrap: wrap; align-items: center; gap: var(--spacing-1-5) var(--spacing-2); color: var(--color-text-secondary); }
 .source:empty { display: none; }
 /* Token kind: plain text under the field — badge + app, what it is for, where ads go. */
@@ -390,7 +383,4 @@ main { padding-bottom: 0; }
   .total { grid-template-columns: minmax(0, 1fr); }
   .total-meta { text-align: left; white-space: normal; }
   .token-grid > .split { grid-template-columns: minmax(0, 1fr); }   /* "Token + cookies + UA" doesn't fit half the width */
-  .split.three { grid-template-columns: minmax(0, 1fr); }
-  .ua-row { grid-template-columns: minmax(0, 1fr); }
-  .ua-row .btn { justify-content: center; }
 }
