@@ -39,8 +39,10 @@ Chrome 121+. A Facebook tab must be open in the same profile; the ads token (EAA
 ## Build the archive
 
 ```
-(cd fb-helper && zip -qrD ../fb-helper-2.4.1.zip . -x '*.DS_Store') && zip -qj fb-helper-2.4.1.zip LICENSE
+git archive --format=zip -o fb-helper-2.4.1.zip HEAD:fb-helper && zip -qj fb-helper-2.4.1.zip LICENSE
 ```
+
+Only committed files go in: anything else lying in the local `fb-helper/` folder stays out.
 
 The Chrome Web Store package (`chrome-web-store/release/ads-helper-<version>.zip`) comes from `chrome-web-store/build.sh`.
 

@@ -3,5 +3,4 @@
 *.zip
 node_modules/
 chrome-web-store/release/
-promo/
 chrome-web-store/art/raw/dev/

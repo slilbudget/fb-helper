@@ -14,8 +14,8 @@ The repo and GitHub stay **FB Helper** (`fb-helper/`). Only the store build is *
 - [ ] `chrome://extensions` → Developer mode → Load unpacked → `chrome-web-store/release/unpacked/`
 - [ ] Toolbar icon and tooltip say "Ads Helper"; popup header shows the new logo
 - [ ] With a Facebook tab open: token appears, type badge correct, **Check** works, **Copy token** works
-- [ ] Cookies tab: header string and JSON copy; the User-Agent field shows the FB tab's UA and **Copy UA** copies it
-- [ ] **Token + cookies + UA** copies three paragraphs (token, cookies, UA); with another account's token, or with no readable UA, it refuses
+- [ ] Cookies tab: **Copy cookies + UA** copies two paragraphs (cookie string, the FB tab's UA) and refuses without a readable UA; **JSON** copies the cookies with attributes
+- [ ] **Token + cookies + UA** copies token, cookies, UA, then `Profile: <name> (<id>)` / `BM: <name> (<id>), …` (check the BM list against Business Settings on a profile that has BMs); with another account's token, or with no readable UA, it refuses
 - [ ] Ad accounts: first open after a page reload loads once; reopening the popup and switching tabs send nothing (DevTools → Network on the popup)
 - [ ] Network tab of the popup shows requests **only** to `graph.facebook.com`
 - [ ] No errors in `chrome://extensions` → Errors, no console errors in the popup
@@ -27,7 +27,7 @@ The repo and GitHub stay **FB Helper** (`fb-helper/`). Only the store build is *
 - [ ] `description` ≤ 132 chars (121), `name` ≤ 75 chars (10)
 - [ ] `PRIVACY_POLICY.md` is pushed to `main` and the URL opens without login
 - [ ] Listing text has the "not affiliated with Meta" line; no "FB"/"Facebook" in the name or the icon
-- [ ] Screenshots and promo tiles do not show the Facebook logo or the name "FB Helper" (`chrome-web-store/art/out/*` are clean; the old `promo/fb-helper/*.jpeg` and `docs/cover.png` are not — do not reuse them)
+- [ ] Screenshots and promo tiles do not show the Facebook logo or the name "FB Helper" (`chrome-web-store/art/out/*` are clean; `docs/cover.png` is not — do not reuse it)
 
 ## 4. Developer account
 - [ ] Developer account registered (one-time registration fee; amount is on the register page)
