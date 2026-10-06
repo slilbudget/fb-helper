@@ -86,6 +86,19 @@ export function ownerVerdict(firstParty, meId, cookieUser) {
   return firstParty ? "mismatch" : "unknown";
 }
 
+// The last paragraph of the token + cookies + UA block, always in English: whose profile, which BMs.
+// id: the profile id, only when it is the real one (owner verified); a custom app's /me id is app-scoped.
+// businesses: [{ id, name }], or null when the token could not read them; more: Graph has a next page.
+// Names come from Graph and can hold anything: control characters (a newline would forge a paragraph) become spaces.
+export function profileBlock({ name, id, businesses, more = false }) {
+  const clean = (s) => String(s ?? "").replace(/[\x00-\x1f\x7f]+/g, " ").trim();
+  const who = clean(name);
+  const profile = who && id ? `${who} (${id})` : who || clean(id) || "unknown";
+  const list = Array.isArray(businesses) ? businesses.filter((b) => b?.id).map((b) => `${clean(b.name) || "no name"} (${clean(b.id)})`) : null;
+  const bm = !list ? "not available" : !list.length ? "none" : list.join(", ") + (more ? ", …" : "");
+  return `Profile: ${profile}\nBM: ${bm}`;
+}
+
 // A User-Agent as read from the page. The page's JS can return anything, so only a printable-ASCII string of a sane
 // length passes: no control characters (a newline would forge extra paragraphs in the copied block), no markup-length blobs.
 export const isUserAgent = (s) => typeof s === "string" && /^[\x20-\x7e]{8,512}$/.test(s);

@@ -1,7 +1,7 @@
 // Unit tests for fb-helper/js/pure.js — plain Node, no browser: `node --test test/*.test.mjs`
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isSessionError, sessionLabel, verNum, latestVersion, adRank, reviewLines, ownerVerdict, isUserAgent, lifetimeSpend, spendFloor, insightRow } from "../fb-helper/js/pure.js";
+import { isSessionError, sessionLabel, verNum, latestVersion, adRank, reviewLines, ownerVerdict, profileBlock, isUserAgent, lifetimeSpend, spendFloor, insightRow } from "../fb-helper/js/pure.js";
 
 test("session errors: code 190 (any subcode) and 102; subcodes alone are not enough", () => {
   for (const c of [190, "190", 102]) assert.ok(isSessionError(c), String(c));
@@ -105,4 +105,18 @@ test("isUserAgent: printable ASCII, 8..512 characters, nothing else", () => {
   assert.ok(isUserAgent("Mozilla/5.0 <b>x</b>"), "markup-shaped text is fine as text: the popup never uses innerHTML");
   for (const bad of ["Mozilla/5.0\n(X11)", "Mozilla/5.0\r\n(X11)", "Mozilla/5.0\t(X11)", "Mozilla/5.0\x7f(X11)", "Mozilla/5.0 (Ü)", "Mozilla/5.0 \u2028 (X11)", ""]) assert.ok(!isUserAgent(bad), JSON.stringify(bad));
   for (const bad of [5, null, undefined, {}, ["Mozilla/5.0 (X11)"], true]) assert.ok(!isUserAgent(bad), String(bad));
+});
+
+test("profileBlock: English, name (id), BMs with ids; none / not available / more; no forged lines", () => {
+  const bms = [{ id: "111", name: "Nova Media" }, { id: "222", name: "Lumen Traffic" }];
+  assert.equal(profileBlock({ name: "Alex Carter", id: "1001", businesses: bms }),
+    "Profile: Alex Carter (1001)\nBM: Nova Media (111), Lumen Traffic (222)");
+  assert.equal(profileBlock({ name: "Alex", id: "1001", businesses: bms, more: true }), "Profile: Alex (1001)\nBM: Nova Media (111), Lumen Traffic (222), …");
+  assert.equal(profileBlock({ name: "Alex", id: "1001", businesses: [] }), "Profile: Alex (1001)\nBM: none");
+  assert.equal(profileBlock({ name: "Alex", id: "1001", businesses: null }), "Profile: Alex (1001)\nBM: not available");
+  assert.equal(profileBlock({ name: "Alex", id: null, businesses: null }), "Profile: Alex\nBM: not available", "unverified: no app-scoped id");
+  assert.equal(profileBlock({ name: null, id: "1001", businesses: [] }), "Profile: 1001\nBM: none");
+  const forged = profileBlock({ name: "A\n\nB", id: "1", businesses: [{ id: "9", name: "X\r\nY" }, { name: "no id" }] });
+  assert.equal(forged, "Profile: A B (1)\nBM: X Y (9)");
+  assert.equal(forged.split("\n").length, 2);
 });

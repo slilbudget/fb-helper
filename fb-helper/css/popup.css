@@ -188,6 +188,7 @@ main { padding-bottom: 0; }
    same distance from the left and right edges. */
 .split { display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-1-5); min-width: 0; }
 .split .btn { justify-content: center; }
+.split.three { grid-template-columns: 1fr 1fr 1fr; }
 /* Token field + "Check" + refresh on top; the copy buttons under them span all three columns. */
 .token-grid {
   display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center;
@@ -389,6 +390,7 @@ main { padding-bottom: 0; }
   .total { grid-template-columns: minmax(0, 1fr); }
   .total-meta { text-align: left; white-space: normal; }
   .token-grid > .split { grid-template-columns: minmax(0, 1fr); }   /* "Token + cookies + UA" doesn't fit half the width */
+  .split.three { grid-template-columns: minmax(0, 1fr); }
   .ua-row { grid-template-columns: minmax(0, 1fr); }
   .ua-row .btn { justify-content: center; }
 }

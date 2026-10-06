@@ -469,7 +469,7 @@ async function adsFlows() {
 async function exportFlows() {
   console.log("\n# token + cookies export");
   const run = async (name, tok, meReply, check) => {
-    const b = await boot({ user: "1001", fb: adsFb(tok), graph: () => meReply });
+    const b = await boot({ user: "1001", fb: adsFb(tok), graph: typeof meReply === "function" ? meReply : () => meReply });
     const ua = await (await adsPage(b)).evaluate(() => navigator.userAgent);
     const pop = await popup(b, "token"); await captureClipboard(pop);
     const toast = await clickToast(pop, "#copyEnv");
@@ -477,15 +477,21 @@ async function exportFlows() {
     ok(name, check(out, toast, b.hits, ua), `clip=${JSON.stringify(out).slice(0, 80)} toast=${toast} hits=${b.hits}`);
     await b.ctx.close();
   };
-  await run("same account -> copied, one /me read", TOK, { body: { id: "1001" } },
+  await run("same account -> copied, one /me read (with name + BMs)", TOK, { body: { id: "1001", name: "Alex Carter", businesses: { data: [{ id: "111", name: "Nova Media" }, { id: "222", name: "Lumen Traffic" }] } } },
     (c, t, h, ua) => c.length === 1 && c[0].startsWith(TOK) && has(c[0], "c_user=1001") && has(t, "Token + cookies + UA copied") && !has(t, "not verified") && h.length === 1
-      && c[0].split("\n\n").length === 3 && c[0].split("\n\n")[0] === TOK && c[0].split("\n\n")[2] === ua);
+      && has(h[0], "businesses") && c[0].split("\n\n").length === 4 && c[0].split("\n\n")[0] === TOK && c[0].split("\n\n")[2] === ua
+      && c[0].split("\n\n")[3] === "Profile: Alex Carter (1001)\nBM: Nova Media (111), Lumen Traffic (222)");
+  await run("no BMs (Graph leaves the edge out) -> BM: none", TOK, { body: { id: "1001", name: "Alex Carter" } },
+    (c, t, h) => c.length === 1 && h.length === 1 && c[0].endsWith("\n\nProfile: Alex Carter (1001)\nBM: none"));
+  await run("BMs refused (#200) -> once more with id,name, BM: not available", TOK,
+    (u) => u.searchParams.get("fields").includes("businesses") ? { status: 400, body: { error: { code: 200, message: "(#200) Requires business_management permission" } } } : { body: { id: "1001", name: "Alex Carter" } },
+    (c, t, h) => c.length === 1 && h.length === 2 && !has(t, "not verified") && c[0].endsWith("\n\nProfile: Alex Carter (1001)\nBM: not available"));
   await run("token of another account -> NOT copied, both ids in the toast", TOK, { body: { id: "999" } },
     (c, t) => c.length === 0 && has(t, "999") && has(t, "1001"));
   await run("custom-app token (app-scoped /me.id) -> copied, marked unverified", TOK_W, { body: { id: "122190171494905792" } },
-    (c, t) => c.length === 1 && has(t, "not verified"));
-  await run("/me fails with an ordinary error -> copied, marked unverified", TOK, { status: 500, body: { error: { code: 2, message: "temporary" } } },
-    (c, t) => c.length === 1 && has(t, "not verified"));
+    (c, t) => c.length === 1 && has(t, "not verified") && !has(c[0], "122190171494905792"));
+  await run("/me fails with an ordinary error -> copied, marked unverified, no retry, no profile paragraph", TOK, { status: 500, body: { error: { code: 2, message: "temporary" } } },
+    (c, t, h) => c.length === 1 && has(t, "not verified") && h.length === 1 && c[0].split("\n\n").length === 3);
   await run("/me says the session is dead -> NOT copied", TOK, { status: 400, body: { error: { code: 190, error_subcode: 463, message: "expired" } } },
     (c, t) => c.length === 0 && has(t, "190/463"));
 
@@ -500,7 +506,7 @@ async function exportFlows() {
     await clickToast(pop, "#copyEnv");
     const out = (await clip(pop))[0] || "";
     const parts = out.split("\n\n");
-    ok("block = token, cookies, the page's (spoofed) UA — three paragraphs", parts.length === 3 && parts[0] === TOK && has(parts[1], "c_user=1001") && parts[2] === SPOOFED && parts[2] !== await pop.evaluate(() => navigator.userAgent), JSON.stringify(parts.map((p) => p.slice(0, 30))));
+    ok("block = token, cookies, the page's (spoofed) UA, profile + BMs — four paragraphs", parts.length === 4 && parts[3].startsWith("Profile: 1001\nBM: ") && parts[0] === TOK && has(parts[1], "c_user=1001") && parts[2] === SPOOFED && parts[2] !== await pop.evaluate(() => navigator.userAgent), JSON.stringify(parts.map((p) => p.slice(0, 30))));
     await b.ctx.close();
   }
 
@@ -776,6 +782,12 @@ async function uaFlows() {
   ok("spoofed UA is what gets copied", JSON.stringify(await clip(pop)) === JSON.stringify([SPOOF]));
   const box = await pop.evaluate(() => { const r = document.querySelector("#uaBox").getBoundingClientRect(); return { w: r.width, sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }; });
   ok("long UA wraps inside the popup, no horizontal scroll", box.sw <= box.cw && box.w > 100, JSON.stringify(box));
+  // Cookies + UA: cookie string, blank line, the page's UA; no Graph request
+  await captureClipboard(pop);
+  const hitsBefore = b.hits.length;
+  const ckUa = await clickToast(pop, "#copyCookiesUa");
+  const ckParts = ((await clip(pop))[0] || "").split("\n\n");
+  ok("Cookies + UA -> cookie string, blank line, the page's (spoofed) UA; no Graph request", ckParts.length === 2 && has(ckParts[0], "c_user=1001") && has(ckParts[0], "xs=") && ckParts[1] === SPOOF && has(ckUa, "Cookies + UA copied") && b.hits.length === hitsBefore, `${JSON.stringify(ckParts.map((x) => x.slice(0, 30)))} / ${ckUa}`);
 
   // the page's JS can return anything: only a printable-ASCII string of sane length is accepted
   for (const [name, bad] of [["a control character", "Mozilla/5.0\n(X11)"], ["a number", 5], ["an empty string", ""], ["600 characters", "M".repeat(600)]]) {
@@ -785,6 +797,9 @@ async function uaFlows() {
     const tst = await clickToast(pop, "#copyUa");
     ok(`UA with ${name} -> rejected: the box and the click say why, nothing copied`, (await boxIs(pop, /^No access/)) && has(tst, "No access") && (await clip(pop)).length === 0, `${await text(pop, "#uaBox")} / ${tst}`);
   }
+  await captureClipboard(pop);
+  const ckBad = await clickToast(pop, "#copyCookiesUa");
+  ok("Cookies + UA without a readable UA -> nothing copied, says why", (await clip(pop)).length === 0 && has(ckBad, "No access"), `${ckBad} / ${JSON.stringify(await clip(pop))}`);
   ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
   await b.ctx.close();
 }

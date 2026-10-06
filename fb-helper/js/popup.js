@@ -9,7 +9,7 @@
 // localStorage holds the last tab and the spend period. Cookies and the User-Agent are read live, never stored.
 
 import { t, tn, has, locale, getLang, setLang, loadLang, applyStatic } from "./i18n.js";
-import { isSessionError, sessionLabel, verNum, latestVersion, AD_PROBLEMS, adRank, reviewLines, ownerVerdict, isUserAgent, lifetimeSpend, spendFloor, insightRow } from "./pure.js";
+import { isSessionError, sessionLabel, verNum, latestVersion, AD_PROBLEMS, adRank, reviewLines, ownerVerdict, profileBlock, isUserAgent, lifetimeSpend, spendFloor, insightRow } from "./pure.js";
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -595,7 +595,7 @@ const cookieMap = () => Object.fromEntries(state.cookies.map((c) => [c.name, c])
 const hasSession = () => { const m = cookieMap(); return !!(m.c_user && m.xs); };
 function renderCookies() {
   const byName = cookieMap();
-  for (const id of ["#copyCookies", "#copyCookieJson"]) $(id).disabled = !state.cookies.length;
+  for (const id of ["#copyCookies", "#copyCookiesUa", "#copyCookieJson"]) if (!$(id).hasAttribute("aria-busy")) $(id).disabled = !state.cookies.length;
   // The whole cookie string, one colour like the token, in a short scrollable box;
   // the status line under it says whether the profile is logged in and how many cookies go out.
   const n = state.cookies.length;
@@ -653,22 +653,46 @@ async function copyUa() {
   if (!ua) return toast(state.uaHint || t("grab.noAccess"), true);
   copy(ua, t("ua.copied"));
 }
+// Cookie string, blank line, User-Agent: both read live (the UA from the FB tab, alongside the cookies). No Graph request.
+async function copyCookiesUa() {
+  const btn = $("#copyCookiesUa");
+  if (btn.disabled) return;
+  btn.disabled = true; btn.setAttribute("aria-busy", "true");
+  try {
+    const [ua] = await Promise.all([readUa().catch(() => null), readCookies()]);
+    if (!hasSession()) return toast(t("ck.noSession"), true);
+    if (!ua) return toast(state.uaHint || t("grab.noAccess"), true);
+    copy(`${cookieHeader()}\n\n${ua}`, t("ckUa.copied"));
+  } finally { btn.disabled = !state.cookies.length; btn.removeAttribute("aria-busy"); }
+}
 // ---------- token + cookies + UA block ----------
 // Whose token is it — the logged-in user's (c_user)? One /me read, remembered per token + login.
 // An open FB tab can keep a token from before the profile switched accounts; exporting it next to the new
 // cookies would hand out a pair that never worked. Throws Stale / a dead-session error; any other failure
 // (network, API pause) is "unknown" and does not block the export.
+// The same read brings the profile name and its BMs for the block's last paragraph. A token without
+// business_management (Events / Commerce Manager) is refused the BMs: then once more with id,name only.
+const PERMISSION_CODES = (c) => c === 10 || c === 100 || (c >= 200 && c <= 299);
 async function ownerCheck(token) {
   const user = cookieMap().c_user?.value || null;
   if (state.checked?.token === token && state.checked.user === user) return state.checked;
-  let meId = null, verdict = "unknown";
+  let meId = null, name = null, businesses = null, more = false, verdict = "unknown";
   try {
-    meId = (await graph("me", { fields: "id" })).id;
+    let me, withBm = true;
+    try { me = await graph("me", { fields: "id,name,businesses.limit(100){id,name}" }); }
+    catch (e) {
+      if (!PERMISSION_CODES(e.code)) throw e;
+      withBm = false;
+      me = await graph("me", { fields: "id,name" });
+    }
+    meId = me.id; name = me.name || null;
+    // Graph leaves out an empty edge entirely: no "businesses" key on a read that asked for it = no BMs.
+    if (withBm) { businesses = Array.isArray(me.businesses?.data) ? me.businesses.data : []; more = !!me.businesses?.paging?.next; }
     verdict = ownerVerdict(!!TOKEN_KIND[token.slice(0, 4)], meId, user);
   } catch (e) {
     if (e instanceof Stale || e.session) throw e;
   }
-  const res = { token, user, verdict, meId };
+  const res = { token, user, verdict, meId, name, businesses, more };
   // Kept in storage.session, so reopening the popup doesn't cost another /me before the next export.
   if (verdict !== "unknown") { state.checked = res; saveSession({ checked: res }); }
   return res;
@@ -701,8 +725,10 @@ async function copyEnvNow() {
   catch (e) { if (!(e instanceof Stale)) toast(e.message, true); return; }
   if (gen !== state.gen || state.token !== token) return;
   if (own.verdict === "mismatch") return toast(t("env.mismatch", { a: own.meId, b: own.user }), true);
-  // token, blank line, cookie header, blank line, User-Agent — nothing else
-  copy(`${token}\n\n${cookies}\n\n${ua}`, own.verdict === "ok" ? t("env.copied") : t("env.unverified"));
+  // token, blank line, cookie header, blank line, User-Agent, then (when /me answered) profile + BMs in English.
+  // The id is printed only when it is the logged-in user's: a custom app's /me id is app-scoped.
+  const info = own.meId ? `\n\n${profileBlock({ name: own.name, id: own.verdict === "ok" ? own.meId : null, businesses: own.businesses, more: own.more })}` : "";
+  copy(`${token}\n\n${cookies}\n\n${ua}${info}`, own.verdict === "ok" ? t("env.copied") : t("env.unverified"));
 }
 
 // ---------- accounts ----------
@@ -1237,6 +1263,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("#copyCookies").addEventListener("click", () => copyCookies(false));
   $("#copyCookieJson").addEventListener("click", () => copyCookies(true));
   $("#copyUa").addEventListener("click", copyUa);
+  $("#copyCookiesUa").addEventListener("click", copyCookiesUa);
   $("#loadAccounts").addEventListener("click", () => fetchAccounts());
   $("#copyLiveIds").addEventListener("click", copyLiveIds);
   $("#accountFilter").addEventListener("input", (e) => { state.filter = e.target.value; renderAccounts(); });
