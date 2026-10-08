@@ -1,7 +1,7 @@
 // Store artwork, rendered from the STORE build (name "Ads Helper", neutral logo) with fictional data:
 // popup captures -> raw/*.png (English) and raw/ru/*.png, then the composed images in ./out: the screenshot sets
 // out/screenshots/en and out/screenshots/ru (1280x800, one popup view each), the overview screenshot 1280x800,
-// small tile 440x280, cover 2100x1182, social preview 1280x640. Nothing leaves the machine: Facebook and Graph are route() mocks.
+// small tile 440x280, cover 2100x1182, social preview 1280x640. Nothing leaves the machine: Facebook, Graph and the two exchange-rate sources are route() mocks.
 // Run:  chrome-web-store/build.sh && node chrome-web-store/art/shots.mjs
 // README cover (the repo's own "FB Helper" build, original logo) -> docs/cover.png:  ART_DEV=1 node chrome-web-store/art/shots.mjs
 import { createRequire } from "node:module";
@@ -13,6 +13,8 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEV = process.env.ART_DEV === "1";
 const EXT = path.resolve(HERE, DEV ? "../../fb-helper" : "../release/unpacked");
 const require = createRequire(import.meta.url);
+// The Graph origin is the first one of the manifest's connect-src (the one place the extension names it): the mock listens on exactly that.
+const GRAPH = new URL(JSON.parse(fs.readFileSync(path.join(EXT, "manifest.json"), "utf8")).content_security_policy.extension_pages.match(/connect-src\s+([^\s;]+)/)[1]).origin;
 const { chromium } = [process.env.PLAYWRIGHT_CORE, "playwright-core", "/opt/homebrew/lib/node_modules/@playwright/cli/node_modules/playwright-core"]
   .filter(Boolean).reduce((found, p) => found || (() => { try { return require(p); } catch { return null; } })(), null) || {};
 if (!chromium) throw new Error("playwright-core not found");
@@ -29,9 +31,10 @@ const PERMS = ["ads_management", "ads_read", "business_management", "catalog_man
   "pages_manage_metadata", "pages_manage_posts", "pages_read_engagement", "pages_read_user_content", "pages_show_list", "read_insights",
   "instagram_basic", "instagram_manage_comments", "instagram_manage_insights", "leads_retrieval", "public_profile", "email"];
 const ins = (spend, clicks) => ({ data: [{ spend: String(spend), impressions: String(clicks * 38), inline_link_clicks: String(clicks) }] });
+const BIZ = { "Nova Media": "910000001", "Lumen Traffic": "910000002", "Atlas Group": "910000003" };
 const acc = (o) => ({ account_id: o.id, name: o.name, account_status: o.status ?? 1, disable_reason: o.reason ?? 0, currency: o.cur,
   timezone_name: o.tz, amount_spent: String(Math.round(o.all * 100)), balance: "0", created_time: "2025-03-11T10:00:00+0000",
-  business: { id: "9100" + o.id.slice(-6), name: o.biz }, business_country_code: o.cc,
+  business: { id: BIZ[o.biz], name: o.biz }, business_country_code: o.cc,
   funding_source_details: { display_string: o.card }, adtrust_dsl: o.dsl, adspaymentcycle: { data: [{ threshold_amount: String(o.th * 100) }] },
   adspixels: { data: [{ id: "77" + o.id.slice(-8), name: o.biz + " Pixel" }] },
   p_today: ins(o.d0, o.c0), p_yesterday: ins(o.d1, o.c1), p_week: ins(o.d7, o.c7), p_month: ins(o.d30, o.c30) });
@@ -70,12 +73,17 @@ const SHOT_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (K
 await ctx.addCookies(Object.entries(jar).map(([name, value]) => ({ name, value, domain: ".facebook.com", path: "/", secure: true })));
 await ctx.route("https://*.facebook.com/**", (r) => r.fulfill({ contentType: "text/html",
   body: r.request().url().includes("adsmanager") ? `<script>window.__accessToken=${JSON.stringify(TOKEN)}</script>Ads Manager` : "<p>feed</p>" }));
-await ctx.route("https://graph.facebook.com/**", (r) => {
+// The exchange-rate sources (the total of several currencies asks for them): a fixed table, never the network.
+await ctx.route("https://open.er-api.com/**", (r) => r.fulfill({ contentType: "application/json", headers: { "access-control-allow-origin": "*" }, body: JSON.stringify({ result: "success", provider: "https://www.exchangerate-api.com", base_code: "USD",
+  time_last_update_unix: Math.floor(Date.now() / 1000), rates: { USD: 1, EUR: 0.92, GBP: 0.78, PLN: 3.95, UAH: 41.2, RUB: 91.5, VND: 25400 } }) }));
+await ctx.route("https://cdn.jsdelivr.net/**", (r) => r.abort("failed"));
+await ctx.route(`${GRAPH}/**`, (r) => {
   const u = new URL(r.request().url()), p = u.pathname.replace(/^\/v[\d.]+\//, "/");
   const body = p === "/me" ? { id: USER, name: "Alex Carter" }
     : p === "/app" ? { id: "119211728144504", name: "Facebook Ads Manager" }
     : p === "/me/permissions" ? { data: PERMS.map((permission) => ({ permission, status: "granted" })) }
     : p === "/me/adaccounts" ? { data: ACCOUNTS }
+    : p === "/me/businesses" ? { data: Object.entries(BIZ).map(([name, bid]) => ({ id: bid, name })) }
     : /\/act_\d+\/ads$/.test(p) ? { data: (u.searchParams.get("fields") || "").includes("p_today") ? ADS_STATS : ADS } : { data: [] };
   r.fulfill({ status: 200, contentType: "application/json", headers: { "access-control-allow-origin": "*" }, body: JSON.stringify(body) });
 });
@@ -109,24 +117,28 @@ async function capture(lang, dir) {
   await pop.click("#checkToken"); await pop.waitForFunction(() => document.querySelectorAll("#tokenInfo dd").length >= 3 && !/…/.test(document.querySelector("#tokenInfo").textContent));
   await settle(); await shot("check");
   // 2 cookies
-  await pop.click('[data-tab="cookies"]'); await pop.waitForFunction(() => document.querySelector("#cookieBox").classList.contains("filled")); await settle(); await shot("cookies");
+  await pop.click('[data-tab="cookies"]'); await pop.waitForFunction(() => document.querySelector("#cookieBox").classList.contains("filled")); await pop.evaluate(() => document.fonts.ready); await settle(); await shot("cookies");
   // 3 accounts
-  await pop.click('[data-tab="accounts"]'); await pop.waitForFunction(() => document.querySelectorAll(".acc").length === 5, null, { timeout: 15000 }).catch(async () => {
-    await pop.click("#loadAccounts"); await pop.waitForFunction(() => document.querySelectorAll(".acc").length === 5, null, { timeout: 15000 }); });
+  await pop.click('[data-tab="accounts"]'); await pop.waitForFunction(() => document.querySelectorAll("#accountsList .lrow").length === 5, null, { timeout: 15000 }).catch(async () => {
+    await pop.click("#loadAccounts"); await pop.waitForFunction(() => document.querySelectorAll("#accountsList .lrow").length === 5, null, { timeout: 15000 }); });
+  // the load has ended (the total wants the exchange rates for its "≈" and the groups their order) and the font is in
+  await pop.waitForFunction(() => !document.querySelector("#tab-accounts").dataset.loading && /^≈/.test(document.querySelector("#accountsTotal .total-value")?.textContent.trim() ?? ""), null, { timeout: 15000 });
+  await pop.evaluate(() => document.fonts.ready);
   await settle(700); await shot("accounts");
-  // cover variant: only the first three rows, cut right under the third (the header still says "5 ad accounts")
+  // cover variant: only the first three rows, cut right under the third (the total still adds up all five)
   {
-    const h = await pop.evaluate(() => { const r = [...document.querySelectorAll(".acc")]; r.slice(3).forEach((x) => { x.style.display = "none"; });
-      return Math.ceil(r[2].getBoundingClientRect().bottom + 12); });
+    const h = await pop.evaluate(() => { const kids = [...document.querySelector("#accountsList").children]; const third = kids.filter((k) => k.classList.contains("lrow"))[2];
+      kids.slice(kids.indexOf(third) + 1).forEach((x) => { x.style.display = "none"; });
+      return Math.ceil(third.getBoundingClientRect().bottom + 12); });
     await shot("accounts-cover", h);
-    await pop.evaluate(() => document.querySelectorAll(".acc").forEach((x) => { x.style.display = ""; }));
+    await pop.evaluate(() => [...document.querySelector("#accountsList").children].forEach((x) => { x.style.display = ""; }));
   }
   // 4 ads: the first account open, its ads loaded (list, then the numbers), scrolled so the ads card starts in the upper part
-  await pop.click(".acc .acc-title");
-  await pop.click(".acc.open [data-ads]");
-  await pop.waitForFunction(() => document.querySelectorAll(".ad-stats").length >= 3, null, { timeout: 15000 });
+  await pop.click("#accountsList .lrow .lrow-title");
+  await pop.click("#accountsList .lrow.open [data-ads]");
+  await pop.waitForFunction(() => document.querySelectorAll("#accountsList .ad-stats").length >= 3, null, { timeout: 15000 });
   await settle(700);
-  await pop.evaluate(() => { const c = document.querySelector(".ads-card"); window.scrollTo(0, c.getBoundingClientRect().top + window.scrollY - 203); });
+  await pop.evaluate(() => { const c = document.querySelector("#accountsList .lrow.open .ads-sec"); window.scrollTo(0, c.getBoundingClientRect().top + window.scrollY - 203); });
   await pop.mouse.move(2, 590); await settle(300);
   await shot("ads", 600);
   await pop.close();
