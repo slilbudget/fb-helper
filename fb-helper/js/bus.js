@@ -11,7 +11,9 @@
 //   "locks"          the rate-limit slots changed (this or another popup window) -> modules refresh disabled buttons
 //   "session"        chrome.storage.session changed [changes object]            -> modules follow another popup window
 //   "show-tab"       open another tab [tab name]                                 -> popup.js switches to it
-//   "filter-bm"      show the ad accounts of one BM [{ id, name } or null]       -> accounts.js filters its list
+//   "filter-bm"      show the ad accounts of one business [{ id, name } or null]  -> accounts.js filters its list
+//   "accounts"       the Ad accounts list is loading / loaded / changed          -> the Businesses tab redraws (spend, counts, status come from it)
+//   "period"         the spend period was switched [key]                         -> the Ad accounts and Businesses tabs redraw (period.js)
 
 const handlers = new Map();
 

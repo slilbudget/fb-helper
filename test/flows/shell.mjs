@@ -12,17 +12,23 @@ async function tabFlows() {
   let s = await look(pop);
   ok("opens on the Token tab, normal height, no request", s.tab === "token" && s.panel === "tab-token" && s.selected === "token" && !s.tall && reads(b) === 0, JSON.stringify(s));
 
-  // keyboard (WAI-ARIA tabs): arrows / Home / End move between tabs and wrap; landing on Accounts loads it like a click
+  // the order of the tabs is the order in the page, so it is the order of the keyboard: Token · Cookies · Businesses · Ad accounts · Pages
+  const order = await pop.evaluate(() => ({ tabs: [...document.querySelectorAll(".tab")].map((n) => n.dataset.tab), panels: [...document.querySelectorAll("main > .panel")].map((n) => n.id),
+    labels: [...document.querySelectorAll(".tab")].map((n) => n.textContent.trim()) }));
+  ok("tab order: Token · Cookies · Businesses · Ad accounts · Pages (buttons and panels)", order.tabs.join() === "token,cookies,bms,accounts,pages" && order.panels.join() === "tab-token,tab-cookies,tab-bms,tab-accounts,tab-pages"
+    && order.labels.join() === "Token,Cookies,Businesses,Ad accounts,Pages", JSON.stringify(order));
+
+  // keyboard (WAI-ARIA tabs): arrows / Home / End move between tabs and wrap; Businesses and Ad accounts load their lists like a click
   await pop.focus('[data-tab="token"]');
   await pop.keyboard.press("ArrowRight"); s = await look(pop);
   ok("ArrowRight: Token → Cookies", s.tab === "cookies" && s.panel === "tab-cookies" && s.selected === "cookies" && !s.tall, JSON.stringify(s));
   await pop.keyboard.press("ArrowRight"); s = await look(pop);
-  ok("ArrowRight: Cookies → Ad accounts, at full height", s.tab === "accounts" && s.panel === "tab-accounts" && s.tall, JSON.stringify(s));
-  ok("…and the Accounts tab loads its list by itself", (await rowsAre(pop, ".acc", 1)) && reads(b) === 1, String(reads(b)));
+  ok("ArrowRight: Cookies → Businesses, at full height", s.tab === "bms" && s.panel === "tab-bms" && s.tall, JSON.stringify(s));
+  ok("…and it loads the Ad accounts list by itself too (its spend and counts come from there)", await until(pop, () => document.querySelectorAll("#accountsList .acc").length === 1) && reads(b) === 1, String(reads(b)));
   await pop.keyboard.press("ArrowRight"); s = await look(pop);
-  ok("ArrowRight: Ad accounts → BM, at full height", s.tab === "bms" && s.panel === "tab-bms" && s.tall, JSON.stringify(s));
+  ok("ArrowRight: Businesses → Ad accounts, at full height; the list is already there, nothing more is read", s.tab === "accounts" && s.panel === "tab-accounts" && s.tall && (await rowsAre(pop, ".acc", 1)) && reads(b) === 1, JSON.stringify(s) + reads(b));
   await pop.keyboard.press("ArrowRight"); s = await look(pop);
-  ok("ArrowRight: BM → Pages, at full height", s.tab === "pages" && s.panel === "tab-pages" && s.tall, JSON.stringify(s));
+  ok("ArrowRight: Ad accounts → Pages, at full height", s.tab === "pages" && s.panel === "tab-pages" && s.tall, JSON.stringify(s));
   await pop.keyboard.press("ArrowRight"); s = await look(pop);
   ok("ArrowRight wraps to Token, normal height again", s.tab === "token" && !s.tall, JSON.stringify(s));
   await pop.keyboard.press("End"); ok("End: the last tab", (await look(pop)).tab === "pages");
@@ -63,10 +69,10 @@ async function langFlows() {
 
   await pop.click('[data-lang="ru"]');
   ok("RU: the status filter is cleared (it held an English label), the chips are Russian", (await rowsAre(pop, ".acc", 2)) && has(await text(pop, "#statusChips"), "Заблокирован"), await text(pop, "#statusChips"));
-  ok("RU: period buttons, total line, pause pill", (await text(pop, ".seg-btn.active")) === "Сегодня" && has(await text(pop, ".total-label"), "Спенд") && /^Пауза \d+ мин$/.test(await text(pop, "#usage")),
-    `${await text(pop, ".seg-btn.active")} | ${await text(pop, ".total-label")} | ${await text(pop, "#usage")}`);
+  ok("RU: period buttons, total line, pause pill", (await text(pop, "#periodSeg .seg-btn.active")) === "Сегодня" && has(await text(pop, "#accountsTotal .total-label"), "Спенд") && /^Пауза \d+ мин$/.test(await text(pop, "#usage")),
+    `${await text(pop, "#periodSeg .seg-btn.active")} | ${await text(pop, "#accountsTotal .total-label")} | ${await text(pop, "#usage")}`);
   ok("RU: tab names, token card, cookie status",
-    (await text(pop, '[data-tab="token"]')) === "Токен" && (await text(pop, '[data-tab="accounts"]')) === "Кабинеты" && has(await text(pop, "#kindCard"), "Основной для рекламы") && has(await text(pop, "#cookieStatus"), "Вход выполнен"),
+    (await text(pop, '[data-tab="token"]')) === "Токен" && (await text(pop, '[data-tab="accounts"]')) === "Кабинеты" && (await text(pop, '[data-tab="bms"]')) === "Бизнесы" && has(await text(pop, "#kindCard"), "Основной для рекламы") && has(await text(pop, "#cookieStatus"), "Вход выполнен"),
     `${await text(pop, '[data-tab="token"]')} | ${await text(pop, "#kindCard")} | ${await text(pop, "#cookieStatus")}`);
   ok("RU: the token is read again from the FB tab (still there)", await boxWait(pop, /^EAAB/));
   ok("RU is remembered", (await pop.evaluate(() => chrome.storage.local.get("lang"))).lang === "ru");

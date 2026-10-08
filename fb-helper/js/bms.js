@@ -1,12 +1,14 @@
-// The BM tab: the business managers of the logged-in profile (one paged read of me/businesses), one row each: verification,
-// the profile's role, ID, created, primary page, how many ad accounts it has (counted from the Accounts tab's list) and links
-// into Business Settings. Same shape as accounts.js (auto-load on first show, cache per FB user, rate slot, dead token, other
-// windows); what a row keeps and how it reads is bms-model.js (plain Node, tested), the strings are strings/bms.js.
+// The Businesses tab: what do I have, and how much does each business spend? One row per business: picture, name, one status pill
+// (active / no active ad accounts / no ad accounts), ID, the spend of the selected period, how many ad accounts it has and, only
+// when something is wrong, the problem with its fix. The business list is one paged read of me/businesses; spend, counts and
+// status come from the Ad accounts list (each account names its owner business), which this tab asks for too (accounts.js).
+// Same shape as the other tabs (auto-load on first show, cache per FB user, rate slot, dead token, other windows); what a row
+// keeps and how the rows are built is bms-model.js (plain Node, tested), the strings are strings/bms.js.
 // Read-only like the rest: GET only, no token of a page or BM is ever asked for.
 
-import { t, tn, has, locale, applyStatic } from "./i18n.js";
+import { t, tn, applyStatic } from "./i18n.js";
 import "./strings/bms.js";
-import { $, el, fill, toast, copy, keepFocus } from "./dom.js";
+import { $, el, fill, pill, toast, copy, keepFocus } from "./dom.js";
 import { ago } from "./format.js";
 import { state, Stale, saveSession, fbUser, claimSlot, registerCache, isDead, deadCode } from "./state.js";
 import { readPaged } from "./graph.js";
@@ -14,20 +16,23 @@ import { settledGrab, grabToken, tokenReady } from "./token.js";
 import { LINKS } from "./links.js";
 import { on, emit } from "./bus.js";
 import { registerTab, registerRender, registerInit, registerStart } from "./registry.js";
-import {
-  BM_BASE, BM_OPTIONAL, BM_LIMIT, BM_MAX_PAGES, BM_SLOT_MS, VERIFICATION, slimBm, verificationOf, isVerified, roleOf, humanize, isoDay,
-  adCounts, filterBms, sortBms, statusChips, idsOf, isPermError,
-} from "./bms-model.js";
+import { avatar, problems } from "./rows.js";
+import { bindPeriods, fillTotal, spendCell } from "./period.js";
+import { statsOf, periodRange } from "./spend.js";
+import { ensureAccounts, reloadAccounts } from "./accounts.js";
+import { BM_BASE, BM_OPTIONAL, BM_LIMIT, BM_MAX_PAGES, BM_SLOT_MS, slimBm, buildRows, filterRows, sortRows, totalOf, idsOf, isPermError } from "./bms-model.js";
 
-// bmQuery / bmStatus are this tab's search and verification chip (not saved). Not to be confused with accounts.js's
-// state.bmFilter, the BM the Accounts tab is filtered by. state.accounts / fetchedAt / truncated below are the Accounts tab's.
+// bmQuery is this tab's search (not saved). Not to be confused with accounts.js's state.bmFilter, the business the Accounts tab
+// is filtered by. state.accounts / fetchedAt / truncated / accLoading below are the Accounts tab's: the spend, counts and
+// status of a business are read from that list.
 Object.assign(state, {
   bms: [], bmsAt: 0, bmsTruncated: false, bmsLoading: false,
   bmPerm: false,                                     // the last read was refused as a permission error: the list draws the calm note
-  bmQuery: "", bmStatus: null,
+  bmQuery: "",
 });
 let bmSkip = new Set();                              // optional fields Graph refused for this token; own set, so no other tab's refusals mix in
 let ready = false;                                   // the controls are built (init): nothing is drawn before
+const active = () => ready && $("#tab-bms").classList.contains("active");   // a hidden tab is redrawn when it is shown
 
 // ---------- storage ----------
 // Kept across popup reopen and token changes, dropped together with the other lists when the FB user changes.
@@ -42,6 +47,10 @@ registerCache(["bms", "bmsAt", "bmsTruncated"],
 on("generation", () => { bmSkip = new Set(); state.bmPerm = false; renderBms(); });
 // The cached lists belonged to another FB user and are gone: draw the empty list.
 on("cache-dropped", () => renderBms());
+// The Ad accounts list (spend, counts, status) is loading, loaded or changed; the spend period was switched (here or on the
+// Accounts tab, which share it).
+on("accounts", () => { if (active()) renderBms(); });
+on("period", () => { if (active()) renderBms(); });
 // Loaded or dropped in another window of this extension: show the same list.
 on("session", (ch) => {
   if (ch.bmsAt && (ch.bmsAt.newValue || 0) !== state.bmsAt) {
@@ -78,20 +87,20 @@ async function loadBmsNow({ auto = false } = {}) {
   state.bmsLoading = true; renderBms();
   try {
     // skip as a function: a token change swaps bmSkip while the pages are still coming in. The rows are slimmed as each
-    // page arrives, so a row keeps the refusals of its own page (fields Graph refused read "—", not "none").
+    // page arrives, so a row keeps the refusals of its own page (a refused field reads "unknown", not "none").
     const { rows, truncated } = await readPaged("me/businesses", {
       base: BM_BASE, optional: BM_OPTIONAL, skip: () => bmSkip, map: (r) => slimBm(r, bmSkip), limit: BM_LIMIT, maxPages: BM_MAX_PAGES,
     });
     if (gen !== state.gen) return;
     const owner = await fbUser();
     if (gen !== state.gen) return;
-    const bms = rows.filter(Boolean);                // a row without a usable id is not a BM
+    const bms = rows.filter(Boolean);                // a row without a usable id is not a business
     Object.assign(state, { bms, bmsAt: Date.now(), bmsTruncated: truncated, bmPerm: false, owner });
     await saveSession({ bms, bmsAt: state.bmsAt, bmsTruncated: truncated, owner });
     if (!auto || truncated) toast(t("bms.loaded", { n: bms.length }) + (truncated ? t("bms.truncated") : ""));   // the list itself is the answer to an automatic load
   } catch (e) {
     if (e instanceof Stale) return;
-    if (isPermError(e)) state.bmPerm = true;         // this token can't read BMs: say so in the list, calmly
+    if (isPermError(e)) state.bmPerm = true;         // this token can't read businesses: say so in the list, calmly
     else toast(e.message, true);
   } finally {
     state.bmsLoading = false;
@@ -119,21 +128,17 @@ async function autoLoadBms() {
 }
 
 // ---------- drawing ----------
-const viewRows = () => sortBms(filterBms(state.bms, { q: state.bmQuery, status: state.bmStatus }));
-const isFiltered = () => !!(state.bmQuery.trim() || state.bmStatus);
-const verLabel = (status) => (has(`bms.ver.${status}`) ? t(`bms.ver.${status}`) : humanize(status));
-const dayFmts = new Map();                           // one Intl formatter per UI locale (a row draws one each time)
-function fmtDay(iso) {
-  const d = new Date(`${iso}T00:00:00Z`);
-  if (Number.isNaN(d.getTime())) return iso;
-  const l = locale();
-  if (!dayFmts.has(l)) dayFmts.set(l, new Intl.DateTimeFormat(l, { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" }));
-  return dayFmts.get(l).format(d);
-}
+// Every business of the profile + every business an account names: see bms-model.js buildRows. The Ad
+// accounts list is "loaded" once it has been read (state.fetchedAt); until then the rows have no status and no spend.
+const allRows = () => buildRows({
+  bms: state.bms, accounts: state.accounts, loaded: !!state.fetchedAt, truncated: state.truncated,
+  stats: (a) => statsOf(a, state.period, state.fetchedAt),
+});
+const isFiltered = () => !!state.bmQuery.trim();
 function copyIds() {
-  const rows = viewRows();
+  const rows = sortRows(filterRows(allRows(), state.bmQuery));
   if (!rows.length) return;
-  copy(idsOf(rows), t("bms.idsCopied", { n: rows.length }) + (state.bmsTruncated ? t("bms.partial") : ""));
+  copy(idsOf(rows), t("bms.idsCopied", { n: rows.length }) + (state.bmsTruncated || state.truncated ? t("bms.partial") : ""));
 }
 // The controls are built once (a redraw would take the caret out of the search field); their texts carry data-i18n*
 // attributes, which the language switch re-applies for the whole document.
@@ -147,114 +152,93 @@ function buildControls() {
         el("i", { class: "i i-copy" }), el("span", { "data-i18n": "bms.copyIds" })),
       el("button", { id: "loadBms", type: "button", class: "icon-btn", "data-i18n-title": "bms.refresh", "data-i18n-aria": "bms.refresh" },
         el("i", { class: "i i-refresh" }))),
-    el("div", { class: "total", id: "bmsTotal" }),
-    el("div", { class: "chips", id: "bmsChips" }));
+    el("div", { class: "seg", id: "bmsPeriod", role: "group", "data-i18n-aria": "period.aria" }),
+    el("div", { class: "total", id: "bmsTotal" }));
   applyStatic(card);
+  bindPeriods($("#bmsPeriod"), "bm-");                // the same period as the Ad accounts tab (period.js)
 }
-// "12 BM (not all) · updated 3 min ago"; with a search or chip: "3 of 12 found".
+// "Spend of businesses · today · Aug 29" + "12 businesses · updated 3 min ago" (with a search: "3 of 12 found") and the sum of the
+// rows shown, so the rows add up to it (ad accounts without a business are not in it; the Ad accounts tab totals everything).
+// "—" until the Ad accounts list is loaded.
 function renderTotal() {
   const total = $("#bmsTotal");
   if (!total) return;
   if (!state.bmsAt) return fill(total);
-  const all = state.bms.length, n = viewRows().length;
-  const count = isFiltered() ? t("bms.found", { n, all }) : t("bms.total", { n: all });
-  fill(total, el("span", { class: "total-label" }, `${count}${state.bmsTruncated ? t("bms.notAll") : ""} · ${t("bms.updated", { t: ago(state.bmsAt) })}`));
+  const all = allRows(), rows = filterRows(all, state.bmQuery);
+  const count = isFiltered() ? t("bms.found", { n: rows.length, all: all.length }) : `${all.length} ${tn(all.length, "bms.count")}`;
+  const metaText = `${count}${state.bmsTruncated || state.truncated ? t("bms.notAll") : ""} · ${t("bms.updated", { t: ago(state.fetchedAt || state.bmsAt) })}`;
+  fillTotal(total, {
+    label: t("bms.spend"), metaText, range: state.period === "all" || !state.fetchedAt ? "" : periodRange(state.accounts, state.period, state.fetchedAt),
+    sum: state.fetchedAt ? totalOf(rows) : null, zeroCur: rows.find((r) => r.accounts.length)?.accounts[0].currency,
+  });
 }
 function renderBms() { if (ready) keepFocus(drawBms); }
 function drawBms() {
   const list = $("#bmsList");
-  // A chip is only useful while the BMs differ; a chip whose BMs are gone (refresh) is dropped.
-  const chips = statusChips(state.bms);
-  if (state.bmStatus && !chips.some(([s]) => s === state.bmStatus)) state.bmStatus = null;
-  const rows = viewRows();
   renderTotal();
+  const all = allRows(), rows = sortRows(filterRows(all, state.bmQuery));
   $("#copyBmIds").disabled = !rows.length;
-  fill($("#bmsChips"), ...chips.map(([status, n]) => {
-    const on = state.bmStatus === status;
-    return el("button", { type: "button", class: `pill chip ${VERIFICATION[status] || ""}${on ? " on" : ""}`, "aria-pressed": String(on), "data-focus": `bm-chip:${status}`,
-      onclick: () => { state.bmStatus = on ? null : status; renderBms(); } }, `${verLabel(status)} ${n}`);
-  }));
   if (!state.bmsAt) return fill(list, el("div", { class: "empty" }, state.bmPerm ? t("bms.noPerm") : state.bmsLoading ? t("bms.loading") : t("bms.empty")));
   const note = state.bmPerm ? el("div", { class: "hint bm-note" }, t("bms.noPerm")) : null;   // a refresh was refused: the old list stays, the note says why it is old
-  if (!state.bms.length) return fill(list, note, el("div", { class: "empty" }, state.bmsLoading ? t("bms.loading") : t("bms.none")));
+  if (!all.length) return fill(list, note, el("div", { class: "empty" }, state.bmsLoading ? t("bms.loading") : t("bms.none")));
   if (!rows.length) return fill(list, note, el("div", { class: "empty" }, t("bms.noMatch")));
-  const counts = adCounts(state.accounts);
-  fill(list, note, ...rows.map((b) => renderBm(b, counts)));
+  fill(list, note, ...rows.map(renderRow));
 }
 
-// Unknown or refused values read "—" with the reason as a tooltip, never a guess.
-const noField = (cls = "pill") => el("span", { class: cls, title: t("bms.noField") }, "—");
-function verificationPill(b) {
-  const v = verificationOf(b);
-  if (v.state === "refused" || v.state === "unknown") return noField();
-  return el("span", { class: `pill ${v.tone}`, title: `${t("bms.verTitle")} · ${v.status}` }, verLabel(v.status));
-}
-function rolePill(b) {
-  const r = roleOf(b);
-  if (r.state === "unknown") return null;
-  if (r.state === "refused") return noField();
-  const label = r.state === "admin" ? t("bms.role.admin") : r.state === "employee" ? t("bms.role.employee") : humanize(r.name);
-  return el("span", { class: "pill", title: t("bms.roleTitle") }, label);
-}
-// The ad accounts of this BM (counted from the Accounts tab's list: each account names its owner). Clicking filters that tab
-// by this BM and opens it; without a loaded list the same click is "Show ad accounts" (the Accounts tab loads by itself).
-function accountsLine(b, counts) {
-  const go = () => { emit("filter-bm", { id: b.id, name: b.name }); emit("show-tab", "accounts"); };
+// "3 ad accounts · 2 active · 1 disabled ›": a button that opens the Accounts tab filtered to this business. Without a loaded list
+// the same click is "Show ad accounts ›" (the Accounts tab loads by itself); while the list is loading there is nothing to say yet.
+function summaryLine(r, name) {
+  const go = () => { emit("filter-bm", { id: r.id, name }); emit("show-tab", "accounts"); };
   const arrow = el("i", { class: "i i-chevron", "aria-hidden": "true" });
-  if (!state.fetchedAt)
-    return el("button", { type: "button", class: "bm-accs", "data-focus": `bm-accs:${b.id}`, title: t("bms.accsShowTitle"), onclick: go }, el("span", {}, t("bms.accsShow")), arrow);
-  const c = counts.get(b.id);
-  if (!c) return el("span", { class: "bm-none", title: t("bms.accsNoneTitle") }, t("bms.accsNone"));
+  const focus = `bm-accs:${r.key}`;
+  if (!state.fetchedAt) {
+    if (state.accLoading) return null;
+    return el("div", { class: "row-line" }, el("button", { type: "button", class: "bm-accs", "data-focus": focus, title: t("bms.accsShowTitle"), onclick: go }, el("span", {}, t("bms.accsShow")), arrow));
+  }
+  const c = r.counts;
+  if (!c.total) return null;                         // "No ad accounts" is the pill and the problem line
   const partial = state.truncated;                   // the Accounts list stopped at its page limit: there may be more
-  return el("button", { type: "button", class: "bm-accs", "data-focus": `bm-accs:${b.id}`, title: partial ? `${t("bms.accsTitle")}. ${t("bms.accsPartial")}` : t("bms.accsTitle"), onclick: go },
-    el("span", {}, `${c.total}${partial ? "+" : ""} ${tn(c.total, "bms.accCount")}`,
-      c.active ? el("span", { class: "bm-ok" }, t("bms.accActive", { n: c.active })) : null,
-      c.disabled ? el("span", { class: "err-text" }, t("bms.accDisabled", { n: c.disabled })) : null),
-    arrow);
+  return el("div", { class: "row-line" },
+    el("button", { type: "button", class: "bm-accs", "data-focus": focus, title: partial ? `${t("bms.accsTitle")}. ${t("bms.accsPartial")}` : t("bms.accsTitle"), onclick: go },
+      el("span", {}, `${c.total}${partial ? "+" : ""} ${tn(c.total, "bms.accCount")}`,
+        c.active ? el("span", { class: "bm-ok" }, t("bms.accActive", { n: c.active })) : null,
+        c.disabled ? el("span", { class: "err-text" }, t("bms.accDisabled", { n: c.disabled })) : null),
+      arrow));
 }
-// Business Settings, its ad accounts, verification (until it is verified), Business Support Home. A link only when the
-// builder accepts the id (links.js).
-function linksLine(b) {
-  const defs = [["settings", LINKS.bmSettings(b.id)], ["accounts", LINKS.bmAdAccounts(b.id)],
-    ...(isVerified(b) ? [] : [["security", LINKS.bmSecurity(b.id)]]), ["quality", LINKS.bmQuality(b.id)]];
-  return el("div", { class: "bm-line bm-links" }, defs.filter(([, href]) => href).map(([k, href]) =>
-    el("a", { class: "bm-link", href, target: "_blank", rel: "noopener noreferrer", title: t(`bms.link.${k}.title`), "data-focus": `bm-link:${b.id}:${k}` },
-      t(`bms.link.${k}`), el("i", { class: "i i-external", "aria-hidden": "true" }))));
-}
-function renderBm(b, counts) {
-  const day = isoDay(b.created_time);
-  const page = b.primary_page?.name || b.primary_page?.id;
-  const tfa = b.two_factor_type;
-  return el("div", { class: "bm" },
-    el("div", { class: "bm-top" },
-      el("span", { class: "bm-name", title: b.name }, el("i", { class: "i i-bm", "aria-hidden": "true" }), el("span", { class: "bm-name-text" }, b.name || t("bms.noName"))),
-      el("div", { class: "bm-pills" }, verificationPill(b), rolePill(b))),
-    el("div", { class: "bm-line" },
-      el("button", { type: "button", class: "acc-id", title: t("acc.copyId"), "data-focus": `bm-id:${b.id}`, onclick: () => copy(b.id, t("acc.idCopied")) },
-        b.id, el("i", { class: "i i-copy" })),
-      el("span", { title: day ? t("bms.createdTitle") : t("bms.noField") }, t("bms.created", { d: day ? fmtDay(day) : "—" })),
-      page ? el("span", { class: "bm-page", title: t("bms.pageTitle", { id: b.primary_page?.id || "" }) }, t("bms.page", { n: page })) : null,
-      tfa ? el("span", { title: t("bms.tfaTitle") }, t("bms.tfa", { v: has(`bms.tfa.${tfa}`) ? t(`bms.tfa.${tfa}`) : tfa })) : null),
-    el("div", { class: "bm-line" }, accountsLine(b, counts)),
-    linksLine(b));
+function renderRow(r) {
+  const name = r.name || t("bms.noName");
+  const settings = r.known ? LINKS.bmSettings(r.id) : null;      // only a business of this profile has settings it can open
+  const status = r.status && pill(t(`bms.st.${r.status.key}`), r.status.tone);
+  if (status) status.title = t(`bms.st.${r.status.key}.title`);
+  const spend = state.fetchedAt && r.accounts.length ? spendCell(r.spend, r.accounts[0].currency, t("acc.noPeriod"))
+    : spendCell(null, null, state.fetchedAt ? t("bms.st.none.title") : t("bms.noSpend"));
+  return el("div", { class: "row bm", "data-bm": r.key },
+    el("div", { class: "row-top" },
+      el("span", { class: "row-name", title: name }, avatar({ url: r.picture, shape: "square", icon: "building" }), el("span", { class: "row-name-text" }, name)),
+      status),
+    el("div", { class: "row-line" },
+      el("div", { class: "acc-ids" },
+        el("button", { type: "button", class: "acc-id", title: t("acc.copyId"), "data-focus": `bm-id:${r.id}`, onclick: () => copy(r.id, t("acc.idCopied")) }, r.id, el("i", { class: "i i-copy" })),
+        settings ? el("a", { class: "acc-link", href: settings, target: "_blank", rel: "noopener noreferrer", title: t("bms.openSettings"), "aria-label": `${t("bms.openSettings")} · ${name}`,
+          "data-focus": `bm-set:${r.id}`, onclick: (ev) => ev.stopPropagation() }, el("i", { class: "i i-external", "aria-hidden": "true" })) : null),
+      spend),
+    summaryLine(r, name),
+    problems(r.issues.map((i) => ({ id: i.id, tone: i.tone, text: t(i.label), tip: t(i.tip), fix: i.fix && { label: i.fix.label, tip: t(i.fix.tip), url: i.fix.url } })),
+      { focus: `bm-fix:${r.key}`, owner: name }));
 }
 
 // ---------- wiring ----------
-// Showing the tab refreshes the counts (the Accounts tab may have loaded since) and starts the auto-load.
-registerTab("bms", { tall: true, onShow: () => { renderBms(); autoLoadBms(); } });
+// Showing the tab draws it again (the Ad accounts list or the period may have changed meanwhile), starts its own auto-load and the
+// Ad accounts list's (accounts.js: same rule and limits as when that tab is opened).
+registerTab("bms", { tall: true, onShow: () => { renderBms(); autoLoadBms(); ensureAccounts(); } });
 registerRender(() => renderBms());                   // RU · EN
-// Every 30 s: the "updated … ago" text; the rows only when the Accounts list they count from has changed.
-let accSig = "";
-registerRender(() => {
-  if (!ready || !$("#tab-bms").classList.contains("active")) return;
-  const sig = `${state.fetchedAt}:${state.accounts?.length}`;
-  if (sig !== accSig) { accSig = sig; renderBms(); } else renderTotal();
-}, { lang: false, tick: true });
+registerRender(() => { if (active()) renderTotal(); }, { lang: false, tick: true });   // every 30 s: "updated … ago"
 registerInit(() => {
   buildControls();
-  $("#loadBms").addEventListener("click", () => fetchBms());
+  // The spend and counts come from the Ad accounts list: its refresh is part of this one (silent where its own button would complain).
+  $("#loadBms").addEventListener("click", () => { fetchBms(); reloadAccounts(); });
   $("#copyBmIds").addEventListener("click", copyIds);
   $("#bmFilter").addEventListener("input", (e) => { state.bmQuery = e.target.value; renderBms(); });
   ready = true;
 });
-registerStart(() => { renderBms(); accSig = `${state.fetchedAt}:${state.accounts?.length}`; });
+registerStart(() => renderBms());

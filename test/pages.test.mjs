@@ -4,8 +4,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   OPTIONAL, BASE, ROW_KEYS, PROBLEMS, isPermissionError, keysToDrop, slimPage, finishPages, igOf, adRightsOf, isVerified, audienceOf,
-  problemsOf, problemCounts, filterPages, sortPages, idsText, showBmHint, SHORT_LIST,
+  problemsOf, problemCounts, filterPages, sortPages, idsText, showBmHint, SHORT_LIST, PRIORITY, FIXES, issuesOf, statusOf,
 } from "../fb-helper/js/pages-model.js";
+import { LINKS } from "../fb-helper/js/links.js";
 import { optionalFieldIn } from "../fb-helper/js/graph.js";
 import { setLang, has } from "../fb-helper/js/i18n.js";
 
@@ -19,7 +20,7 @@ test("fields: explicit, id + name + the optional ones, never an access token", (
   assert.deepEqual(BASE, ["id", "name"]);
   for (const f of ["category", "followers_count", "fan_count", "is_published", "verification_status", "tasks", "promotion_eligible",
     "promotion_ineligible_reason", "connected_page_backed_instagram_account{id}", "instagram_business_account{id,username}",
-    "connected_instagram_account{id,username}", "business{id,name}"]) assert.ok(Object.values(OPTIONAL).includes(f), f);
+    "connected_instagram_account{id,username}", "picture{url}", "business{id,name}"]) assert.ok(Object.values(OPTIONAL).includes(f), f);
 });
 
 test("slimPage: keeps the whitelist only; access_token (top level and nested) and unknown keys are dropped", () => {
@@ -30,7 +31,7 @@ test("slimPage: keeps the whitelist only; access_token (top level and nested) an
     instagram_business_account: { id: "17", username: "@nova", access_token: PAGE_TOKEN, followers_count: 99 },
     connected_instagram_account: { id: "18", username: "nova2" },
     business: { id: "555", name: "Nova Media", access_token: PAGE_TOKEN, verification_status: "x" },
-    category_list: [{ id: "1" }], cover: { source: "https://x" }, picture: { data: { url: "https://x" } }, link: "https://x", _skip: ["hacked"],
+    category_list: [{ id: "1" }], cover: { source: "https://x" }, picture: { data: { url: "https://scontent.xx.fbcdn.net/v/t39.30808-1/a.jpg", height: 50, width: 50, is_silhouette: false }, access_token: PAGE_TOKEN }, link: "https://x", _skip: ["hacked"],
   };
   const row = slimPage(raw);
   assert.ok(!JSON.stringify(row).includes("SECRET") && !JSON.stringify(row).includes("access_token"), JSON.stringify(row));
@@ -38,6 +39,7 @@ test("slimPage: keeps the whitelist only; access_token (top level and nested) an
   assert.deepEqual(row.connected_page_backed_instagram_account, { id: "9" });
   assert.deepEqual(row.instagram_business_account, { id: "17", username: "nova" }, "nested keys cut to id + username, @ stripped");
   assert.deepEqual(row.business, { id: "555", name: "Nova Media" });
+  assert.equal(row.picture, "https://scontent.xx.fbcdn.net/v/t39.30808-1/a.jpg", "only the URL string of the picture is kept");
   assert.equal(row._skip, undefined, "the skip list comes from the caller, not from Graph");
   assert.equal(row.category_list, undefined);
   assert.deepEqual(slimPage({ id: "7", name: "Only id and name", access_token: PAGE_TOKEN }), { id: "7", name: "Only id and name" });
@@ -51,6 +53,16 @@ test("slimPage: values of the wrong type are dropped, text is cleaned, a row wit
   assert.equal(slimPage({ id: "1" }).name, "", "a missing name is an empty string, the screen says 'Unnamed'");
   assert.equal(slimPage({ id: "1", name: "x".repeat(500) }).name.length, 200);
   assert.deepEqual(slimPage({ id: "1", instagram_business_account: { id: "5" } }).instagram_business_account, { id: "5" }, "no username is fine");
+});
+
+test("slimPage: a picture is kept only as an https URL on facebook.com / fbcdn.net; anything else leaves the row without one", () => {
+  const url = (picture) => slimPage({ id: "1", name: "A", picture }).picture;
+  assert.equal(url({ data: { url: "https://scontent.xx.fbcdn.net/a.jpg" } }), "https://scontent.xx.fbcdn.net/a.jpg");
+  assert.equal(url({ url: "https://www.facebook.com/a.jpg" }), "https://www.facebook.com/a.jpg", "also without the data wrapper");
+  for (const bad of [{ data: { url: "http://scontent.xx.fbcdn.net/a.jpg" } }, { data: { url: "https://evil.example.com/a.png" } }, { data: { url: "https://fbcdn.net.evil.com/a.png" } },
+    { data: { url: "javascript:alert(1)" } }, { data: { url: "data:image/png;base64,AAAA" } }, { data: { url: 5 } }, { data: {} }, { data: null }, "https://scontent.xx.fbcdn.net/a.jpg", [], null, 7])
+    assert.equal("picture" in slimPage({ id: "1", name: "A", picture: bad }), false, JSON.stringify(bad));
+  assert.ok(!("picture" in slimPage({ id: "1" })), "no field, no key");
 });
 
 test("slimPage: _skip records only the optional fields that were not asked for", () => {
@@ -95,6 +107,7 @@ test("keysToDrop: a nested field blames its parents only; a permission error or 
   const perm = { code: 10, raw: "(#10) permission" };
   assert.deepEqual(keysToDrop(complaint("username"), new Set()), ["instagram_business_account", "connected_instagram_account"]);
   assert.deepEqual(keysToDrop(complaint("username"), new Set(["connected_instagram_account"])), ["instagram_business_account"]);
+  assert.deepEqual(keysToDrop(complaint("url"), new Set()), ["picture"], "a complaint about the url inside picture{url} blames picture");
   assert.deepEqual(keysToDrop(perm, new Set()), ["business"], "business_management is the likeliest missing permission");
   assert.deepEqual(keysToDrop(perm, new Set(["business"])), IG, "then the Instagram fields (instagram_basic)");
   const rest = all.filter((k) => k !== "business" && !IG.includes(k));
@@ -205,4 +218,89 @@ test("showBmHint: only for a short list", () => {
   assert.equal(showBmHint(0), true);
   assert.equal(showBmHint(SHORT_LIST - 1), true);
   assert.equal(showBmHint(SHORT_LIST), false);
+});
+
+// ---------- problems and their fixes ----------
+// A page with nothing wrong, so each test spoils exactly one thing.
+const OK = { id: "100000000000007", name: "Fine page", is_published: true, tasks: ["ADVERTISE"], promotion_eligible: true, instagram_business_account: { id: "17", username: "fine.page" } };
+const withProblem = {
+  noAdv: { ...OK, promotion_eligible: false, promotion_ineligible_reason: "Page is restricted" },
+  unpublished: { ...OK, is_published: false },
+  noRights: { ...OK, tasks: ["MANAGE"], business: { id: "555", name: "Owner" } },
+  noIg: { ...OK, instagram_business_account: undefined },
+};
+const FIX_URL = {
+  noAdv: LINKS.accountQuality(), unpublished: LINKS.pageSuite(OK.id), noRights: LINKS.bmPages("555"), noIg: LINKS.adsManagerHome(),
+};
+
+test("every problem has exactly one fix link, to the page that fixes it", () => {
+  assert.deepEqual([...PRIORITY].sort(), Object.keys(PROBLEMS).sort(), "the priority list names every problem once");
+  assert.deepEqual(Object.keys(FIXES).sort(), Object.keys(PROBLEMS).sort(), "…and so does the fix table");
+  for (const key of Object.keys(PROBLEMS)) {
+    const issues = issuesOf(withProblem[key]);
+    assert.deepEqual(issues.map((i) => i.key), [key], key);
+    assert.ok(issues[0].fix && issues[0].fix.url, `${key}: a fix`);
+    assert.equal(issues[0].fix.url, FIX_URL[key], key);
+    assert.equal(issues[0].tone, PROBLEMS[key]);
+    assert.ok(/^https:\/\/([a-z]+\.)?facebook\.com\//.test(issues[0].fix.url), `${key}: https on facebook.com`);
+  }
+  assert.equal(FIX_URL.noAdv, "https://www.facebook.com/accountquality/");
+  assert.equal(FIX_URL.noRights, "https://business.facebook.com/settings/pages?business_id=555");
+});
+
+test("fixes: No ad rights without a known owner business goes to Business Suite; an id links.js rejects drops the link, never builds a half URL", () => {
+  assert.equal(issuesOf({ ...OK, tasks: ["MANAGE"] })[0].fix.url, `https://business.facebook.com/latest/home?asset_id=${OK.id}`);
+  assert.equal(issuesOf({ ...OK, tasks: ["MANAGE"], business: { id: "x/../y" } })[0].fix.url, LINKS.pageSuite(OK.id), "a bad business id falls back");
+  assert.equal(issuesOf({ ...OK, id: "not-a-number", is_published: false })[0].fix, null, "no usable id, no link");
+  assert.equal(issuesOf({ ...OK, instagram_business_account: undefined })[0].fix.url, "https://adsmanager.facebook.com/adsmanager/manage/ads");
+});
+
+test("a healthy page has no problem and no fix; a real or page-backed Instagram is an ok pill, an unread one a neutral pill", () => {
+  assert.deepEqual(issuesOf(OK), []);
+  assert.deepEqual(statusOf(OK), { tone: "ok", label: "pages.igReal", params: { u: "fine.page" }, tip: "pages.igRealTitle" });
+  assert.equal(statusOf({ ...OK, instagram_business_account: { id: "17" } }).label, "pages.igRealNoName");
+  const pbia = { ...OK, instagram_business_account: undefined, connected_page_backed_instagram_account: { id: "9" } };
+  assert.deepEqual(issuesOf(pbia), []);
+  assert.deepEqual(statusOf(pbia), { tone: "ok", label: "pages.igPbia", params: {}, tip: "pages.igPbiaTitle" });
+  const unread = { ...OK, instagram_business_account: undefined, _skip: ["instagram_business_account"] };
+  assert.deepEqual(issuesOf(unread), [], "no verdict about Instagram: not a problem");
+  assert.deepEqual(statusOf(unread), { tone: "", label: "pages.igUnknown", params: {}, tip: "pages.igUnknownTitle" });
+});
+
+test("problems come worst first, and the one pill of the row is the worst: Can't advertise > Unpublished > No ad rights > No Instagram", () => {
+  const all = { ...OK, promotion_eligible: false, is_published: false, tasks: ["MANAGE"], instagram_business_account: undefined };
+  assert.deepEqual(issuesOf(all).map((i) => i.key), ["noAdv", "unpublished", "noRights", "noIg"]);
+  assert.deepEqual(PRIORITY, ["noAdv", "unpublished", "noRights", "noIg"]);
+  assert.equal(statusOf(all).label, "pages.p.noAdv");
+  assert.equal(statusOf(all).tone, "bad");
+  const dropFirst = (p) => ({ ...p, ...({ noAdv: { promotion_eligible: true }, unpublished: { is_published: true }, noRights: { tasks: ["ADVERTISE"] } })[PRIORITY.find((k) => problemsOf(p).includes(k))] });
+  let p = all;
+  for (const want of ["pages.p.noAdv", "pages.p.unpublished", "pages.p.noRights", "pages.p.noIg"]) { assert.equal(statusOf(p).label, want); p = dropFirst(p); }
+  assert.equal(statusOf(p).label, "pages.p.noIg", "only the Instagram problem is left");
+  assert.equal(statusOf(p).tone, "warn");
+  assert.equal(statusOf({ ...OK }).tone, "ok");
+});
+
+test("Graph's own reason for 'Can't advertise' is the tooltip text, not a line of its own", () => {
+  const [i] = issuesOf(withProblem.noAdv);
+  assert.equal(i.rawTip, "Page is restricted");
+  assert.equal(i.tip, "pages.noAdvTitle", "the fallback when Graph gave no reason");
+  assert.equal(statusOf(withProblem.noAdv).rawTip, "Page is restricted");
+  assert.equal(issuesOf({ ...OK, promotion_eligible: false })[0].rawTip, undefined);
+});
+
+test("every label and tooltip of the problems and their fixes exists in both languages", async () => {
+  const { STRINGS } = await import("../fb-helper/js/strings/pages.js");
+  const keys = new Set(["pages.igPbia", "pages.igPbiaTitle", "pages.igReal", "pages.igRealNoName", "pages.igRealTitle", "pages.igUnknown", "pages.igUnknownTitle",
+    "pages.linkPage", "pages.linkPageTitle", "pages.linkSuite", "pages.linkSuiteTitle", "pages.linkBm", "pages.linkBmTitle", "pages.verified", "pages.verifiedTitle"]);
+  for (const p of Object.values(withProblem)) for (const i of issuesOf(p)) { keys.add(i.label); keys.add(i.tip); keys.add(i.fix.label); keys.add(i.fix.tip); }
+  for (const f of Object.values(FIXES)) { keys.add(f.label); keys.add(f.tip); }
+  for (const l of ["ru", "en"]) assert.deepEqual([...keys].filter((k) => !STRINGS[l][k]), [], `missing in ${l}`);
+  assert.deepEqual(Object.keys(STRINGS.ru).sort(), Object.keys(STRINGS.en).sort());
+  // the product is renamed in the store build, and "BM" is slang the interface avoids
+  for (const l of ["ru", "en"]) for (const v of Object.values(STRINGS[l]).flat()) assert.ok(!/fb helper|(^|[^\p{L}])(BM|БМ)(?![\p{L}])/iu.test(v), v);
+  // labels of links stay short enough for a 380 px window
+  for (const l of ["ru", "en"]) for (const f of Object.values(FIXES)) assert.ok(STRINGS[l][f.label].length <= 32, `${l} ${f.label}`);
+  for (const part of ["«Use Facebook Page»", "Identity → Instagram account", "once", "automated launches to Instagram placements fail"]) assert.ok(STRINGS.en["pages.igNoneTitle"].includes(part), part);
+  assert.match(STRINGS.en["pages.igNoneTitle"], /automated launches to Instagram placements fail/);
 });

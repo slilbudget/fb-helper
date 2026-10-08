@@ -1,44 +1,18 @@
-/* bms: styles of js/bms.js. Shared look (rows, pills, kv, buttons) comes from popup.css; only what is specific goes here. */
+/* bms: styles of js/bms.js. The row itself (lines, picture, problems, dividers) is the shared .row grammar in popup.css; only what is
+   specific to a business goes here. */
 
-/* One row per business manager: name + verification / role pills, a meta line (ID, created, page, 2FA), the ad accounts
-   of the BM, and the Business Settings links, each on its own line (the same four lines in every row; content decides
-   whether they fit side by side, so side by side would make the rows uneven). Lines are indented 22px, under the name
-   (icon 16px + gap 6px), like the rows of the Ad accounts tab. */
-.bm { position: relative; display: grid; gap: var(--spacing-1); padding: var(--spacing-3) var(--spacing-4); }
-.bm:not(:last-child)::after {
-  content: ""; position: absolute; left: var(--spacing-4); right: var(--spacing-4); bottom: 0; height: 1px;
-  background: var(--color-border); pointer-events: none;
-}
-.bm-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--spacing-1) var(--spacing-3); align-items: center; }
-.bm-name { display: flex; align-items: center; gap: var(--spacing-1-5); min-width: 0; font-size: var(--text-lg); }
-.bm-name .i { --size-icon: 16px; color: var(--color-text-disabled); }
-.bm-name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }   /* a long name ends in "…"; the full one is the tooltip */
-.bm-pills { display: flex; align-items: center; gap: var(--spacing-1-5); justify-content: flex-end; }
-.bm-line {
-  min-width: 0; padding-left: 22px; display: flex; flex-wrap: wrap; align-items: center; gap: 2px var(--spacing-3);
-  color: var(--color-text-secondary);
-}
-.bm-page { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* "3 ad accounts · 2 active · 1 disabled" (or "Show ad accounts"): a button into the Ad accounts tab. */
+/* "3 ad accounts · 2 active · 1 disabled ›" (or "Show ad accounts ›"): a button into the Ad accounts tab, filtered to this business. */
 .bm-accs {
   appearance: none; border: 0; background: none; padding: 0; cursor: pointer; text-align: left;
   display: inline-flex; align-items: center; gap: var(--spacing-1); font: inherit; color: var(--color-text-secondary);
+  transition: color .15s ease;
 }
 .bm-accs:hover, .bm-accs:focus-visible { color: var(--color-text-primary); }
 .bm-accs .i { --size-icon: 14px; transform: rotate(-90deg); }   /* the chevron points right: "go there" */
 .bm-ok { color: var(--color-success); }
-.bm-none { color: var(--color-text-disabled); }
-.bm-link { display: inline-flex; align-items: center; gap: 3px; color: var(--color-text-secondary); text-decoration: none; }
-.bm-link:hover, .bm-link:focus-visible { color: var(--color-text-primary); }
-.bm-link .i { --size-icon: 14px; }
-.bm-accs, .bm-link { transition: color .15s ease; }
 /* A refused refresh above an old list. */
 .bm-note { padding: var(--spacing-3) var(--spacing-4) 0; }
 
-/* ---------- narrow window ---------- */
 @media (max-width: 460px) {
   #copyBmIds span { display: none; }
-  .bm-top { grid-template-columns: minmax(0, 1fr); }
-  .bm-pills { justify-content: flex-start; flex-wrap: wrap; padding-left: 22px; }
 }

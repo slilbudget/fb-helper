@@ -155,3 +155,19 @@ test("i18n: every key the popup uses exists in both languages (all js files; str
     assert.deepEqual(missing, [], `missing in ${l}`);
   }
 });
+
+// "BM" / "БМ" is slang: the interface says "бизнес-портфолио" / "business portfolio" (full term) or "бизнесы" / "businesses" (short).
+// The one place it stays is the copied "Token + cookies + UA" block (its "BM:" line), which other tools parse.
+test("i18n: the business wording is the full term or 'Businesses'; the owner line has no 'BM' prefix", async () => {
+  const { setLang, t, has } = await import("../fb-helper/js/i18n.js");
+  await import("../fb-helper/js/strings/actions.js");
+  for (const [lang, tab] of [["ru", "Бизнесы"], ["en", "Businesses"]]) {
+    await setLang(lang);
+    assert.equal(t("tab.bms"), tab);
+    for (const k of ["tab.bms", "acc.bmFilterClear", "acc.inBm", "acc.noBm", "acc.personalTitle", "surface.bm", "reason.11", "next.help.r6", "next.help.r11"])
+      assert.ok(has(k) && !/(^|[^\p{L}])(BM|БМ)(?![\p{L}])/u.test(t(k, { n: "X", id: "1" })), `${lang} ${k}: ${t(k)}`);
+    assert.ok(!has("acc.bm") && !has("acc.bmPrefix"), "the prefix strings are gone");
+    assert.match(t("acc.inBm", { n: "Alpha", id: "7" }), lang === "ru" ? /бизнес-портфолио Alpha/ : /business portfolio Alpha/);
+  }
+  await setLang("en");
+});

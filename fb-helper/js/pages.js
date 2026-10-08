@@ -1,7 +1,7 @@
 // The Pages tab: the Facebook pages the profile manages (one paged read of me/accounts), with what a media buyer checks
 // first: is there an Instagram identity (a NEW page needs "Use Facebook Page" chosen once, else automated launches to
-// Instagram placements fail), is it published, may it advertise. The logic is in pages-model.js (plain Node, tested);
-// this file loads, caches and draws it. Same shape as the Ad accounts tab: auto-load on the first visit when nothing is
+// Instagram placements fail), is it published, may it advertise. Every problem comes with its fix as one link. The logic is
+// in pages-model.js (plain Node, tested); this file loads, caches and draws it. Same shape as the Ad accounts tab: auto-load on the first visit when nothing is
 // cached, a refresh button otherwise, one request per minute, dead session / API pause respected, other windows followed.
 
 import { t, tn } from "./i18n.js";
@@ -14,9 +14,10 @@ import { settledGrab, grabToken, tokenReady } from "./token.js";
 import { on, emit } from "./bus.js";
 import { registerTab, registerRender, registerInit, registerStart } from "./registry.js";
 import { LINKS } from "./links.js";
+import { avatar, problems, quietLinks } from "./rows.js";
 import {
-  OPTIONAL, BASE, PROBLEMS, isPermissionError, keysToDrop, slimPage, finishPages, igOf, isVerified, audienceOf,
-  problemsOf, problemCounts, filterPages, sortPages, idsText, showBmHint,
+  OPTIONAL, BASE, PROBLEMS, isPermissionError, keysToDrop, slimPage, finishPages, isVerified, audienceOf,
+  issuesOf, statusOf, problemCounts, filterPages, sortPages, idsText, showBmHint,
 } from "./pages-model.js";
 
 const SLOT_MS = 60 * 1000;                   // one list read per minute (a failed attempt counts too)
@@ -135,9 +136,6 @@ function copyIds() {
   if (!rows.length) return toast(t("pages.noIds"), true);
   copy(idsText(rows), t("pages.idsCopied", { n: rows.length }) + (state.pagesTruncated ? t("pages.partial") : ""));
 }
-// A pill with an explanation as its tooltip.
-const tipPill = (label, tone, title) => el("span", { class: `pill ${tone}`, title }, label);
-
 function renderTotal() {
   const box = $("#pagesTotal");
   if (!box) return;
@@ -176,45 +174,32 @@ function drawPages() {
   if (!rows.length) return fill(list, ...notes, el("div", { class: "empty" }, t("pages.noMatch")), foot);
   fill(list, ...notes, ...rows.map(renderPage), foot);
 }
-function igPill(p) {
-  const ig = igOf(p);
-  if (ig.state === "real") return tipPill(ig.username ? t("pages.igReal", { u: ig.username }) : t("pages.igRealNoName"), "ok", t("pages.igRealTitle"));
-  if (ig.state === "pbia") return tipPill(t("pages.igPbia"), "ok", t("pages.igPbiaTitle"));
-  if (ig.state === "none") return tipPill(t("pages.p.noIg"), "warn", t("pages.igNoneTitle"));
-  return tipPill(t("pages.igUnknown"), "", t("pages.igUnknownTitle"));   // fields refused for this token: no verdict
-}
+// One page = the grammar of every row (rows.js / popup.css): picture · name … ONE pill (the worst problem, else the Instagram
+// state); ID + facts; each problem with its fix; secondary links.
 function renderPage(p) {
-  const problems = problemsOf(p);
-  const aud = audienceOf(p);
-  const audience = !aud ? null : aud.kind === "followers"
-    ? `${numFmt().format(aud.n)} ${tn(aud.n, "pages.followers")}` : `${numFmt().format(aud.n)} ${tn(aud.n, "pages.likes")}`;
-  // Problems first (red, then amber), what is fine after them.
-  const pills = [
-    problems.includes("noAdv") ? tipPill(t("pages.p.noAdv"), "bad", p.promotion_ineligible_reason || t("pages.noAdvTitle")) : null,
-    problems.includes("unpublished") ? tipPill(t("pages.p.unpublished"), "warn", t("pages.unpublishedTitle")) : null,
-    problems.includes("noRights") ? tipPill(t("pages.p.noRights"), "warn", t("pages.noRightsTitle")) : null,
-    igPill(p),
-    isVerified(p) ? tipPill(t("pages.verified"), "ok", t("pages.verifiedTitle", { s: p.verification_status })) : null,
-  ];
-  // Links only when the id passes links.js (digits); each opens in a new tab and changes nothing by being opened.
-  const link = (href, key, label, title) => href && el("a", { class: "pg-link", href, target: "_blank", rel: "noopener noreferrer", title, "aria-label": `${label}: ${p.name || p.id}`,
-    "data-focus": `plink:${p.id}:${key}` }, label, el("i", { class: "i i-external", "aria-hidden": "true" }));
-  const links = [
-    link(LINKS.page(p.id), "page", t("pages.linkPage"), t("pages.linkPageTitle")),
-    link(LINKS.pageSuite(p.id), "suite", t("pages.linkSuite"), t("pages.linkSuiteTitle")),
-    link(LINKS.bmPages(p.business?.id), "bm", t("pages.linkBm"), t("pages.linkBmTitle")),
-  ].filter(Boolean);
-  return el("div", { class: "pg", "data-page": p.id },
-    el("span", { class: "pg-name", title: p.name }, p.name || t("pages.noName")),
-    el("button", { type: "button", class: "acc-id", title: t("pages.copyId"), "data-focus": `pid:${p.id}`, onclick: () => copy(p.id, t("pages.idCopied")) },
-      numEl(p.id), el("i", { class: "i i-copy", "aria-hidden": "true" })),
-    el("div", { class: "pg-meta" },
-      p.category || audience ? el("span", {}, [p.category, audience].filter(Boolean).join(" · ")) : null,
+  const name = p.name || t("pages.noName");
+  const st = statusOf(p), aud = audienceOf(p);
+  const audience = !aud ? null : `${numFmt().format(aud.n)} ${tn(aud.n, aud.kind === "followers" ? "pages.followers" : "pages.likes")}`;   // "likes" only when followers were not read
+  const issues = issuesOf(p).map((i) => ({ id: i.key, tone: i.tone, text: t(i.label), tip: i.rawTip || t(i.tip), fix: i.fix && { label: i.fix.label, tip: t(i.fix.tip), url: i.fix.url } }));
+  return el("div", { class: "row pg", "data-page": p.id },
+    el("div", { class: "row-top" },
+      el("span", { class: "row-name", title: p.name }, avatar({ url: p.picture, shape: "circle", icon: "flag" }), el("span", { class: "row-name-text" }, name)),
+      el("span", { class: `pill ${st.tone}`, title: st.rawTip || t(st.tip) }, t(st.label, st.params))),
+    el("div", { class: "row-line" },
+      el("button", { type: "button", class: "acc-id", title: t("pages.copyId"), "data-focus": `pid:${p.id}`, onclick: () => copy(p.id, t("pages.idCopied")) },
+        numEl(p.id), el("i", { class: "i i-copy", "aria-hidden": "true" })),
+      p.category ? el("span", {}, p.category) : null,
+      audience ? el("span", {}, audience) : null,
       p.business ? el("span", { class: "owner", title: t("pages.inBm", { n: p.business.name || "", id: p.business.id }) },
-        el("i", { class: "i i-bm", "aria-hidden": "true" }), el("span", { class: "owner-name" }, p.business.name || p.business.id)) : null),
-    links.length ? el("div", { class: "pg-links" }, links) : null,
-    el("div", { class: "pg-pills" }, pills),
-    problems.includes("noAdv") && p.promotion_ineligible_reason ? el("div", { class: "pg-why err-text" }, p.promotion_ineligible_reason) : null);
+        el("i", { class: "i i-bm", "aria-hidden": "true" }), el("span", { class: "owner-name" }, p.business.name || p.business.id)) : null,
+      isVerified(p) ? el("span", { title: t("pages.verifiedTitle", { s: p.verification_status }) }, t("pages.verified")) : null),
+    problems(issues, { focus: `pfix:${p.id}`, owner: name }),
+    // Links only when the id passes links.js (digits); each opens in a new tab and changes nothing by being opened.
+    quietLinks([
+      { id: "page", label: "pages.linkPage", tip: "pages.linkPageTitle", href: LINKS.page(p.id) },
+      { id: "suite", label: "pages.linkSuite", tip: "pages.linkSuiteTitle", href: LINKS.pageSuite(p.id) },
+      { id: "bm", label: "pages.linkBm", tip: "pages.linkBmTitle", href: LINKS.bmPages(p.business?.id) },
+    ], { focus: `plink:${p.id}`, owner: name }));
 }
 
 // ---------- wiring ----------

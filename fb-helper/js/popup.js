@@ -15,7 +15,12 @@
 //   fbtabs.js     which FB tabs can be read
 //   header.js     the API-usage pill
 //   cookies.js    Cookies tab + the User-Agent        token.js     Token tab, owner check, "Token + cookies + UA"
+//   spend.js      what an account spent in a period + adding amounts up (pure, shared by the list tabs)
+//   period.js     the spend period switch and the total line (one state.period for the Ad accounts and Businesses tabs)
+//   rows.js       parts of a list row shared by the tabs: next-step link, picture, "problem → fix" line, secondary links
 //   accounts.js   Ad accounts tab, with the ads of each account
+//   bms.js        Businesses tab (spend, status and problems per business; asks accounts.js for the ad account list)
+//   pages.js      Pages tab (Instagram identity, publishing, ad rights, each problem with its fix)
 // A feature module registers what it needs when it is imported (registry.js: registerTab / registerRender / registerInit /
 // registerStart) and listens to the others through the bus (bus.js); this file only imports it and runs the lists.
 // A new tab = its module + one import line below + its panel in popup.html; nothing here knows its name.

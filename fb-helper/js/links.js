@@ -1,4 +1,5 @@
-// Every Facebook page the extension opens, in one place: when Meta moves a page, one line changes here.
+// Every Facebook page the extension opens, in one place: when Meta moves a page, one line changes here. The same file
+// decides which picture URLs from Graph may be shown (imageUrl, at the bottom).
 // Pure (no DOM, no chrome.*): test/links.test.mjs runs it in Node.
 //
 // Ids come from Graph, so they are checked before they go into a URL: only digits pass (an ad account id without
@@ -27,6 +28,9 @@ export const LINKS = {
   },
   // Account Quality: where Meta lists restrictions of the profile, its BMs, ad accounts and pages, with "Request review".
   accountQuality: () => "https://www.facebook.com/accountquality/",
+  // The ads view of Ads Manager without an account in the URL (Ads Manager opens the last-used one). Where "Use Facebook Page" is
+  // chosen: open any ad, Identity → Instagram account. UNVERIFIED like the rest.
+  adsManagerHome: () => "https://adsmanager.facebook.com/adsmanager/manage/ads",
   // ---- business manager ----
   bmSettings: make((b) => `https://business.facebook.com/settings/?business_id=${b}`),
   bmAdAccounts: make((b) => `https://business.facebook.com/settings/ad-accounts?business_id=${b}`),
@@ -40,3 +44,17 @@ export const LINKS = {
   hacked: () => "https://www.facebook.com/hacked",
   support: () => "https://www.facebook.com/business/help/support",
 };
+
+// ---------- pictures ----------
+// A picture URL from Graph (a page's picture, a business's logo) goes into an <img>, so it is checked like an id is: https only,
+// no credentials or port, and a facebook.com / fbcdn.net host (where Meta serves its pictures from). Anything else gives null and
+// the caller draws the placeholder. Returns the normalised URL.
+const IMAGE_HOSTS = ["facebook.com", "fbcdn.net"];
+export function imageUrl(v) {
+  if (typeof v !== "string" || v.length > 2000 || /[\u0000-\u0020\u007f]/.test(v)) return null;
+  let u;
+  try { u = new URL(v); } catch { return null; }
+  if (u.protocol !== "https:" || u.username || u.password || u.port) return null;
+  const host = u.hostname.toLowerCase();
+  return IMAGE_HOSTS.some((d) => host === d || host.endsWith(`.${d}`)) ? u.href : null;
+}

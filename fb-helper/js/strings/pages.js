@@ -12,15 +12,15 @@ export const STRINGS = {
     "pages.updated": "обновлено {t}",
     "pages.empty": "Страницы не загружены — нажми кнопку обновления сверху", "pages.loading": "Загрузка страниц…",
     "pages.none": "У этого профиля страниц не нашлось", "pages.noMatch": "Ничего не найдено", "pages.noName": "Без имени",
-    "pages.bmHint": "Страницы, к которым есть доступ только через BM, здесь могут не показываться",
+    "pages.bmHint": "Страницы, к которым есть доступ только через бизнес-портфолио, здесь могут не показываться",
     "pages.perm": "Этим токеном страницы не прочитать — открой Business Manager и обнови токен",
 
     "pages.copyId": "Копировать ID", "pages.idCopied": "ID скопирован",
     "pages.linkPage": "Страница", "pages.linkPageTitle": "Открыть страницу на Facebook",
-    "pages.linkSuite": "Suite", "pages.linkSuiteTitle": "Открыть в Meta Business Suite",
-    "pages.linkBm": "BM", "pages.linkBmTitle": "Страницы этого BM в настройках бизнеса",
+    "pages.linkSuite": "Business Suite", "pages.linkSuiteTitle": "Открыть в Meta Business Suite",
+    "pages.linkBm": "Портфолио", "pages.linkBmTitle": "Страницы этого бизнес-портфолио в настройках бизнеса",
     "pages.followers": ["подписчик", "подписчика", "подписчиков"], "pages.likes": ["лайк", "лайка", "лайков"],
-    "pages.inBm": "Страница в BM {n} · {id}",
+    "pages.inBm": "Страница в бизнес-портфолио {n} · {id}",
 
     "pages.p.noIg": "Нет Instagram", "pages.p.unpublished": "Не опубликована", "pages.p.noAdv": "Нельзя рекламировать", "pages.p.noRights": "Нет прав на рекламу",
     "pages.igReal": "IG @{u}", "pages.igRealNoName": "IG", "pages.igRealTitle": "К странице подключён аккаунт Instagram",
@@ -32,6 +32,10 @@ export const STRINGS = {
     "pages.noAdvTitle": "Graph: страницу нельзя продвигать (promotion_eligible = false)",
     "pages.noRightsTitle": "В твоём доступе к странице нет задачи ADVERTISE",
     "pages.verified": "Подтверждена", "pages.verifiedTitle": "Верификация: {s}",
+    "pages.fix.review": "Запросить проверку", "pages.fix.reviewTitle": "Account Quality: ограничения профиля, бизнеса и страниц — проверку запрашивают там",
+    "pages.fix.publish": "Опубликовать", "pages.fix.publishTitle": "Открыть страницу в Meta Business Suite и опубликовать её там",
+    "pages.fix.grant": "Выдать доступ", "pages.fix.grantTitle": "Выдай своему профилю задачу «Реклама» на эту страницу (настройки бизнеса → Страницы; если бизнес неизвестен — Business Suite)",
+    "pages.fix.ig": "Выбрать «Use Facebook Page»",
   },
   en: {
     "pages.searchAria": "Search pages",
@@ -42,13 +46,13 @@ export const STRINGS = {
     "pages.updated": "updated {t}",
     "pages.empty": "Pages not loaded — press the refresh button above", "pages.loading": "Loading pages…",
     "pages.none": "No pages found for this profile", "pages.noMatch": "Nothing found", "pages.noName": "Unnamed",
-    "pages.bmHint": "Pages you manage only through a BM may not be listed",
+    "pages.bmHint": "Pages you manage only through a business portfolio may not be listed",
     "pages.perm": "This token can't read pages — open Business Manager and refresh the token",
 
     "pages.copyId": "Copy ID", "pages.idCopied": "ID copied",
     "pages.linkPage": "Page", "pages.linkPageTitle": "Open the page on Facebook",
-    "pages.linkSuite": "Suite", "pages.linkSuiteTitle": "Open in Meta Business Suite",
-    "pages.linkBm": "BM", "pages.linkBmTitle": "Pages of this BM in Business settings",
+    "pages.linkSuite": "Business Suite", "pages.linkSuiteTitle": "Open in Meta Business Suite",
+    "pages.linkBm": "Portfolio", "pages.linkBmTitle": "Pages of this business portfolio in Business settings",
     "pages.followers": ["follower", "followers"], "pages.likes": ["like", "likes"],
     "pages.inBm": "Page in business portfolio {n} · {id}",
 
@@ -62,6 +66,10 @@ export const STRINGS = {
     "pages.noAdvTitle": "Graph says the page cannot be promoted (promotion_eligible = false)",
     "pages.noRightsTitle": "Your access to this page has no ADVERTISE task",
     "pages.verified": "Verified", "pages.verifiedTitle": "Verification: {s}",
+    "pages.fix.review": "Request review", "pages.fix.reviewTitle": "Account Quality: restrictions of your profile, businesses and pages — request a review there",
+    "pages.fix.publish": "Publish", "pages.fix.publishTitle": "Open the page in Meta Business Suite and publish it there",
+    "pages.fix.grant": "Grant access", "pages.fix.grantTitle": "Give your profile the Advertise task on this page (Business settings → Pages; Business Suite if the owner business is unknown)",
+    "pages.fix.ig": "Set «Use Facebook Page»",
   },
 };
 addStrings(STRINGS);

@@ -55,6 +55,16 @@ export async function boot({ user = "1001", fb, graph } = {}) {
     r.fulfill({ status: out.status || 200, contentType: "application/json",
       headers: { "access-control-allow-origin": "*", ...(out.headers || {}) }, body: JSON.stringify(body) });
   });
+  // Pictures of pages and businesses come from fbcdn.net: answered here with a small SVG (a path with "broken" in it gives a 404), so
+  // no test touches the network. b.images lists every path asked for.
+  page$.images = [];
+  await ctx.route("https://*.fbcdn.net/**", (r) => {
+    const u = new URL(r.request().url());
+    page$.images.push(u.pathname);
+    if (/broken/.test(u.pathname)) return r.fulfill({ status: 404, body: "" });
+    const hue = [...u.pathname].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 360, 7);
+    r.fulfill({ contentType: "image/svg+xml", body: `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="hsl(${hue} 55% 55%)"/></svg>` });
+  });
   const pg = await ctx.newPage(); await pg.goto("chrome://extensions");
   const id = await pg.evaluate(() => document.querySelector("extensions-manager").shadowRoot
     .querySelector("extensions-item-list").shadowRoot.querySelector("extensions-item").id);

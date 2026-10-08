@@ -3,14 +3,17 @@
 // read redraws the row, so splitting them would make the two import each other.
 
 import { t, tn, has } from "./i18n.js";
-import { AD_PROBLEMS, adRank, reviewLines, lifetimeSpend, spendFloor, insightRow } from "./pure.js";
+import { AD_PROBLEMS, adRank, reviewLines, spendFloor, insightRow } from "./pure.js";
 import { $, $$, el, fill, pill, numEl, toast, copy, keepFocus } from "./dom.js";
-import { fmt, money, major, numFmt, ago, sameDay, shortDate, tzLabel } from "./format.js";
+import { fmt, money, numFmt, ago, sameDay, tzLabel } from "./format.js";
 import { state, Stale, saveSession, fbUser, claimSlot, slotLeft, registerCache, isDead, deadCode } from "./state.js";
 import { graph, readPaged } from "./graph.js";
 import { settledGrab, grabToken, tokenReady } from "./token.js";
-import { on } from "./bus.js";
+import { on, emit } from "./bus.js";
 import { accountSteps, adSteps } from "./nextsteps.js";
+import { actLink } from "./rows.js";
+import { PERIODS, statsOf as spendStats, periodRange as rangeOf, addUp } from "./spend.js";
+import { bindPeriods, fillTotal } from "./period.js";
 import "./strings/actions.js";
 import { registerTab, registerRender, registerInit, registerStart } from "./registry.js";
 
@@ -19,15 +22,6 @@ const ADS_LOCK_MS = 30 * 1000;               // ads: one read per account per 30
 const BASE_FIELDS = ["name", "account_id", "account_status", "disable_reason", "currency", "timezone_name",
   "amount_spent", "balance", "spend_cap", "created_time", "business{id,name}",
   "business_country_code"];
-// Spend periods. Meta's last_7d / last_30d end yesterday (today excluded). "all" = Meta's amount_spent, raised to 30 days + today if that is more.
-// preset = Graph's date_preset; alias = the field alias its numbers come back under ("all" has neither).
-const PERIODS = [
-  { key: "today", label: "period.today", preset: "today", alias: "p_today" },
-  { key: "yesterday", label: "period.yesterday", preset: "yesterday", alias: "p_yesterday" },
-  { key: "week", label: "period.week", preset: "last_7d", alias: "p_week" },
-  { key: "month", label: "period.month", preset: "last_30d", alias: "p_month" },
-  { key: "all", label: "period.all" },
-];
 // All periods in one request via field aliases (live-checked 2026-09-27). Used by the accounts read and by the
 // per-ad numbers, so switching the period never needs a request.
 const insightsOf = (preset, alias) => `insights.date_preset(${preset}).as(${alias}){spend,impressions,inline_link_clicks}`;
@@ -55,11 +49,10 @@ const AD_STATUS = {
 
 Object.assign(state, {
   accounts: [], fetchedAt: 0, truncated: false, filter: "", statusFilter: null, accLoading: false,
-  bmFilter: null,                                    // { id, name } from the BM tab ("ad accounts of this BM"); not saved
+  bmFilter: null,                                    // { id, name } from the Businesses tab ("ad accounts of this business"); not saved
   open: new Set(), ads: {}, adsBusy: new Set(), adsHidden: new Set(),
   statsBusy: new Set(), noStats: new Set(), noAll: new Set(),   // per-ad numbers: being read / refused by Graph for this account / all-time part refused
-  period: "today",
-});
+});                                                  // (state.period, the spend period, is period.js's: the Businesses tab shares it)
 
 // ---------- storage ----------
 // Accounts, ads and which rows are open: kept across popup reopen and token changes, dropped when the FB user changes.
@@ -82,8 +75,10 @@ on("generation", () => {
 });
 // The cached lists belonged to another FB user and are gone: draw the empty list.
 on("cache-dropped", () => { state.bmFilter = null; renderAccounts(); });
-// The BM tab asks for the ad accounts of one BM ({ id, name }; null clears). It switches the tab itself (bus "show-tab").
+// The Businesses tab asks for the ad accounts of one business ({ id, name }; null clears). It switches the tab itself (bus "show-tab").
 on("filter-bm", (bm) => { state.bmFilter = bm?.id ? { id: String(bm.id), name: bm.name || "" } : null; renderAccounts(); });
+// The spend period changed (on this tab or the Businesses tab): numbers, total and ads follow.
+on("period", () => renderAccounts());
 // Rate slots changed (this window or another): the ads buttons follow.
 on("locks", () => syncAdsButtons());
 // Accounts loaded or dropped in another window of this extension: show the same list.
@@ -93,6 +88,7 @@ on("session", (ch) => {
       Object.assign(state, { accounts: c.accounts || [], fetchedAt: c.fetchedAt || 0, truncated: !!c.truncated,
         owner: c.owner || null, ads: c.ads || {} });
       renderAccounts();
+      emit("accounts");
     });
   }
 });
@@ -134,6 +130,8 @@ async function readBmAccounts(have) {
 
 // auto: started by opening the Accounts tab, not by a click. Same limits as a click, but silent where a click
 // would only complain (no token, dead session, the one-minute slot): the empty list explains itself.
+// The list is loading / has finished: draw it, and tell the Businesses tab (its spend and counts come from this list; bus "accounts").
+function setLoading(on) { state.accLoading = on; renderAccounts(); emit("accounts"); }
 let accBusy = false;                                    // one list load at a time: a click during an automatic load is a no-op
 async function fetchAccounts(opts) {
   if (accBusy) return;
@@ -154,7 +152,7 @@ async function loadAccountsNow({ auto = false } = {}) {
   saveSession({ autoPage: state.tokenSource?.page || null });
   const btn = $("#loadAccounts");
   btn.disabled = true; btn.setAttribute("aria-busy", "true");
-  state.accLoading = true; renderAccounts();
+  setLoading(true);
   try {
     // skip as a function: a token change swaps state.skip while the pages are still coming in.
     const mine = await readPaged("me/adaccounts", { base: BASE_FIELDS, optional: OPTIONAL_FIELDS, skip: () => state.skip, map: slim });
@@ -173,20 +171,20 @@ async function loadAccountsNow({ auto = false } = {}) {
   } catch (e) {
     if (!(e instanceof Stale)) toast(e.message, true);
   } finally {
-    state.accLoading = false;
     btn.disabled = false; btn.removeAttribute("aria-busy");
-    renderAccounts();
+    setLoading(false);
   }
 }
 // The Accounts tab loads the list by itself when there is nothing loaded yet, or when the FB page the token came
 // from was reloaded since the last load. Reopening the popup or switching tabs alone never sends a request.
 // At most one try per popup open; the limits are a click's (the one-minute slot, the API pause, a dead session).
 let autoTried = false;
-async function autoLoadAccounts() {
+// Exported: the Businesses tab asks for the same list on its first visit (same rule, same limits, same one try per popup open).
+export async function ensureAccounts() {
   if (autoTried) return;
   autoTried = true;
   const placeholder = !state.accounts.length;           // "Loading…" at once, not "press refresh" and then "Loading…"
-  if (placeholder) { state.accLoading = true; renderAccounts(); }
+  if (placeholder) setLoading(true);
   try {
     // Without the silent token read the request could go out with a stale token. Not forever, though.
     await Promise.race([tokenReady, new Promise((resolve) => setTimeout(resolve, 15000))]);
@@ -196,26 +194,15 @@ async function autoLoadAccounts() {
     if (state.fetchedAt && (!page || page === autoPage)) return;   // loaded before, same FB page load: keep the list
     await fetchAccounts({ auto: true });
   } finally {
-    if (placeholder && !accBusy) { state.accLoading = false; renderAccounts(); }
+    if (placeholder && !accBusy) setLoading(false);
   }
 }
-// Spend for the selected period. null = unknown (field unavailable, or the cache is from an earlier day
-// in that account's timezone); a missing row = no delivery = 0.
-// FIELD 2026-09-27: Graph omits a nested insights key entirely when there is no delivery in the
-// period (not `data: []`), so a missing key on a row fetched WITH the field is a real 0.
-function statsOf(a, key = state.period) {
-  if (key === "all") {
-    // Meta's total, but never below what the last 30 days + today showed when the list was fetched (see lifetimeSpend).
-    return { spend: lifetimeSpend(major(a.amount_spent || 0, a.currency), a._floor), imp: null, clicks: null };
-  }
-  if (!state.fetchedAt || a._noInsights) return null;
-  if (!sameDay(a.timezone_name, state.fetchedAt)) return null;
-  return insightRow(a[PERIODS.find((p) => p.key === key).alias]);
-}
-function periodRange() {
-  for (const a of state.accounts) { const s = statsOf(a); if (s?.from) return s.from === s.to ? shortDate(s.from) : `${shortDate(s.from)}–${shortDate(s.to)}`; }
-  return "";
-}
+// The Businesses tab's refresh button also refreshes this list (its spend and counts come from it). Silent where a click on this
+// tab would complain (the one-minute slot, no token…): the Businesses tab has its own message for its own refresh.
+export const reloadAccounts = () => fetchAccounts({ auto: true });
+// Spend for the selected period (spend.js: the Businesses tab reads the same numbers the same way). null = unknown.
+const statsOf = (a, key = state.period) => spendStats(a, key, state.fetchedAt);
+const periodRange = () => rangeOf(state.accounts, state.period, state.fetchedAt);
 // Rows matching the search + status filter + BM filter. The total, the count and "Active IDs" all follow it.
 function visibleRows() {
   const q = state.filter.trim().toLowerCase();
@@ -237,42 +224,16 @@ function accStatus(a) {
   const c = a.account_status;
   return c in ACCOUNT_STATUS ? [t(`status.${c}`), ACCOUNT_STATUS[c]] : [t("status.other", { n: c }), "warn"];
 }
-// A "next step" (nextsteps.js) as a plain link to a Facebook page: new tab, keyboard-focusable, and it must never toggle the
-// row it sits in (the collapsed row toggles on any click). The URL was built and checked in links.js; nothing is sent or changed.
-// owner = the account / ad name: a list of identical "Request review" links is useless to a screen reader without it.
-const actLink = (x, cls, focus, { tip, owner } = {}) => el("a", { class: cls, href: x.url, target: "_blank", rel: "noopener noreferrer", title: tip,
-  "aria-label": owner ? `${t(x.label)} · ${owner}` : null, "data-focus": focus, onclick: (ev) => ev.stopPropagation() }, el("span", { class: "act-label" }, t(x.label)), el("i", { class: "i i-external", "aria-hidden": "true" }));
 function renderHint() {
   const total = $("#accountsTotal");
   if (!state.fetchedAt) return fill(total);
   const all = state.accounts.length, rows = visibleRows(), n = rows.length;
   const count = isFiltered() ? t("acc.found", { n, all }) : `${all} ${tn(all, "acc.count")}`;
-  const meta = el("span", { class: "total-meta" }, `${count}${state.truncated ? t("acc.notAll") : ""} · ${t("acc.updated", { t: ago(state.fetchedAt) })}`);
-  if (!n) return fill(total, meta);
-  const totals = {};
-  let unknown = false;
-  for (const a of rows) {
-    const s = statsOf(a);
-    if (!s) { unknown = true; continue; }
-    if (s.spend) totals[a.currency] = (totals[a.currency] || 0) + s.spend;
-  }
-  const sum = Object.entries(totals).map(([cur, v]) => fmt(v, cur)).join(" + ");
-  const label = t(PERIODS.find((p) => p.key === state.period).label);
-  const range = state.period === "all" ? "" : periodRange();
+  const metaText = `${count}${state.truncated ? t("acc.notAll") : ""} · ${t("acc.updated", { t: ago(state.fetchedAt) })}`;
+  if (!n) return fill(total, el("span", { class: "total-meta" }, metaText));
   // Row 1: what the number is (left) + how fresh / how many (right). Row 2: the number.
-  fill(total,
-    el("span", { class: "total-label" }, `${t("acc.spend")} · ${label.toLowerCase()}${range ? ` · ${range}` : ""}`),
-    meta,
-    el("span", { class: "total-value" }, unknown && !sum ? t("acc.refreshDash") : sum || fmt(0, rows[0].currency),
-      unknown && sum ? el("small", { title: t("acc.notAllTitle") }, t("acc.notAllShort")) : null),
-  );
-}
-function renderPeriods() {
-  keepFocus(() => fill($("#periodSeg"), ...PERIODS.map((p) => el("button", {
-    class: `seg-btn${p.key === state.period ? " active" : ""}`, "aria-pressed": String(p.key === state.period), "data-focus": `period:${p.key}`,
-    title: p.key === "week" || p.key === "month" ? t("period.noToday") : p.key === "all" ? t("period.allNote") : null,
-    onclick: () => { state.period = p.key; try { localStorage.setItem("period", p.key); } catch { /* */ } renderPeriods(); renderAccounts(); },
-  }, t(p.label)))));
+  fillTotal(total, { metaText, range: state.period === "all" ? "" : periodRange(), zeroCur: rows[0].currency,
+    sum: addUp(rows.map((a) => ({ spend: statsOf(a)?.spend ?? null, currency: a.currency }))) });
 }
 function renderAccounts() { keepFocus(drawAccounts); }
 function drawAccounts() {
@@ -339,7 +300,7 @@ function renderAccount(a, st) {
        : el("div", { class: "acc-spend muted", title: t("acc.noPeriod") }, "—"),  // .acc-spend uses the number font in CSS
     el("div", { class: "acc-meta" },
       a.business
-        ? el("span", { class: "owner", title: t("acc.inBm", { n: a.business.name, id: a.business.id }) }, el("i", { class: "i i-bm" }), el("span", { class: "owner-name" }, t("acc.bm", { n: a.business.name })))
+        ? el("span", { class: "owner", title: t("acc.inBm", { n: a.business.name, id: a.business.id }) }, el("i", { class: "i i-bm" }), el("span", { class: "owner-name" }, a.business.name))
         : el("span", { class: "owner", title: t("acc.personalTitle") }, el("i", { class: "i i-user" }), t("acc.personal")),
       a.timezone_name ? el("span", { title: t("acc.tz", { tz: a.timezone_name }) }, tzLabel(a.timezone_name)) : null,
       a.disable_reason ? el("span", { class: "err-text" }, `${has(`reason.${a.disable_reason}`) ? t(`reason.${a.disable_reason}`) : t("reason.other")} (${a.disable_reason})`) : null,
@@ -369,7 +330,7 @@ function renderAccount(a, st) {
       el("dt", {}, t("acc.funding")), el("dd", {}, a.funding_source_details?.display_string || "—"),
       el("dt", {}, t("acc.pixels")), el("dd", {}, a._noPixels ? "—"
         : pixels?.length ? pixels.flatMap((p, i) => [i ? ", " : null, p.name, " · ", numEl(p.id)]) : pill(t("acc.noPixel"), "warn")),
-      el("dt", {}, t("acc.owner")), el("dd", {}, a.business ? [t("acc.bmPrefix"), a.business.name, " · ", numEl(a.business.id)] : t("acc.noBm")),
+      el("dt", {}, t("acc.owner")), el("dd", {}, a.business ? [a.business.name, " · ", numEl(a.business.id)] : t("acc.noBm")),
       el("dt", {}, t("acc.country")), el("dd", {}, a.business_country_code || "—", " · ", a.created_time ? numEl(a.created_time.slice(0, 10)) : "—"),
     ),
     // One grey card for the ads, full width (it reaches back over the indent of the rows above, so the gutters match).
@@ -561,17 +522,16 @@ let sig = "";
 
 // The Accounts tab takes Chrome's full 600 px from the start (tall), so a list arriving a moment later doesn't make the
 // window jump; showing it starts the auto-load.
-registerTab("accounts", { tall: true, onShow: autoLoadAccounts });
+registerTab("accounts", { tall: true, onShow: ensureAccounts });
 // RU · EN: the status filter holds a translated label, so it is cleared; everything else is redrawn from state.
-registerRender(() => { state.statusFilter = null; renderPeriods(); renderAccounts(); });
+registerRender(() => { state.statusFilter = null; renderAccounts(); });
 registerRender(() => {
   syncAdsButtons();
   const now = todaySig();
   if (now !== sig) { sig = now; renderAccounts(); } else renderHint();
 }, { lang: false, tick: true });
 registerInit(() => {
-  try { const p = localStorage.getItem("period"); if (PERIODS.some((x) => x.key === p)) state.period = p; } catch { /* */ }
-  renderPeriods();
+  bindPeriods($("#periodSeg"));                           // the saved period was read by period.js's own init, which ran first
   $("#loadAccounts").addEventListener("click", () => fetchAccounts());
   $("#copyLiveIds").addEventListener("click", copyLiveIds);
   $("#accountFilter").addEventListener("input", (e) => { state.filter = e.target.value; renderAccounts(); });

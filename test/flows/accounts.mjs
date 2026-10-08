@@ -221,16 +221,16 @@ async function adsFlows() {
   ok("paused ad without delivery stays quiet", !has(lines[2], "No delivery") && !has(lines[2], "$"), lines[2]);
   ok("the sum line says how old the numbers are", has(await text(pop, ".ads-sum"), "metrics updated just now"), await text(pop, ".ads-sum"));
   const calls = statCalls();
-  await pop.click('.seg-btn:has-text("7 days")');
+  await pop.click('#periodSeg .seg-btn:has-text("7 days")');
   lines = await adLines();
   ok("switching to 7 days shows that period's numbers", has(lines[0], "$80.00") && has(lines[0], "310 clicks"), lines[0]);
   ok("…without a request", statCalls() === calls && listCalls() === 1);
-  await pop.click('.seg-btn:has-text("All time")');
+  await pop.click('#periodSeg .seg-btn:has-text("All time")');
   lines = await adLines();
   ok("All time: per-ad numbers and CPC", has(lines[0], "$500.00") && has(lines[0], "400,000 impressions") && has(lines[0], "9,000 clicks") && has(lines[0], "CPC $0.06"), lines[0]);
   ok("All time: no extra note under the sum line", !has(await text(pop, ".ads"), "37 months") && (await pop.locator(".ads .hint").count()) === 0, await text(pop, ".ads"));
   ok("…still without a request", statCalls() === calls);
-  await pop.click('.seg-btn:has-text("Today")');
+  await pop.click('#periodSeg .seg-btn:has-text("Today")');
   ok("numbers are persisted compact (no raw Graph objects)", !JSON.stringify(await stored(pop, "ads")).includes("date_start"));
   // a day later the cached numbers must not pass for today's
   await pop.evaluate(() => chrome.storage.session.get("ads").then((o) => { for (const v of Object.values(o.ads)) v.statsAt -= 2 * 86400000; return chrome.storage.session.set({ ads: o.ads }); }));
@@ -293,7 +293,7 @@ async function adsFlows() {
   ok("all-time refused -> one retry without it", sc.length === 2 && has(sc[0], "p_all") && !has(sc[1], "p_all") && has(sc[1], "p_month"), sc.length + " " + sc.map((h) => has(h, "p_all")).join());
   lines = await adLines();
   ok("all-time refused -> Today still shown", has(lines[0], "$12.40"), lines[0]);
-  await pop.click('.seg-btn:has-text("All time")');
+  await pop.click('#periodSeg .seg-btn:has-text("All time")');
   ok("all-time refused -> no numbers, one honest hint", (await pop.locator(".ad-stats").count()) === 0 && has(await text(pop, ".ads"), "did not return all-time metrics"), await text(pop, ".ads"));
   await b.ctx.close();
 
@@ -428,12 +428,12 @@ async function allTimeFlows() {
   const spends = () => pop.$$eval(".acc", (rows) => Object.fromEntries(rows.map((r) => [r.querySelector(".acc-name").textContent, r.querySelector(".acc-spend").textContent.trim()])));
   const today = await spends();
   ok("Today: unchanged", today.New === "$3.00" && today.Old === "$3.00" && today.Reset === "$3.00", JSON.stringify(today));
-  await pop.click('.seg-btn:has-text("All time")');
+  await pop.click('#periodSeg .seg-btn:has-text("All time")');
   const all = await spends();
   ok("All time, Meta total lagging at 0 -> shows today's $3.00 (was $0.00)", all.New === "$3.00", JSON.stringify(all));
   ok("All time, Meta total bigger -> kept", all.Old === "$100.00", JSON.stringify(all));
   ok("All time, total reset below 30 days + today -> $53.00", all.Reset === "$53.00", JSON.stringify(all));
-  ok("All time total is the sum", has(await text(pop, ".total-value"), "$156.00"), await text(pop, ".total-value"));
+  ok("All time total is the sum", has(await text(pop, "#accountsTotal .total-value"), "$156.00"), await text(pop, "#accountsTotal .total-value"));
   const totalOf = async (name) => {
     await pop.click(`.acc:has(.acc-name:text-is("${name}")) .acc-title`);
     return pop.evaluate((n) => [...document.querySelectorAll(".acc")].find((r) => r.querySelector(".acc-name").textContent === n).querySelector(".kv dd").textContent.trim(), name);
@@ -443,10 +443,10 @@ async function allTimeFlows() {
   // a day later the cached "today" is stale ("—"), but All time must not jump back to Meta's lagging 0
   await pop.evaluate(() => chrome.storage.session.get("fetchedAt").then((o) => chrome.storage.session.set({ fetchedAt: o.fetchedAt - 2 * 86400000 })));
   const later = await popup(b, "accounts"); await rowsAre(later, ".acc", 3);
-  await later.click('.seg-btn:has-text("All time")');
+  await later.click('#periodSeg .seg-btn:has-text("All time")');
   const stable = await later.$$eval(".acc", (rows) => Object.fromEntries(rows.map((r) => [r.querySelector(".acc-name").textContent, r.querySelector(".acc-spend").textContent.trim()])));
   ok("All time is stable when the cached day is stale", stable.New === "$3.00" && stable.Reset === "$53.00", JSON.stringify(stable));
-  await later.click('.seg-btn:has-text("Today")');
+  await later.click('#periodSeg .seg-btn:has-text("Today")');
   const todayStale = await later.$$eval(".acc-spend", (n) => n.map((x) => x.textContent.trim()).join());
   ok("…while Today honestly shows unknown", !/\$/.test(todayStale), todayStale);
   await b.ctx.close();
@@ -549,7 +549,7 @@ async function pagingFlows() {
   await resetLocks(pop);
   const toast = await clickToast(pop, "#loadAccounts");
   ok("an endless list stops after 10 pages and says so", (await rowsAre(pop, ".acc", 10)) && reads().length === 12 && has(toast, "10-page limit"), `${reads().length} ${toast}`);
-  ok("…the count line says the list is not complete", has(await text(pop, ".total-meta"), "(not all)"), await text(pop, ".total-meta"));
+  ok("…the count line says the list is not complete", has(await text(pop, "#accountsTotal .total-meta"), "(not all)"), await text(pop, "#accountsTotal .total-meta"));
   ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
   await b.ctx.close();
 }

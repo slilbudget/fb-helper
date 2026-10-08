@@ -58,6 +58,8 @@ body.tall { min-height: 600px; }
 .i-search   { --icon: url(../images/icons/search.svg); }
 .i-bm       { --icon: url(../images/icons/briefcase.svg); }
 .i-user     { --icon: url(../images/icons/user.svg); }
+.i-building { --icon: url(../images/icons/building-2.svg); }
+.i-flag     { --icon: url(../images/icons/flag.svg); }
 .i-chevron  { --icon: url(../images/icons/chevron-down.svg); }
 
 /* ---------- header + tabs ---------- */
@@ -102,7 +104,7 @@ body.tall { min-height: 600px; }
 .tab.active { background: var(--color-background-surface); color: var(--color-text-primary); }
 
 /* ---------- dividers: 1px, inset 16px from both edges, never edge-to-edge ---------- */
-.card:not(:last-child)::after, .acc:not(:last-child)::after {
+.card:not(:last-child)::after, .acc:not(:last-child)::after, .row:not(:last-child)::after {
   content: ""; position: absolute; left: var(--spacing-4); right: var(--spacing-4); bottom: 0; height: 1px;
   background: var(--color-border); pointer-events: none;
 }
@@ -330,6 +332,41 @@ main { padding-bottom: 0; }
 .owner-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }   /* a long BM name ends in "…"; the full one is the tooltip */
 .owner .i { --size-icon: 14px; }
 .acc-meta { min-width: 0; padding-left: 22px; display: flex; flex-wrap: wrap; gap: 2px var(--spacing-3); color: var(--color-text-secondary); }
+/* ---------- rows of the Businesses and Pages tabs: the grammar of an account row ----------
+   line 1  picture · name ................ ONE status pill
+   line 2  ID (copy) · muted facts ....... (spend, on the Businesses tab)
+   line 3  a summary or the problems: "<problem> <fix link>"
+   line 4  secondary links, muted
+   Lines 2+ are indented to start under the name, as the account rows are (there: chevron, here: picture). */
+.row { position: relative; display: grid; gap: var(--spacing-1); min-width: 0; padding: var(--spacing-3) var(--spacing-4); --row-indent: 30px; }
+.row-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--spacing-1) var(--spacing-3); align-items: center; }
+.row-name { display: flex; align-items: center; gap: var(--spacing-1-5); min-width: 0; font-size: var(--text-lg); }
+.row-name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }   /* a long name ends in "…"; the full one is the tooltip */
+.row-top > .pill { justify-self: end; }
+.row-line { min-width: 0; padding-left: var(--row-indent); display: flex; flex-wrap: wrap; align-items: center; gap: 2px var(--spacing-3); color: var(--color-text-secondary); }
+.row-line .acc-ids { padding-left: 0; }
+.row-line .acc-spend { margin-left: auto; }
+.acc-spend small { margin-left: var(--spacing-1-5); font-size: var(--text-sm); font-weight: 400; color: var(--color-text-secondary); }
+/* A problem and its way out, side by side: the problem in its tone colour, the fix an underlined link (actions.css .act-inline).
+   Pairs are kept whole when the line wraps. */
+.row-probs { gap: 2px var(--spacing-4); }
+.prob { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--spacing-2); min-width: 0; max-width: 100%; }
+.prob-text.bad { color: var(--color-error); }
+.prob-text.warn { color: var(--color-warning); }
+.row-links { font-size: var(--text-sm); }
+.row-link { display: inline-flex; align-items: center; gap: 3px; color: var(--color-text-secondary); text-decoration: none; transition: color .15s ease; }
+.row-link:hover, .row-link:focus-visible { color: var(--color-text-primary); }
+.row-link .i { --size-icon: 12px; }
+/* The picture left of a name: 24 px, a circle for a page, a rounded square for a business. The Lucide icon (flag / building) is the
+   placeholder (no picture, loading, or a picture that failed); the image takes over once it has loaded. */
+.av { position: relative; flex: none; display: inline-grid; place-items: center; width: 24px; height: 24px; overflow: hidden;
+  background: var(--color-background-muted); color: var(--color-text-secondary); user-select: none; }
+.av-circle { border-radius: var(--radius-full); }
+.av-square { border-radius: var(--radius-inner); }
+.av .i { --size-icon: 14px; }
+.av-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; }
+.av.ok .av-img { opacity: 1; }
+.av.ok .i { visibility: hidden; }
 .acc-body { --acc-indent: 22px; display: none; gap: var(--spacing-3); padding: var(--spacing-1) var(--spacing-4) var(--spacing-4) calc(var(--spacing-4) + var(--acc-indent)); }
 .acc.open .acc-body { display: grid; }
 .ads { display: grid; }
@@ -381,6 +418,8 @@ main { padding-bottom: 0; }
   .seg { grid-template-columns: repeat(3, 1fr); }
   .kv { grid-template-columns: 96px minmax(0, 1fr); }
   .acc-body { --acc-indent: 0px; }
+  .tabs { gap: 2px; }
+  .tab { font-size: var(--text-xs); padding: 0; letter-spacing: -0.02em; }   /* five tabs in ~65 px each: "Ad accounts" and "Страницы" must still fit */
   #copyLiveIds span { display: none; }
   .total { grid-template-columns: minmax(0, 1fr); }
   .total-meta { text-align: left; white-space: normal; }

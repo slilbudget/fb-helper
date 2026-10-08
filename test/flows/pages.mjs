@@ -1,15 +1,21 @@
 // Pages tab: automatic first load, the one-minute slot, optional fields Graph refuses, permission errors, a Page access token
-// that must never be kept, problem chips, search, copy IDs, language, the per-user cache and other windows. Fictional data.
+// that must never be kept, problem chips, search, copy IDs, language, the per-user cache and other windows; the row grammar
+// (one pill, every problem with exactly one fix link, secondary links, the picture or its placeholder). Fictional data.
 import { GRAPH, TOK, ok, has, boot, adsPage, popup, text, until, rowsAre, resetLocks, clickToast, captureClipboard, clip, accountsJson, adsFb, boxWait, GONE, stored } from "../harness.mjs";
+import { LINKS } from "../../fb-helper/js/links.js";
 
 const LEAK = "EAAPageSECRET" + "q".repeat(50);                   // a Page access token as Graph would hand it out by default
 const ids = { nova: "100000000000001", fresh: "100000000000002", backed: "100000000000003", hidden: "100000000000004" };
+const PIC = "https://scontent.xx.fbcdn.net/v/t39.30808-1/nova_50.jpg";
 const PAGES = [
   { id: ids.nova, name: "Nova Travel Blog", category: "Travel Company", followers_count: 12840, fan_count: 12100, is_published: true, verification_status: "blue_verified",
-    tasks: ["ADVERTISE", "ANALYZE", "MANAGE"], instagram_business_account: { id: "17841400000000001", username: "nova.travel" }, promotion_eligible: true, business: { id: "555", name: "Nova Media" } },
-  { id: ids.fresh, name: "Fresh Page", category: "Public Figure", followers_count: 0, fan_count: 0, is_published: true, verification_status: "not_verified", tasks: ["ADVERTISE", "MANAGE"], promotion_eligible: true },
+    tasks: ["ADVERTISE", "ANALYZE", "MANAGE"], instagram_business_account: { id: "17841400000000001", username: "nova.travel" }, promotion_eligible: true, business: { id: "555", name: "Nova Media" },
+    picture: { data: { url: PIC, height: 50, width: 50, is_silhouette: false } } },
+  { id: ids.fresh, name: "Fresh Page", category: "Public Figure", followers_count: 0, fan_count: 0, is_published: true, verification_status: "not_verified", tasks: ["ADVERTISE", "MANAGE"], promotion_eligible: true,
+    picture: { data: { url: "https://evil.example.com/tracker.png" } } },
   { id: ids.backed, name: "Backed Page", category: "Shopping & Retail", followers_count: 3, fan_count: 3, is_published: true, tasks: ["ADVERTISE"], connected_page_backed_instagram_account: { id: "17841400000000009" }, promotion_eligible: true },
-  { id: ids.hidden, name: "Hidden Page", category: "Blogger", followers_count: 1, fan_count: 1, is_published: false, tasks: ["ANALYZE", "MODERATE"], promotion_eligible: false, promotion_ineligible_reason: "Page is not published" },
+  { id: ids.hidden, name: "Hidden Page", category: "Blogger", followers_count: 1, fan_count: 1, is_published: false, tasks: ["ANALYZE", "MODERATE"], promotion_eligible: false, promotion_ineligible_reason: "Page is not published",
+    picture: { data: { url: "https://scontent.xx.fbcdn.net/v/t39.30808-1/broken_50.jpg" } } },
 ];                                                                // sorted by name: Backed, Fresh, Hidden, Nova
 const complaint = (field) => ({ code: 100, message: `(#100) Tried accessing nonexisting field (${field}) on node type (Page)` });
 const permission = (code = 10) => ({ code, message: `(#${code}) Application does not have permission for this action` });
@@ -32,15 +38,21 @@ const mock = (cfg) => (u) => {
 const reqs = (b) => b.hits.filter((h) => h.startsWith("/me/accounts"));
 const fieldsOf = (h) => new URL(`http://x${h}`).searchParams.get("fields") || "";
 const toastOf = (p) => p.evaluate(() => document.querySelector("#toast").textContent.trim());
-const names = (p) => p.$$eval(".pg-name", (n) => n.map((x) => x.textContent));
+const names = (p) => p.$$eval(".pg .row-name-text", (n) => n.map((x) => x.textContent));
 const chips = (p) => p.$$eval(".chip", (n) => n.map((x) => x.textContent.trim()));
+// A row as the screen shows it: line 2 (the ID and the muted facts), the pills (one), every problem with its fix, the secondary links.
 const rowOf = (p, name) => p.evaluate((n) => {
-  const r = [...document.querySelectorAll(".pg")].find((x) => x.querySelector(".pg-name").textContent === n);
+  const r = [...document.querySelectorAll(".pg")].find((x) => x.querySelector(".row-name-text").textContent === n);
   if (!r) return null;
   const clean = (s) => s.replace(/\s+/g, " ").trim();
-  return { meta: clean(r.querySelector(".pg-meta").innerText), why: r.querySelector(".pg-why")?.textContent.trim() || null, id: r.querySelector(".acc-id").textContent.trim(),
+  const line = r.querySelector(".row-line");
+  const link = (a) => ({ text: a.textContent.trim(), href: a.href, target: a.target, rel: a.rel, title: a.title, aria: a.getAttribute("aria-label"), focus: a.dataset.focus, tab: a.tabIndex });
+  return { meta: [...line.children].filter((c) => !c.classList.contains("acc-id")).map((c) => clean(c.innerText)).join(" | "), id: line.querySelector(".acc-id").textContent.trim(),
     pills: [...r.querySelectorAll(".pill")].map((x) => ({ text: x.textContent.trim(), tone: x.className.replace("pill", "").trim(), title: x.title })),
-    links: [...r.querySelectorAll("a")].map((a) => ({ text: a.textContent.trim(), href: a.href, target: a.target, rel: a.rel })) };
+    probs: [...r.querySelectorAll(".prob")].map((x) => ({ key: x.dataset.problem, text: x.querySelector(".prob-text").textContent.trim(), tone: x.querySelector(".prob-text").className.replace("prob-text", "").trim(),
+      title: x.querySelector(".prob-text").title, fixes: [...x.querySelectorAll("a")].map(link) })),
+    why: r.querySelector(".pg-why, .err-text")?.textContent.trim() || null,
+    links: [...r.querySelectorAll(".row-link")].map(link), actLinks: r.querySelectorAll(".act-inline").length, boxes: r.querySelectorAll(".btn, .pill a, button.act").length };
 }, name);
 // Waits for the n-th request for pages, then a moment for a stray extra one.
 const waitReqs = async (p, b, n) => { for (let i = 0; i < 60 && reqs(b).length < n; i++) await p.waitForTimeout(100); await p.waitForTimeout(200); return reqs(b).length === n; };
@@ -64,37 +76,47 @@ async function pagesFlow() {
   ok("the popup opens at full height on the Pages tab", await pop.evaluate(() => document.body.classList.contains("tall")));
   const fields = fieldsOf(reqs(b)[0]);
   ok("the request names id, name and every optional field", ["id", "name", "category", "followers_count", "fan_count", "is_published", "verification_status", "tasks",
-    "connected_page_backed_instagram_account{id}", "instagram_business_account{id,username}", "connected_instagram_account{id,username}", "promotion_eligible", "promotion_ineligible_reason", "business{id,name}"]
+    "connected_page_backed_instagram_account{id}", "instagram_business_account{id,username}", "connected_instagram_account{id,username}", "promotion_eligible", "promotion_ineligible_reason", "picture{url}", "business{id,name}"]
     .every((f) => fields.includes(f)), fields);
   ok("…and never an access token", !/access_token/.test(reqs(b).map((h) => decodeURIComponent(h)).join()), fields);
   ok("every Graph request is a GET", methods.length > 0 && methods.every((m) => m === "GET"), methods.join());
   ok("rows are sorted by name", (await names(pop)).join() === "Backed Page,Fresh Page,Hidden Page,Nova Travel Blog", (await names(pop)).join());
   ok("total: count and age", has(await text(pop, "#pagesTotal"), "4 pages · updated just now"), await text(pop, "#pagesTotal"));
   ok("chips: only problems that exist, with counts", (await chips(pop)).join() === "No Instagram 2,Unpublished 1,Can't advertise 1,No ad rights 1", (await chips(pop)).join());
-  ok("short list: the BM reminder under it", has(await text(pop, "#pagesList"), "Pages you manage only through a BM may not be listed"));
+  ok("short list: the BM reminder under it", has(await text(pop, "#pagesList"), "Pages you manage only through a business portfolio may not be listed"));
   await pop.click('[data-tab="token"]'); await pop.click('[data-tab="pages"]'); await pop.waitForTimeout(500);
   ok("second visit in the same popup: no new request", reqs(b).length === 1, String(reqs(b).length));
 
-  // rows
+  // rows: one pill, ID + facts, each problem with ONE fix link, secondary links
   const nova = await rowOf(pop, "Nova Travel Blog");
-  ok("Nova: category · followers, owner BM, ID", nova.meta === "Travel Company · 12,840 followers Nova Media" && nova.id === ids.nova, JSON.stringify(nova));
-  ok("Nova: real Instagram → ok pill with the username; verified", pill(nova, "IG @nova.travel")?.tone === "ok" && pill(nova, "Verified")?.tone === "ok" && nova.pills.length === 2, JSON.stringify(nova.pills));
-  ok("Nova: three links, new tab, noopener noreferrer, ids in the URLs", nova.links.length === 3 && nova.links.every((l) => l.target === "_blank" && l.rel === "noopener noreferrer")
+  ok("Nova: line 2 is the ID, then category, followers, owner business, Verified (muted facts, no pill)", nova.meta === "Travel Company | 12,840 followers | Nova Media | Verified" && nova.id === ids.nova, JSON.stringify(nova));
+  ok("Nova: ONE pill: real Instagram → ok, with the username", nova.pills.length === 1 && pill(nova, "IG @nova.travel")?.tone === "ok", JSON.stringify(nova.pills));
+  ok("Nova: nothing wrong → no problem line, no fix link", nova.probs.length === 0 && nova.actLinks === 0, JSON.stringify(nova.probs));
+  ok("Nova: three secondary links (Page, Business Suite, Portfolio), new tab, noopener noreferrer, ids in the URLs", nova.links.map((l) => l.text).join() === "Page,Business Suite,Portfolio" && nova.links.every((l) => l.target === "_blank" && l.rel === "noopener noreferrer")
     && nova.links[0].href === `https://www.facebook.com/${ids.nova}` && nova.links[1].href === `https://business.facebook.com/latest/home?asset_id=${ids.nova}`
     && nova.links[2].href === "https://business.facebook.com/settings/pages?business_id=555", JSON.stringify(nova.links));
   const backed = await rowOf(pop, "Backed Page");
-  ok("Backed: page-backed Instagram → ok pill 'IG: page', the tooltip says what it means", pill(backed, "IG: page")?.tone === "ok" && has(pill(backed, "IG: page").title, "«Use Facebook Page» is set") && has(pill(backed, "IG: page").title, "Instagram placements will run as the page"), JSON.stringify(backed.pills));
-  ok("Backed: no BM → no BM link", backed.links.length === 2 && backed.links.every((l) => !l.href.includes("settings/pages")), JSON.stringify(backed.links));
+  ok("Backed: page-backed Instagram → ONE ok pill 'IG: page', the tooltip says what it means", backed.pills.length === 1 && pill(backed, "IG: page")?.tone === "ok" && has(pill(backed, "IG: page").title, "«Use Facebook Page» is set") && has(pill(backed, "IG: page").title, "Instagram placements will run as the page"), JSON.stringify(backed.pills));
+  ok("Backed: no owner business → no Portfolio link; likes only because followers were not read", backed.links.map((l) => l.text).join() === "Page,Business Suite" && has(backed.meta, "3 followers"), JSON.stringify(backed.links) + backed.meta);
   const fresh = await rowOf(pop, "Fresh Page");
   const none = pill(fresh, "No Instagram");
-  ok("Fresh: no Instagram → warn pill, the tooltip tells where to choose «Use Facebook Page»", none?.tone === "warn" && has(none.title, "«Use Facebook Page»") && has(none.title, "Ads Manager → ad → Identity → Instagram account") && has(none.title, "automated launches to Instagram placements fail"), JSON.stringify(fresh.pills));
+  ok("Fresh: no Instagram → ONE warn pill, the tooltip tells where to choose «Use Facebook Page»", fresh.pills.length === 1 && none?.tone === "warn" && has(none.title, "«Use Facebook Page»") && has(none.title, "Ads Manager → ad → Identity → Instagram account") && has(none.title, "automated launches to Instagram placements fail"), JSON.stringify(fresh.pills));
+  ok("Fresh: the problem line is 'No Instagram' (amber) and its fix 'Set «Use Facebook Page»' → the Ads Manager ads view, with the explanation as tooltip",
+    fresh.probs.length === 1 && fresh.probs[0].key === "noIg" && fresh.probs[0].text === "No Instagram" && fresh.probs[0].tone === "warn" && fresh.probs[0].fixes.length === 1
+    && fresh.probs[0].fixes[0].text === "Set «Use Facebook Page»" && fresh.probs[0].fixes[0].href === LINKS.adsManagerHome() && fresh.probs[0].fixes[0].target === "_blank" && fresh.probs[0].fixes[0].rel === "noopener noreferrer"
+    && has(fresh.probs[0].fixes[0].title, "Identity → Instagram account") && has(fresh.probs[0].fixes[0].title, "once") && has(fresh.probs[0].fixes[0].title, "automated launches to Instagram placements fail"), JSON.stringify(fresh.probs));
   ok("Fresh: zero followers is shown as 0", has(fresh.meta, "0 followers"), fresh.meta);
   const hidden = await rowOf(pop, "Hidden Page");
-  ok("Hidden: Can't advertise (bad, reason as tooltip), Unpublished, No ad rights, No Instagram — problems before anything else",
-    hidden.pills.map((x) => x.text).join() === "Can't advertise,Unpublished,No ad rights,No Instagram" && pill(hidden, "Can't advertise").tone === "bad" && pill(hidden, "Can't advertise").title === "Page is not published"
-    && pill(hidden, "Unpublished").tone === "warn" && pill(hidden, "No ad rights").tone === "warn", JSON.stringify(hidden.pills));
-  ok("Hidden: the ineligibility reason is also a visible line", hidden.why === "Page is not published", String(hidden.why));
-  ok("a page with nothing wrong has no problem pill", !(await rowOf(pop, "Nova Travel Blog")).pills.some((x) => x.tone === "warn" || x.tone === "bad"));
+  ok("Hidden: the ONE pill is the worst problem, Can't advertise (bad); Graph's reason is its tooltip", hidden.pills.length === 1 && hidden.pills[0].text === "Can't advertise" && hidden.pills[0].tone === "bad" && hidden.pills[0].title === "Page is not published", JSON.stringify(hidden.pills));
+  ok("Hidden: every problem on its own pair, worst first, each with exactly ONE fix link to the right page",
+    hidden.probs.map((x) => `${x.text}>${x.fixes.map((f) => f.text).join("+")}`).join() === "Can't advertise>Request review,Unpublished>Publish,No ad rights>Grant access,No Instagram>Set «Use Facebook Page»"
+    && hidden.probs.every((x) => x.fixes.length === 1 && x.fixes[0].target === "_blank" && x.fixes[0].rel === "noopener noreferrer" && x.fixes[0].tab === 0)
+    && hidden.probs.map((x) => x.fixes[0].href).join() === [LINKS.accountQuality(), LINKS.pageSuite(ids.hidden), LINKS.pageSuite(ids.hidden), LINKS.adsManagerHome()].join()
+    && hidden.probs.map((x) => x.tone).join() === "bad,warn,warn,warn", JSON.stringify(hidden.probs));
+  ok("Hidden: the ineligibility reason is the tooltip of its problem text, never a red line of its own", hidden.probs[0].title === "Page is not published" && hidden.why === null && (await pop.locator(".pg .err-text, .pg .pg-why").count()) === 0, String(hidden.why));
+  ok("…each fix names its page for a screen reader, and has a keyboard key", hidden.probs.every((x) => x.fixes[0].aria === `${x.fixes[0].text} · Hidden Page` && x.fixes[0].focus === `pfix:${ids.hidden}:${x.key}`), JSON.stringify(hidden.probs.map((x) => x.fixes[0].aria)));
+  ok("no pill-shaped or boxed action anywhere in a row (links are plain underlined text)", (await pop.locator(".pg .act-inline").count()) === 5 && (await pop.locator(".pg .btn, .pg .act-link, .pg .pill a").count()) === 0
+    && (await pop.locator(".pg .act-inline").evaluateAll((a) => a.every((x) => getComputedStyle(x).backgroundColor === "rgba(0, 0, 0, 0)" && getComputedStyle(x.querySelector(".act-label")).textDecorationLine === "underline"))));
 
   // chips filter, keyboard
   await pop.focus('[data-focus="pchip:noIg"]'); await pop.keyboard.press("Enter");
@@ -156,9 +178,10 @@ async function pagesFlow() {
   ok("RU: the fix note", has(await text(pop, ".pg-note"), "один раз выбери «Use Facebook Page»"), await text(pop, ".pg-note"));
   await pop.click('.chip:has-text("Нет Instagram")');
   const ruNova = await rowOf(pop, "Nova Travel Blog"), ruHidden = await rowOf(pop, "Hidden Page");
-  ok("RU: row text and pills", ruNova.meta === "Travel Company · 12 840 подписчиков Nova Media" && pill(ruNova, "Подтверждена") && pill(ruHidden, "Нельзя рекламировать") && pill(ruHidden, "Не опубликована") && pill(ruHidden, "Нет прав на рекламу")
-    && has(pill(ruHidden, "Нет Instagram").title, "автозапуски"), `${ruNova.meta} | ${JSON.stringify(ruHidden.pills)}`);
-  ok("RU: the BM reminder and the total", has(await text(pop, "#pagesList"), "только через BM") && /^4 страницы · обновлено /.test(await text(pop, "#pagesTotal")), await text(pop, "#pagesTotal"));
+  ok("RU: row facts, the pill, every problem and its fix", ruNova.meta === "Travel Company | 12 840 подписчиков | Nova Media | Подтверждена" && pill(ruHidden, "Нельзя рекламировать")
+    && ruHidden.probs.map((x) => `${x.text}>${x.fixes[0].text}`).join() === "Нельзя рекламировать>Запросить проверку,Не опубликована>Опубликовать,Нет прав на рекламу>Выдать доступ,Нет Instagram>Выбрать «Use Facebook Page»"
+    && has(ruHidden.probs[3].fixes[0].title, "автозапуски") && ruNova.links.map((l) => l.text).join() === "Страница,Business Suite,Портфолио", `${ruNova.meta} | ${JSON.stringify(ruHidden.probs)}`);
+  ok("RU: the BM reminder and the total", has(await text(pop, "#pagesList"), "только через бизнес-портфолио") && /^4 страницы · обновлено /.test(await text(pop, "#pagesTotal")), await text(pop, "#pagesTotal"));
   await pop.click('[data-lang="en"]');
   ok("back to English", await until(pop, () => /^4 pages · updated/.test(document.querySelector("#pagesTotal").textContent.trim()) && document.querySelector("#copyPageIds").textContent.trim() === "Copy IDs"));
   ok("no request for any of it", reqs(b).length === 2, String(reqs(b).length));
@@ -179,7 +202,7 @@ async function fieldsFlow() {
   const [, second, third] = reqs(b).map(fieldsOf);
   ok("each retry drops only the field Graph named", has(second, "tasks") && !has(second, "fan_count") && has(third, "category") && !has(third, "tasks") && !has(third, "fan_count"), `${second} || ${third}`);
   ok("tasks unknown → no 'No ad rights' pill or chip (no verdict)", !(await chips(pop)).some((c) => c.startsWith("No ad rights")) && !pill(await rowOf(pop, "Hidden Page"), "No ad rights"), (await chips(pop)).join());
-  ok("what was read is still there (category, followers, Instagram, can't advertise)", has((await rowOf(pop, "Nova Travel Blog")).meta, "12,840 followers") && !!pill(await rowOf(pop, "Hidden Page"), "Can't advertise") && !!pill(await rowOf(pop, "Hidden Page"), "No Instagram"));
+  ok("what was read is still there (category, followers, Instagram, can't advertise)", has((await rowOf(pop, "Nova Travel Blog")).meta, "12,840 followers") && !!pill(await rowOf(pop, "Hidden Page"), "Can't advertise") && (await rowOf(pop, "Hidden Page")).probs.some((x) => x.text === "No Instagram"));
   ok("the refusal is stored with each row, not as a guess", JSON.stringify(await stored(pop, "pages")).includes('"_skip":["fan_count","tasks"]'), JSON.stringify(await stored(pop, "pages")).slice(0, 200));
   await resetLocks(pop); await pop.click("#loadPages");
   await waitReqs(pop, b, 4);
@@ -244,7 +267,7 @@ async function fieldsFlow() {
   await rowsAre(pop, ".pg", 4);
   const seq6 = reqs(b).map(fieldsOf);
   ok("Instagram fields refused with a permission error → three requests, the list keeps everything else", (await rowsAre(pop, ".pg", 4)) && seq6.length === 3 && !has(seq6[2], "instagram") && has(seq6[2], "tasks") && has(seq6[2], "promotion_eligible"), seq6.join(" || "));
-  ok("…Instagram is unknown on every row, nothing is called 'No Instagram'", (await pop.locator('.pg .pill:has-text("IG —")').count()) === 4 && !(await chips(pop)).some((c) => c.startsWith("No Instagram")), (await chips(pop)).join());
+  ok("…Instagram is unknown on every row (the pill of a row without another problem), nothing is called 'No Instagram'", (await pop.locator('.pg .pill:has-text("IG —")').count()) === 3 && (await pop.locator('.pg .pill:has-text("No Instagram"), .pg .prob-text:has-text("No Instagram")').count()) === 0 && !(await chips(pop)).some((c) => c.startsWith("No Instagram")), (await chips(pop)).join());
   await b.ctx.close();
 }
 
@@ -344,14 +367,14 @@ async function errorsFlow() {
   b = await boot({ fb: adsFb(TOK), graph: () => ({ body: { data: [{ id: "100000000000009", name: "<img src=x onerror=alert(1)>" }, { name: "no id" }, null, { id: "12ab", name: "bad id" }, { id: "100000000000009", name: "dup" }] } }) });
   await adsPage(b);
   pop = await openPages(b);
-  ok("odd rows: one page survives, shown as text (no markup), no console errors", (await rowsAre(pop, ".pg", 1)) && (await pop.locator(".pg img").count()) === 0 && (await text(pop, ".pg-name")) === "<img src=x onerror=alert(1)>" && b.errs.length === 0, b.errs.join(" | "));
+  ok("odd rows: one page survives, shown as text (no markup), no console errors", (await rowsAre(pop, ".pg", 1)) && (await pop.locator(".pg img").count()) === 0 && (await text(pop, ".pg .row-name-text")) === "<img src=x onerror=alert(1)>" && b.errs.length === 0, b.errs.join(" | "));
   await b.ctx.close();
 
   // 11. an empty profile
   b = await boot({ fb: adsFb(TOK), graph: () => ({ body: { data: [] } }) });
   await adsPage(b);
   pop = await openPages(b);
-  ok("no pages: says so and shows the BM reminder", await until(pop, () => /No pages found for this profile/.test(document.querySelector("#pagesList").textContent)) && has(await text(pop, "#pagesList"), "only through a BM"), await text(pop, "#pagesList"));
+  ok("no pages: says so and shows the business portfolio reminder", await until(pop, () => /No pages found for this profile/.test(document.querySelector("#pagesList").textContent)) && has(await text(pop, "#pagesList"), "only through a business portfolio"), await text(pop, "#pagesList"));
   ok("…the total reads 0 pages, Copy IDs is disabled", has(await text(pop, "#pagesTotal"), "0 pages") && await pop.locator("#copyPageIds").isDisabled());
   await b.ctx.close();
 }
@@ -369,7 +392,8 @@ async function tokenFlow() {
   let dump = await everything(pop);
   ok("the Page token is not in chrome.storage.session, chrome.storage.local, localStorage or the DOM", !dump.includes("SECRET") && !dump.includes("access_token"), dump.length > 0 ? "found" : "");
   const saved = await stored(pop, "pages");
-  ok("stored rows hold whitelisted keys only", saved.length === 4 && saved.every((r) => Object.keys(r).every((k) => ["id", "name", "category", "followers_count", "fan_count", "is_published", "verification_status", "tasks", "connected_page_backed_instagram_account", "instagram_business_account", "connected_instagram_account", "promotion_eligible", "promotion_ineligible_reason", "business", "_skip"].includes(k))), JSON.stringify(saved[0]));
+  ok("stored rows hold whitelisted keys only", saved.length === 4 && saved.every((r) => Object.keys(r).every((k) => ["id", "name", "category", "followers_count", "fan_count", "is_published", "verification_status", "tasks", "connected_page_backed_instagram_account", "instagram_business_account", "connected_instagram_account", "promotion_eligible", "promotion_ineligible_reason", "picture", "business", "_skip"].includes(k))), JSON.stringify(saved[0]));
+  ok("…the picture is kept as its URL string only, and only the one on fbcdn.net (the evil.example.com one is gone)", saved.filter((r) => r.picture).map((r) => `${r.name}=${r.picture}`).join("|") === `Nova Travel Blog=${PIC}|Hidden Page=https://scontent.xx.fbcdn.net/v/t39.30808-1/broken_50.jpg`, JSON.stringify(saved.map((r) => r.picture)));
   ok("…the legitimate nested fields beside it are kept (owner BM)", has(await text(pop, "#pagesList"), "Nova Media"));
   pop = await popup(b); await pop.waitForTimeout(500);
   dump = await everything(pop);
@@ -431,4 +455,75 @@ async function cacheFlow() {
   await b3.ctx.close();
 }
 
-export const flows = { pages: pagesFlow, pagesFields: fieldsFlow, pagesErrors: errorsFlow, pagesToken: tokenFlow, pagesCache: cacheFlow };
+// ---------- the row: pictures, fix links, layout ----------
+async function rowsFlow() {
+  console.log("\n# pages: picture or placeholder, fix links, layout");
+  const asked = [];                                                // every request the browser makes, with the Referer it sent
+  const b = await boot({ fb: adsFb(TOK), graph: mock({ rows: PAGES }) });
+  b.ctx.on("request", (r) => asked.push({ url: r.url(), referer: r.headers().referer }));
+  await adsPage(b);
+  const pop = await openPages(b);
+  ok("rows", await rowsAre(pop, ".pg", 4));
+  const av = (id) => pop.evaluate((pid) => {
+    const box = document.querySelector(`.pg[data-page="${pid}"] .av`), img = box.querySelector("img"), icon = box.querySelector(".i"), cs = getComputedStyle(box);
+    return { cls: box.className, ariaHidden: box.getAttribute("aria-hidden"), w: box.offsetWidth, h: box.offsetHeight, radius: cs.borderRadius, color: cs.color, bg: cs.backgroundColor,
+      img: img && { src: img.getAttribute("src"), rp: img.getAttribute("referrerpolicy"), loading: img.getAttribute("loading"), decoding: img.getAttribute("decoding"), alt: img.getAttribute("alt"),
+        w: img.getAttribute("width"), h: img.getAttribute("height"), natural: img.naturalWidth },
+      icon: icon && { cls: icon.className, visible: getComputedStyle(icon).visibility, mask: getComputedStyle(icon).maskImage || getComputedStyle(icon).webkitMaskImage } };
+  }, id);
+  await until(pop, (pid) => !!document.querySelector(`.pg[data-page="${pid}"] .av.ok`), ids.nova);
+  const nova = await av(ids.nova);
+  ok("Nova: a picture URL on fbcdn.net renders an <img> in a 24 px circle", !!nova.img && nova.img.src === PIC && nova.w === 24 && nova.h === 24 && /av-circle/.test(nova.cls) && parseFloat(nova.radius) >= 12, JSON.stringify(nova));
+  ok("…decorative (alt empty, aria-hidden), no referrer, lazy, async, width and height set", nova.img.alt === "" && nova.ariaHidden === "true" && nova.img.rp === "no-referrer" && nova.img.loading === "lazy" && nova.img.decoding === "async" && nova.img.w === "24" && nova.img.h === "24", JSON.stringify(nova.img));
+  ok("…it did load (the placeholder icon is hidden behind it)", nova.img.natural > 0 && /\bok\b/.test(nova.cls) && nova.icon.visible === "hidden", JSON.stringify(nova));
+  const req = asked.find((r) => r.url === PIC);
+  ok("…and the request for it carried no Referer", !!req && req.referer === undefined, JSON.stringify(req));
+  const backed = await av(ids.backed);
+  ok("Backed: no picture field → the Lucide flag on a muted 24 px circle, in the secondary text colour, no <img>", !backed.img && backed.icon?.cls === "i i-flag" && backed.icon.visible === "visible" && has(backed.icon.mask, "flag.svg")
+    && backed.w === 24 && backed.h === 24 && backed.color === "rgb(96, 103, 112)" && backed.bg === "rgb(240, 242, 245)" && parseFloat(backed.radius) >= 12, JSON.stringify(backed));
+  const fresh = await av(ids.fresh);
+  ok("Fresh: a picture URL on another host is never kept: placeholder, no <img>, no request to that host", !fresh.img && fresh.icon?.cls === "i i-flag" && !asked.some((r) => /evil\.example\.com/.test(r.url)), JSON.stringify(fresh));
+  ok("Hidden: a picture that fails to load (404) falls back to the placeholder, the broken <img> is gone", await until(pop, (pid) => { const box = document.querySelector(`.pg[data-page="${pid}"] .av`); return !!box && !box.querySelector("img") && !box.classList.contains("ok"); }, ids.hidden)
+    && b.images.some((x) => /broken_50/.test(x)) && (await av(ids.hidden)).icon?.visible === "visible", JSON.stringify(await av(ids.hidden)));
+  const failed = b.images.filter((x) => /broken_50/.test(x)).length;
+  await pop.fill("#pageFilter", "page"); await pop.fill("#pageFilter", "");
+  await rowsAre(pop, ".pg", 4); await pop.waitForTimeout(300);
+  ok("a redraw (search typed and cleared) does not ask again for a picture that failed, and keeps the one that loaded", b.images.filter((x) => /broken_50/.test(x)).length === failed && (await av(ids.nova)).img?.src === PIC && !(await av(ids.hidden)).img, String(failed));
+  ok("no <img> in the list is ever visible without having loaded (no broken-image icon can show)", await pop.evaluate(() => [...document.querySelectorAll(".av img")].every((i) => i.closest(".av").classList.contains("ok") ? i.naturalWidth > 0 : getComputedStyle(i).opacity === "0")));
+
+  // fix links: the right URL, a new tab, nothing sent, the row untouched, a keyboard key
+  const hits0 = b.hits.length;
+  await pop.evaluate(() => { window.__rowClicks = 0; document.querySelectorAll(".pg").forEach((r) => r.addEventListener("click", () => { window.__rowClicks++; })); });
+  const clickOpens = async (act) => {
+    const [np] = await Promise.all([b.ctx.waitForEvent("page", { timeout: 8000 }), act()]);
+    await np.waitForURL(/facebook\.com/, { timeout: 8000 }).catch(() => {});
+    const url = np.url(); await np.close(); return url;
+  };
+  const fix = (id, key) => pop.locator(`.pg[data-page="${id}"] [data-focus="pfix:${id}:${key}"]`);
+  ok("a fix link opens its URL in a new tab", (await clickOpens(() => fix(ids.hidden, "noAdv").click())) === LINKS.accountQuality());
+  ok("…the Instagram one opens the Ads Manager ads view", (await clickOpens(() => fix(ids.fresh, "noIg").click())) === LINKS.adsManagerHome());
+  ok("…and Enter on the focused link does the same (keyboard)", (await clickOpens(async () => { await fix(ids.hidden, "unpublished").focus(); await pop.keyboard.press("Enter"); })) === LINKS.pageSuite(ids.hidden));
+  ok("a secondary link opens its URL too", (await clickOpens(() => pop.locator(`[data-focus="plink:${ids.nova}:bm"]`).click())) === "https://business.facebook.com/settings/pages?business_id=555");
+  ok("fix links and secondary links never reach the row's own click handler (nothing toggles), and send nothing to Graph", (await pop.evaluate(() => window.__rowClicks)) === 0 && b.hits.length === hits0, `${await pop.evaluate(() => window.__rowClicks)} / ${b.hits.length - hits0}`);
+  ok("the list is the same after the clicks", (await rowsAre(pop, ".pg", 4)) && (await rowOf(pop, "Hidden Page")).probs.length === 4);
+
+  // layout: nothing sticks out at 560 and 380, in both languages
+  for (const lang of ["en", "ru"]) {
+    await pop.click(`[data-lang="${lang}"]`);
+    for (const w of [560, 380]) {
+      await pop.setViewportSize({ width: w, height: 900 }); await pop.waitForTimeout(150);
+      const m = await pop.evaluate(() => {
+        const de = document.documentElement, r = (n) => n.getBoundingClientRect(), rows = [...document.querySelectorAll(".pg")];
+        return { sw: de.scrollWidth, cw: de.clientWidth, rowsOver: rows.filter((x) => x.scrollWidth > x.clientWidth + 0.5).length,
+          outside: rows.flatMap((x) => [...x.querySelectorAll(".act-inline, .row-link, .pill, .acc-id, .av")].filter((n) => r(n).right > r(x).right - 15.5 || r(n).left < r(x).left + 15.5)).length,
+          oneLinePill: rows.every((x) => r(x.querySelector(".pill")).height <= 25), cut: [...document.querySelectorAll(".act-inline .act-label")].filter((l) => l.scrollWidth > l.clientWidth).length };
+      });
+      ok(`${lang} ${w}px: no horizontal scroll, no row wider than the window`, m.sw <= m.cw && m.rowsOver === 0, JSON.stringify(m));
+      ok(`${lang} ${w}px: every link, pill and picture stays inside the row's 16 px gutters; the pill is one line; no fix label is cut`, m.outside === 0 && m.oneLinePill && m.cut === 0, JSON.stringify(m));
+    }
+  }
+  ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
+  await b.ctx.close();
+}
+
+export const flows = { pagesRows: rowsFlow, pages: pagesFlow, pagesFields: fieldsFlow, pagesErrors: errorsFlow, pagesToken: tokenFlow, pagesCache: cacheFlow };

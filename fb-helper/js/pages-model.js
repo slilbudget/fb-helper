@@ -1,10 +1,12 @@
 // The Pages tab without the screen: which fields are asked for, how a row is reduced, what a page's Instagram / publishing /
-// ad-rights state is, the problem chips, search, the IDs to copy. No DOM, no chrome.*, no imports: test/pages.test.mjs runs it
-// in plain Node. pages.js draws it.
+// ad-rights state is, the problems with their fixes, the problem chips, search, the IDs to copy. No DOM, no chrome.*; the only
+// import is links.js (pure): test/pages.test.mjs runs it in plain Node. pages.js draws it.
 //
 // Never a Page access token. `me/accounts` hands one out per page by default; the `fields` list below is explicit and
 // never names it, and slimPage keeps a whitelist of keys, so a token Graph sent anyway is gone before it reaches state,
 // storage or the screen.
+
+import { LINKS, imageUrl } from "./links.js";
 
 // Fields asked for on top of id and name. Docs are thin and none of this is live-verified, so each one is optional:
 // readPaged drops the one Graph complains about and asks the same page again. { key: expression }.
@@ -23,11 +25,12 @@ export const OPTIONAL = {
   connected_instagram_account: "connected_instagram_account{id,username}",
   promotion_eligible: "promotion_eligible",
   promotion_ineligible_reason: "promotion_ineligible_reason",
+  picture: "picture{url}",                          // the page's picture: only the URL is kept, and only if imageUrl() accepts it
   business: "business{id,name}",
 };
 export const BASE = ["id", "name"];
 // A complaint can name a field INSIDE one of the expressions above. Then the parents are dropped, not everything.
-const NESTED = { username: ["instagram_business_account", "connected_instagram_account"] };
+const NESTED = { username: ["instagram_business_account", "connected_instagram_account"], url: ["picture"] };
 const IG_KEYS = ["connected_page_backed_instagram_account", "instagram_business_account", "connected_instagram_account"];
 
 // ---------- errors ----------
@@ -88,6 +91,7 @@ export function slimPage(raw, skipped = []) {
     connected_page_backed_instagram_account: node(r.connected_page_backed_instagram_account),
     instagram_business_account: ig(r.instagram_business_account), connected_instagram_account: ig(r.connected_instagram_account),
     promotion_eligible: bool(r.promotion_eligible), promotion_ineligible_reason: text(r.promotion_ineligible_reason, 300),
+    picture: imageUrl(r.picture?.data?.url ?? r.picture?.url) ?? undefined,         // Graph wraps it: picture.data.url
     business: node(r.business, (b) => def({ name: text(b.name, 200) })),
     _skip: skip.length ? skip : undefined,
   });
@@ -140,6 +144,44 @@ export function problemCounts(rows) {
   const counts = Object.fromEntries(Object.keys(PROBLEMS).map((k) => [k, 0]));
   for (const p of rows) for (const k of problemsOf(p)) counts[k]++;
   return counts;
+}
+
+// ---------- problems and their fixes ----------
+// Worst first: this is the order of the problem lines in a row AND the pill of the row is the first of them.
+export const PRIORITY = ["noAdv", "unpublished", "noRights", "noIg"];
+// Where each problem is fixed. label / tip are i18n keys (strings/pages.js); url(page) → https URL or null (a null drops the link).
+// One link per problem, always a page on facebook.com that links.js built. The extension changes nothing by opening it.
+export const FIXES = {
+  noAdv: { label: "pages.fix.review", tip: "pages.fix.reviewTitle", url: () => LINKS.accountQuality() },
+  unpublished: { label: "pages.fix.publish", tip: "pages.fix.publishTitle", url: (p) => LINKS.pageSuite(p.id) },
+  // The owner business is known only when Graph said so (`business` is optional): then its Pages settings, else Business Suite.
+  noRights: { label: "pages.fix.grant", tip: "pages.fix.grantTitle", url: (p) => LINKS.bmPages(p.business?.id) || LINKS.pageSuite(p.id) },
+  noIg: { label: "pages.fix.ig", tip: "pages.igNoneTitle", url: () => LINKS.adsManagerHome() },
+};
+// The problems of a page, worst first: [{ key, tone, label (i18n key), tip (i18n key), rawTip (Graph's own words, if any), fix }].
+// fix = { label, tip, url } or null. Nothing wrong = [].
+export function issuesOf(p) {
+  const found = problemsOf(p);
+  return PRIORITY.filter((k) => found.includes(k)).map((key) => {
+    const f = FIXES[key], url = f.url(p);
+    return {
+      key, tone: PROBLEMS[key], label: `pages.p.${key}`,
+      tip: key === "noAdv" ? "pages.noAdvTitle" : key === "unpublished" ? "pages.unpublishedTitle" : key === "noRights" ? "pages.noRightsTitle" : "pages.igNoneTitle",
+      rawTip: key === "noAdv" ? p.promotion_ineligible_reason : undefined,        // Graph's reason is the tooltip, never a line of its own
+      fix: url ? { label: f.label, tip: f.tip, url } : null,
+    };
+  });
+}
+// The one pill of a row: the worst problem, else the Instagram state (ok for a real or page-backed account, neutral when unknown).
+// → { tone, label (i18n key), params, tip (i18n key), rawTip }
+export function statusOf(p) {
+  const worst = issuesOf(p)[0];
+  if (worst) return { tone: worst.tone, label: worst.label, params: {}, tip: worst.tip, rawTip: worst.rawTip };
+  const ig = igOf(p);
+  if (ig.state === "real") return ig.username
+    ? { tone: "ok", label: "pages.igReal", params: { u: ig.username }, tip: "pages.igRealTitle" } : { tone: "ok", label: "pages.igRealNoName", params: {}, tip: "pages.igRealTitle" };
+  if (ig.state === "pbia") return { tone: "ok", label: "pages.igPbia", params: {}, tip: "pages.igPbiaTitle" };
+  return { tone: "", label: "pages.igUnknown", params: {}, tip: "pages.igUnknownTitle" };   // the Instagram fields were refused: no verdict
 }
 
 // ---------- list ----------
