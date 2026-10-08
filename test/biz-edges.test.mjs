@@ -48,7 +48,7 @@ test("readBusinessEdges: the business list is asked with limit 51 (one over the 
   assert.equal(urls[0].searchParams.get("limit"), "51"); assert.equal(urls[0].searchParams.get("fields"), "id,name");
   assert.deepEqual(urls.slice(1).map((u) => edgeOf(u).join("/")), ["1001/owned", "1002/owned", "1001/client", "1002/client"], "owned edges of every business first");
   assert.deepEqual(r.rows.map((x) => x.id), ["1001-owned", "1002-owned", "1001-client", "1002-client"]);
-  assert.deepEqual([r.truncated, r.failed], [false, false]);
+  assert.deepEqual([r.truncated, r.failed, r.listFailed], [false, false, false]); assert.deepEqual(r.failedBms, []);
   assert.deepEqual(r.rows.map((x) => [x.bm, x.edge]), [["1001", "owned"], ["1002", "owned"], ["1001", "client"], ["1002", "client"]], "the tab's map saw the business and the edge");
 });
 
@@ -63,7 +63,7 @@ test("readBusinessEdges: more than 50 businesses (the 51st is seen, or paging.ne
   assert.equal(r.truncated, true, "paging.next alone is enough"); assert.equal(urls.length, 4);
 });
 
-test("readBusinessEdges: an edge that hits its page limit makes the answer truncated; an edge that errors is skipped, the rest stays, failed = true", async () => {
+test("readBusinessEdges: an edge that hits its page limit makes the answer truncated; an edge that errors is skipped, the rest stays, and ONLY that business is in failedBms", async () => {
   prime();
   const urls = fakeGraph((u) => {
     if (isBms(u)) return { body: { data: bms(3) } };
@@ -75,13 +75,15 @@ test("readBusinessEdges: an edge that hits its page limit makes the answer trunc
   const r = await readBusinessEdges({ gen: state.gen, edges: ["owned"], readEdge: reader({ maxPages: 3 }) });
   assert.equal(urls.filter((u) => edgeOf(u)?.[0] === "1001" && !isBms(u)).length, 3, "3 pages of the endless edge, then it stops");
   assert.equal(r.truncated, true); assert.equal(r.failed, true);
+  assert.deepEqual(r.failedBms, ["1002"], "per business: the endless edge is a page limit (truncated), not a failure; the refused one is the only unread business");
+  assert.equal(r.listFailed, false);
   assert.deepEqual(r.rows.map((x) => x.id).filter((x) => x === "ok"), ["ok"], "the business after the failing one was still read");
 });
 
-test("readBusinessEdges: the business list itself failing is a failed, empty answer — never an error and never a complete one", async () => {
+test("readBusinessEdges: the business list itself failing is a failed, empty answer (listFailed, no business is named) — never an error and never a complete one", async () => {
   prime();
   fakeGraph(() => ({ status: 400, body: { error: { code: 200, message: "(#200) business_management" } } }));
-  assert.deepEqual(await readBusinessEdges({ gen: state.gen, edges: ["owned"], readEdge: reader() }), { rows: [], truncated: false, failed: true });
+  assert.deepEqual(await readBusinessEdges({ gen: state.gen, edges: ["owned"], readEdge: reader() }), { rows: [], truncated: false, failed: true, failedBms: [], listFailed: true });
   fakeGraph(() => ({ status: 500, body: { error: { code: 1, message: "boom" } } }));
   assert.equal((await readBusinessEdges({ gen: state.gen, edges: ["owned"], readEdge: reader() })).failed, true);
 });
@@ -92,15 +94,18 @@ test("readBusinessEdges: the walk ends as soon as the session is dead, the API p
   let r = await readBusinessEdges({ gen: state.gen, edges: ["owned", "client"], readEdge: reader() });
   assert.equal(urls.filter((u) => !isBms(u)).length, 2, "1001 read, 1002 answered 190 (dead): nothing after it is sent");
   assert.equal(r.failed, true);
+  assert.deepEqual(r.failedBms, ["1001", "1002", "1003", "1004"], "the client edge of 1001 was never read either: every business has an unread edge");
   prime();
   urls = fakeGraph((u) => (isBms(u) ? { body: { data: bms(4) } } : edgeOf(u)[0] === "1002" ? { status: 429, body: { error: { code: 4, message: "limit" } } } : { body: { data: [] } }));
   r = await readBusinessEdges({ gen: state.gen, edges: ["owned"], readEdge: reader() });
   assert.equal(urls.filter((u) => !isBms(u)).length, 2, "a throttle answer starts the pause: the last two businesses are not asked");
   assert.equal(r.failed, true);
+  assert.deepEqual(r.failedBms, ["1002", "1003", "1004"], "one edge per business: 1001 was read, the rest is unread");
   prime(); state.budget = [[Date.now(), 599]];
   urls = fakeGraph((u) => (isBms(u) ? { body: { data: bms(4) } } : { body: { data: [] } }));
   r = await readBusinessEdges({ gen: state.gen, edges: ["owned"], readEdge: reader() });   // the list read is the 600th request
   assert.equal(urls.length, 1, "the budget is spent after the business list: no edge is sent"); assert.equal(r.failed, true);
+  assert.deepEqual(r.failedBms, ["1001", "1002", "1003", "1004"]);
 });
 
 test("readBusinessEdges: a token change ends the walk with Stale, checked before every edge; nothing else is ever thrown", async () => {
@@ -122,5 +127,5 @@ test("readBusinessEdges: one skip set shared by the walk is what the tab's readE
   const edge = urls.filter((u) => !isBms(u));
   assert.equal(edge.length, 4, "first edge twice (refused, then without), the other two once");
   assert.equal(edge.filter((u) => u.searchParams.get("fields").includes("insights")).length, 1);
-  assert.deepEqual([r.failed, r.truncated, r.rows.length], [false, false, 3]);
+  assert.deepEqual([r.failed, r.truncated, r.rows.length, r.failedBms.length], [false, false, 3, 0]);
 });

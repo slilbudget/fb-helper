@@ -56,7 +56,7 @@ const AD_STATUS = {
 };
 
 Object.assign(state, {
-  accounts: [], fetchedAt: 0, truncated: false, filter: "", statusFilter: null, accLoading: false,
+  accounts: [], fetchedAt: 0, truncated: false, failedBms: [], filter: "", statusFilter: null, accLoading: false,   // failedBms: ids of the businesses whose accounts could not be read
   autoPage: null,                                    // the FB page load the list was last loaded for (the automatic refresh on a new page load)
   bmFilter: null,                                    // { id, name } from the Businesses tab ("ad accounts of this business"); not saved
   open: new Set(), ads: {}, adsBusy: new Set(), adsHidden: new Set(),
@@ -106,9 +106,10 @@ const slim = (a) => slimWith(state.skip)(a);
 
 // me/adaccounts lists only the accounts assigned to the person. A BM admin also reads every account of the BM
 // (owned + client) without being assigned to it (live-checked 2026-10-08: 20 BM accounts, 7 of them assigned), so the
-// list adds those. Best effort: a business or an edge this token can't read is skipped, the rest of the list stays - and the answer
-// says it is not whole (a partial list is never "complete": truncated = a cap was hit or ANY read failed). The walk is biz-edges.js: at
-// most 50 businesses, 3 pages per edge, owned edges before client edges, over as soon as nothing more may go out, one skip set for the whole
+// list adds those. Best effort: a business or an edge this token can't read is skipped, the rest of the list stays - and the answer says WHICH
+// business it could not read (failedBms: only those lose their verdict on the Businesses tab and get the muted hint; the list is not "not all"
+// for everybody because of one refused business). `truncated` stays for real limits: a cap, a page limit, a business list that could not be read.
+// The walk is biz-edges.js: at most 50 businesses, 3 pages per edge, owned edges before client edges, over as soon as nothing more may go out, one skip set for the whole
 // walk (a field one edge refused is not asked for again on the next: it is a copy of the assigned list's set, so what an unassigned account
 // refuses never drops the field for the assigned list).
 // These rows are marked _viaBm (not assigned to the person: "No access" + "Assign me" in the list); _bmId / _bmName is the business they were
@@ -137,10 +138,11 @@ function setLoading(on) { state.accLoading = on; renderAccounts(); emit("account
 const REFRESH_AFTER_MS = 10 * 60 * 1000;
 const loader = listLoader({
   name: "accounts", button: "#loadAccounts", slotMs: MIN_REFRESH_MS, waitKey: "acc.wait",
-  keys: ["accounts", "fetchedAt", "truncated", "ads", "view"],
-  reset: () => Object.assign(state, { accounts: [], fetchedAt: 0, truncated: false, open: new Set(), ads: {}, adsHidden: new Set() }),
+  keys: ["accounts", "fetchedAt", "truncated", "failedBms", "ads", "view"],
+  reset: () => Object.assign(state, { accounts: [], fetchedAt: 0, truncated: false, failedBms: [], open: new Set(), ads: {}, adsHidden: new Set() }),
   load: (ses, { live = false } = {}) => Object.assign(state, {
     accounts: ses.accounts || [], fetchedAt: ses.fetchedAt || 0, truncated: !!ses.truncated,
+    failedBms: Array.isArray(ses.failedBms) ? ses.failedBms.filter((id) => typeof id === "string") : [],
     // another window's saved ads, except what this window is still reading itself; the open rows are this window's own view
     ads: { ...(ses.ads || {}), ...(live ? ownFlight() : {}) },
     ...(live ? {} : { open: new Set(ses.view?.open), adsHidden: new Set(ses.view?.hidden) }),
@@ -160,19 +162,21 @@ const loader = listLoader({
     const mine = await readPaged("me/adaccounts", { base: BASE_FIELDS, optional: OPTIONAL_FIELDS, skip: () => state.skip, map: slim });
     if (gen !== state.gen) throw new Stale();
     const viaBm = await readBmAccounts(gen, new Set(mine.rows.map((a) => a.account_id)));
-    return { rows: [...mine.rows, ...viaBm.rows], truncated: mine.truncated || viaBm.truncated, failed: viaBm.failed };
+    // Not all of it: a limit was hit (cap, page limit) or the business list itself was not readable. A business whose edge could not be read is
+    // NOT that: it is named in failedBms and only its own verdict is withheld.
+    return { rows: [...mine.rows, ...viaBm.rows], truncated: mine.truncated || viaBm.truncated || viaBm.listFailed, failedBms: viaBm.failedBms };
   },
-  commit: async ({ rows, truncated, failed }, { auto, owner }) => {
+  commit: async ({ rows, truncated, failedBms }, { auto, owner }) => {
     // Another user's list: their ads and open rows don't belong to this one.
     if (owner !== state.owner) Object.assign(state, { open: new Set(), ads: {}, adsHidden: new Set() });
-    // A partial list is never "complete": a business or an edge that could not be read counts like a cut-off page.
-    truncated = truncated || failed;
-    Object.assign(state, { accounts: rows, fetchedAt: Date.now(), truncated, owner });
-    await saveSession({ accounts: rows, fetchedAt: state.fetchedAt, truncated, owner, ads: adsToSave() });
+    Object.assign(state, { accounts: rows, fetchedAt: Date.now(), truncated, failedBms, owner });
+    await saveSession({ accounts: rows, fetchedAt: state.fetchedAt, truncated, failedBms, owner, ads: adsToSave() });
     await saveView();
-    // The list itself is the answer to an automatic load; it only speaks up for a cut-off one. A failed read is not announced by an automatic
-    // load (the reason, a dead session or a refused edge, has its own message; "(not all)" stays on the list).
-    return !auto || (truncated && !failed) ? t("acc.loaded", { n: rows.length }) + (failed ? t("acc.readFail") : truncated ? t("acc.truncated") : "") : null;
+    // The list itself is the answer to an automatic load; it only speaks up for a cut-off one (a business that could not be read is said by a
+    // click, and always by the muted line under the list and in that business's row).
+    return !auto || truncated
+      ? t("acc.loaded", { n: rows.length }) + (truncated ? t("acc.truncated") : "") + (failedBms.length ? t("acc.readFail", { n: failedBms.length, w: tn(failedBms.length, "acc.bizCount") }) : "")
+      : null;
   },
   // A request went out: this FB page load has had its list (never written for a refusal made before the network).
   sent: ({ gen }) => { if (gen === state.gen) { state.autoPage = state.tokenSource?.page || null; saveSession({ autoPage: state.autoPage }); } },
@@ -277,7 +281,11 @@ function drawAccounts() {
   groups.sort((a, b) => (a.id === null) - (b.id === null) || compareSpend(a.sum, b.sum, r) || byName(a.name, b.name));   // the personal group (no business) is last
   // No header while one business is filtered (it would repeat the chip), nor above a list that is all personal (it would repeat the total).
   const headers = !state.bmFilter && !(groups.length === 1 && groups[0].id === null);
-  fill(list, ...groups.flatMap((g) => [headers ? groupEl(g, r) : null, ...g.accounts.map((a) => renderAccount(a, stats.get(a), r))]));
+  // A business that could not be read: its accounts may be missing. One muted line, only when it concerns what is on screen (the business filter
+  // names one business; without it, any).
+  const unread = state.bmFilter ? state.failedBms.includes(state.bmFilter.id) : state.failedBms.length > 0;
+  fill(list, ...groups.flatMap((g) => [headers ? groupEl(g, r) : null, ...g.accounts.map((a) => renderAccount(a, stats.get(a), r))]),
+    unread ? el("div", { class: "acc-foot" }, t("acc.bmHint")) : null);
   wantRates(rows);
 }
 

@@ -167,6 +167,24 @@ test("buildRows: a partial Ad accounts list (page limit) says 'at least' and nev
   assert.equal(byId(build())["1001"].partial, false);
 });
 
+test("buildRows: a business whose edge could not be read (failedBms) loses its verdict and ONLY it does; the others keep theirs, and nothing is globally 'partial'", () => {
+  const rows = byId(build({ failedBms: ["1003", "1002"] }));
+  assert.equal(rows["1003"].state, null, "owns no account that was read, but its edge failed: 'No ad accounts' would be a guess");
+  assert.equal(rows["1003"].unread, true); assert.equal(rows["1003"].partial, true);
+  assert.deepEqual(rows["1003"].issues, [], "no verdict, no problem about its accounts");
+  assert.equal(rows["1002"].state, null, "its disabled account is not proof either: another one may be unread");
+  assert.deepEqual(rows["1002"].issues.map((i) => i.id), ["verification"]);
+  assert.equal(rows["1001"].state, "active"); assert.equal(rows["1001"].unread, false); assert.equal(rows["1001"].partial, false, "counts of a business that was read are exact");
+  assert.equal(rows["1004"].state, "active"); assert.equal(rows["1004"].partial, false);
+  assert.equal(rows["9999"].partial, false);
+  assert.equal(byId(build({ failedBms: ["1001"] }))["1001"].state, "active", "what WAS read is still a fact");
+  const none = byId(buildRows({ bms: BMS, accounts: [], loaded: true, stats, failedBms: ["1004"] }));
+  assert.equal(none["1004"].state, null); assert.equal(none["1003"].state, "none", "a business that was read and has nothing says so");
+  const before = byId(buildRows({ bms: BMS, accounts: [], loaded: false, stats, failedBms: ["1004"] }));
+  assert.equal(before["1004"].unread, false, "nothing is unread before the Ad accounts list is loaded");
+  assert.deepEqual(byId(build({ failedBms: undefined }))["1001"].unread, false);
+});
+
 test("totalOf: the sum of the rows shown (businesses only: the accounts of no business are not in it); a search narrows it", () => {
   const rows = build();
   assert.deepEqual(totalOf(rows), { totals: { USD: 117, EUR: 50 }, unknown: true, sort: 167 }, "100 + 0 + 10 + 7 USD, 50 EUR; 1000 and 5 belong to no business");

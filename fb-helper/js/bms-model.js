@@ -92,20 +92,24 @@ export function stateOf(counts, { loaded, truncated = false }) {
 // business belong to no row: this tab is about businesses, the Ad accounts tab has the rest.
 // Two readings of "belongs" (spend.js, one rule for every tab): COUNTS and STATE use the members (owner or read-through business), so a
 // business that only has shared accounts is not "No ad accounts"; SPEND uses the owner's group only, so no account is added twice.
-// → [{ key, id, name, known, picture, accounts, counts, partial, state, verification, verificationState, spend, issues }]
-//   accounts = the members; partial = the accounts list is incomplete (counts are "at least")
-export function buildRows({ bms = [], accounts = [], loaded = false, truncated = false, stats = () => null } = {}) {
+// → [{ key, id, name, known, picture, accounts, counts, partial, unread, state, verification, verificationState, spend, issues }]
+//   accounts = the members; partial = the business's accounts may be incomplete (counts are "at least"): the whole list was cut (truncated: a cap
+//   or a page limit) OR this business's own edge could not be read (failedBms: its id is in there) - and then no verdict about it, but only about it;
+//   unread = the second reason alone (the row says "couldn't read" in its body)
+export function buildRows({ bms = [], accounts = [], loaded = false, truncated = false, failedBms = [], stats = () => null } = {}) {
   const owned = new Map(groupByBusiness(accounts).filter((g) => g.id !== null).map((g) => [g.id, g]));
   const members = membersByBusiness(accounts);
+  const failed = new Set(failedBms);
   const ids = new Map();
   for (const b of bms) if (b && !ids.has(b.id)) ids.set(b.id, b);
   for (const id of [...owned.keys(), ...members.keys()]) if (!ids.has(id)) ids.set(id, null);
   return [...ids].map(([id, bm]) => {
     const own = owned.get(id)?.accounts ?? [], m = members.get(id), list = m?.accounts ?? [];
     const counts = countAccounts(list);
+    const unread = loaded && failed.has(id), cut = truncated || unread;
     const row = {
       key: id, id, name: bm?.name || owned.get(id)?.name || m?.name || "", known: !!bm, picture: bm?.profile_picture_uri,
-      accounts: list, counts, partial: loaded && truncated, state: stateOf(counts, { loaded, truncated }),
+      accounts: list, counts, partial: loaded && cut, unread, state: stateOf(counts, { loaded, truncated: cut }),
       verification: badVerification(bm), verificationState: verificationOf(bm),
       spend: addUp(own.map((a) => ({ spend: stats(a)?.spend ?? null, currency: a.currency }))),
     };

@@ -245,7 +245,7 @@ async function edgesFlow() {
   ok("…the count line says so", has(await text(pop, "#accountsTotal .total-meta"), "(not all)"), await text(pop, "#accountsTotal"));
   await b.ctx.close();
 
-  // an edge that answers an error: the list is partial for good ("not all"), a click says why, the automatic load is silent
+  // an edge that answers an error: that business is named (failedBms), the rest of the list is whole, a click says why, the automatic load is silent
   b = await boot({ fb: adsFb(TOK), graph: baseGraph({
     "/me/businesses": () => ({ body: { data: bm(2) } }),
     "/me/adaccounts": () => ({ body: { data: [acc("1", "1000")] } }),
@@ -257,10 +257,12 @@ async function edgesFlow() {
   ok("a refused edge: the rest of the list stays (the assigned account and the one read through the other edge)", await rowsAre(pop, ROW, 2));
   await idle(pop, "#tab-accounts");
   ok("…the automatic load says nothing about it", (await toastOf(pop)) === "", await toastOf(pop));
-  ok("…but the list is not 'complete': stored as truncated, 'not all' on the count line", (await stored(pop, "truncated")) === true && has(await text(pop, "#accountsTotal .total-meta"), "(not all)"), await text(pop, "#accountsTotal"));
+  ok("…the refused business is NAMED (failedBms), not the whole list called incomplete: not stored as truncated, no 'not all' on the count line", (await stored(pop, "truncated")) === false
+    && JSON.stringify(await stored(pop, "failedBms")) === '["1001"]' && (await text(pop, "#accountsTotal .total-meta")) === null, `${await stored(pop, "truncated")} ${JSON.stringify(await stored(pop, "failedBms"))} ${await text(pop, "#accountsTotal")}`);
+  ok("…one muted line under the list says some businesses could not be read (their accounts may be missing)", has(await text(pop, "#accountsList .acc-foot"), "Some businesses couldn't be read, so their ad accounts may be missing"), await text(pop, "#accountsList"));
   await resetLocks(pop);
   const toast = await clickToast(pop, "#loadAccounts");
-  ok("a click says why: some businesses could not be read", await until(pop, () => /some businesses could not be read/.test(document.querySelector("#toast").textContent)), toast);
+  ok("a click says why: how many businesses could not be read", await until(pop, () => /Ad accounts: 2 \(couldn't read 1 business\)/.test(document.querySelector("#toast").textContent)), toast);
   noErrs(b);
   await b.ctx.close();
 
@@ -273,7 +275,19 @@ async function edgesFlow() {
   await adsPage(b);
   pop = await popup(b, "accounts");
   ok("an endless edge: three pages are read (4 rows with the assigned one), no more", await rowsAre(pop, ROW, 4) && edgeHits(b).filter((h) => h.startsWith("/1000/owned_ad_accounts")).length === 3, String(edgeHits(b).length));
-  ok("…and the list says it is not all", (await stored(pop, "truncated")) === true);
+  ok("…and the list says it is not all (a page limit is a real limit: truncated for everybody, no business is 'unread')", (await stored(pop, "truncated")) === true && JSON.stringify(await stored(pop, "failedBms")) === "[]");
+  await b.ctx.close();
+
+  // the business list itself cannot be read: nothing was walked, no business can be named, so the whole list is "not all" (the global flag stays for this)
+  b = await boot({ fb: adsFb(TOK), graph: baseGraph({
+    "/me/businesses": () => ({ status: 400, body: { error: { code: 200, message: "(#200) Requires business_management permission" } } }),
+    "/me/adaccounts": () => ({ body: { data: [acc("1", "1000")] } }),
+  }) });
+  await adsPage(b);
+  pop = await popup(b, "accounts");
+  await rowsAre(pop, ROW, 1); await idle(pop, "#tab-accounts");
+  ok("an unreadable business list: stored as truncated with no business named, and the count line says 'not all'", (await stored(pop, "truncated")) === true && JSON.stringify(await stored(pop, "failedBms")) === "[]"
+    && has(await text(pop, "#accountsTotal .total-meta"), "(not all)") && (await pop.locator("#accountsList .acc-foot").count()) === 0, `${await stored(pop, "truncated")} ${await text(pop, "#accountsTotal")}`);
   await b.ctx.close();
 
   // a field refused on the first edge is not asked for again on the next ones (one skip set for the walk), and never reaches the assigned list's reads

@@ -3,7 +3,6 @@
 
 /* Lines around the rows: what to do about the filtered problem, "this token can't read pages", "some businesses couldn't be read". */
 .pg-note { padding: var(--spacing-3) var(--spacing-4) 0; }
-.pg-foot { padding: var(--spacing-3) var(--spacing-4) var(--spacing-4); color: var(--color-text-secondary); font-size: var(--text-sm); text-align: center; }
 
 /* The Instagram handle at the right of line 1 is a muted 13 px word; a long handle is cut, never allowed to squeeze the name. */
 #pagesList .lrow-value { max-width: min(168px, 34vw); overflow: hidden; text-overflow: ellipsis; }

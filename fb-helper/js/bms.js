@@ -24,8 +24,8 @@ import { ensureAccounts, reloadAccounts } from "./accounts.js";
 import { BM_BASE, BM_OPTIONAL, BM_LIMIT, BM_MAX_PAGES, BM_SLOT_MS, slimBm, bmKeysToDrop, buildRows, filterRows, sortRows, totalOf, spendOf, isPermError } from "./bms-model.js";
 
 // bmQuery is this tab's search (not saved). Not to be confused with accounts.js's state.bmFilter, the business the Accounts tab
-// is filtered by. state.accounts / fetchedAt / truncated / accLoading below are the Accounts tab's: the spend, counts and
-// status of a business are read from that list.
+// is filtered by. state.accounts / fetchedAt / truncated / failedBms / accLoading below are the Accounts tab's: the spend, counts and
+// status of a business are read from that list (failedBms = the businesses whose accounts could not be read: no verdict for those).
 Object.assign(state, {
   bms: [], bmsAt: 0, bmsTruncated: false, bmsLoading: false,
   bmPerm: false,                                     // the last read was refused as a permission error: the list draws the calm note
@@ -96,7 +96,7 @@ const loader = listLoader({
 // accounts tab groups it (bms-model.js buildRows). The list is "loaded" once it has been read (state.fetchedAt); until then the rows have no
 // status and no spend ("—"), and a row never claims "No ad accounts" about a list that is not there.
 const allRows = () => buildRows({
-  bms: state.bms, accounts: state.accounts, loaded: !!state.fetchedAt, truncated: state.truncated,
+  bms: state.bms, accounts: state.accounts, loaded: !!state.fetchedAt, truncated: state.truncated, failedBms: state.failedBms,
   stats: (a) => statsOf(a, state.period, state.fetchedAt),
 });
 const isFiltered = () => !!state.bmQuery.trim();
@@ -210,6 +210,8 @@ function bodyOf(r, name, sp, lineFix) {
     kv([accounts,
       r.verificationState ? [t("bms.kv.verification"), verLabel(r.verificationState)] : null,
       sp.kind === "approx" ? [t("acc.spend"), sp.full, { wide: true, title: sp.title }] : null]),
+    // This business's accounts could not be read: no verdict above, and the reason, muted. Only this business says it.
+    r.unread ? el("p", { class: "lrow-note" }, t("bms.unread")) : null,
     todo,
     r.known ? linksRow([{ id: "settings", label: "bms.settings", url: LINKS.bmSettings(r.id), tip: t("bms.openSettings") }], { owner: name, focus: `bm-link:${r.id}` }) : null,
   ];

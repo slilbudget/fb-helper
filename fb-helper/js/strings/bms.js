@@ -25,6 +25,7 @@ export const STRINGS = {
     "bms.st.unverified": "Не верифицирован", "bms.verTitle": "Верификация бизнеса",
     "bms.accCount": ["кабинет", "кабинета", "кабинетов"], "bms.disabledWord": ["заблокирован", "заблокированы", "заблокированы"],
     "bms.accsPartial": "Список кабинетов загружен не полностью — их может быть больше",
+    "bms.unread": "Не удалось прочитать кабинеты этого бизнеса — список может быть неполным",
     // the expanded row
     "bms.kv.accounts": "Кабинеты", "bms.kv.verification": "Верификация", "bms.activeWord": ["активен", "активны", "активны"],
     "bms.show": "Показать кабинеты →", "bms.showTitle": "Открыть вкладку «Кабинеты» с фильтром по этому бизнесу (список загрузится сам)",
@@ -56,6 +57,7 @@ export const STRINGS = {
     "bms.st.unverified": "Unverified", "bms.verTitle": "Business verification",
     "bms.accCount": ["ad account", "ad accounts"], "bms.disabledWord": ["disabled", "disabled"],
     "bms.accsPartial": "The ad account list is not complete — there may be more",
+    "bms.unread": "Couldn't read the ad accounts of this business — the list may be incomplete",
     // the expanded row
     "bms.kv.accounts": "Ad accounts", "bms.kv.verification": "Verification", "bms.activeWord": ["active", "active"],
     "bms.show": "Show ad accounts →", "bms.showTitle": "Open the Ad accounts tab filtered by this business (the list loads by itself)",

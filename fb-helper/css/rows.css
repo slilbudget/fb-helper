@@ -163,6 +163,10 @@ a.lrow-todo-link.primary { font-weight: 500; }
 .lgroup .lav { --lav: 16px; }
 .lgroup .lav .i { --size-icon: 10px; }
 
+/* A muted line under a list ("some businesses couldn't be read…") and the same kind of line inside an expanded body. */
+.pg-foot, .acc-foot { padding: var(--spacing-3) var(--spacing-4) var(--spacing-4); color: var(--color-text-secondary); font-size: var(--text-sm); text-align: center; }
+.lrow-note { margin: 0; color: var(--color-text-secondary); font-size: var(--text-sm); }
+
 /* ---------- narrow window ---------- */
 @media (max-width: 479.98px) {
   .lrow-idc { display: none; }                      /* the ID is still in the expanded body */

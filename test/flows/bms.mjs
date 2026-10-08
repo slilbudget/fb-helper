@@ -766,4 +766,34 @@ async function bmsLayoutFlow() {
   await b3.ctx.close(); await b4.ctx.close();
 }
 
-export const flows = { bms: bmsFlow, bmsSpend: bmsSpendFlow, bmsTruncated: bmsTruncatedFlow, bmsFields: bmsFieldsFlow, bmsPerm: bmsPermFlow, bmsAccounts: bmsAccountsFlow, bmsCache: bmsCacheFlow, bmsLimits: bmsLimitsFlow, bmsPaging: bmsPagingFlow, bmsLang: bmsLangFlow, bmsRows: bmsRowsFlow, bmsLayout: bmsLayoutFlow };
+// ---------- one business whose accounts could not be read ----------
+// Its edges answer an error: ONLY that business loses its verdict (and says "couldn't read" in its body); the others keep theirs, and the
+// list is not called "not all" for everybody because of it.
+async function bmsUnreadFlow() {
+  console.log("\n# bms: one business that could not be read");
+  const g = graphFor();
+  const refuse = { status: 400, body: { error: { code: 200, message: "(#200) Requires business_management permission" } } };
+  const b = await boot({ fb: adsFb(TOK), graph: (u) => (/\/1003\/(owned|client)_ad_accounts$/.test(u.pathname) ? refuse : g(u)), rates: ratesOk });
+  await adsPage(b);
+  const pop = await popup(b, "bms");
+  ok("six rows, as when everything is readable", await rowsAre(pop, ROW, 6));
+  await until(pop, () => document.querySelectorAll("#bmsList .lrow-status, #bmsList .lrow-sub .sr-only").length >= 5, null, 8000);
+  const gamma = await rowOf(pop, "Gamma Group"), beta = await rowOf(pop, "Beta Ads"), eps = await rowOf(pop, "Epsilon Digital"), alpha = await rowOf(pop, "Alpha Media");
+  ok("Gamma (its edges were refused): no verdict at all — not 'No ad accounts', no fix, no state word for screen readers", gamma.status === null && gamma.sr === null && gamma.fixes === 0 && gamma.more === null, JSON.stringify(gamma));
+  ok("…the other businesses keep theirs: Beta 'Unverified' (+1), Epsilon 'None active', Alpha silent and active", beta.status?.text === "Unverified" && eps.status?.text === "None active" && alpha.sr === "Active", JSON.stringify([beta.status, eps.status, alpha.sr]));
+  const t0 = await totalOfTab(pop);
+  ok("the total line does not say '(not all)': the list is not cut, one business could not be read", !t0.meta && t0.value === TODAY.total, JSON.stringify(t0));
+  ok("…stored: not truncated, the one business named", (await stored(pop, "truncated")) === false && JSON.stringify(await stored(pop, "failedBms")) === '["1003"]', `${await stored(pop, "truncated")} ${JSON.stringify(await stored(pop, "failedBms"))}`);
+  await toggle(pop, "Gamma Group");
+  const gb = await pop.evaluate(() => { const r = [...document.querySelectorAll("#bmsList .lrow")].find((x) => x.querySelector(".lrow-name").textContent === "Gamma Group"); const n = r.querySelector(".lrow-note");
+    return { note: n?.textContent.trim() ?? null, color: n && getComputedStyle(n).color, size: n && getComputedStyle(n).fontSize, todo: !!r.querySelector(".lrow-todo") }; });
+  ok("Gamma's body says, muted, that its ad accounts could not be read (12 px, secondary grey); no 'What to do' for a problem nobody can state", gb.note === "Couldn't read the ad accounts of this business — the list may be incomplete" && gb.color === "rgb(96, 103, 112)" && gb.size === "12px" && !gb.todo, JSON.stringify(gb));
+  await toggle(pop, "Alpha Media");
+  ok("…and only Gamma's: Alpha's body has no such line", await pop.evaluate(() => { const r = [...document.querySelectorAll("#bmsList .lrow")].find((x) => x.querySelector(".lrow-name").textContent === "Alpha Media"); return !!r.querySelector(".lrow-body") && !r.querySelector(".lrow-note"); }));
+  await pop.click('[data-tab="accounts"]');
+  ok("the Ad accounts tab says it under the list, once, and its count line stays clean", has(await text(pop, "#accountsList .acc-foot"), "Some businesses couldn't be read") && (await pop.locator("#accountsList .acc-foot").count()) === 1 && !(await text(pop, "#accountsTotal .total-meta")), await text(pop, "#accountsTotal"));
+  noErrs(b);
+  await b.ctx.close();
+}
+
+export const flows = { bms: bmsFlow, bmsUnread: bmsUnreadFlow, bmsSpend: bmsSpendFlow, bmsTruncated: bmsTruncatedFlow, bmsFields: bmsFieldsFlow, bmsPerm: bmsPermFlow, bmsAccounts: bmsAccountsFlow, bmsCache: bmsCacheFlow, bmsLimits: bmsLimitsFlow, bmsPaging: bmsPagingFlow, bmsLang: bmsLangFlow, bmsRows: bmsRowsFlow, bmsLayout: bmsLayoutFlow };
