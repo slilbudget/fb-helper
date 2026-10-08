@@ -10,6 +10,7 @@
 import { LINKS, imageUrl } from "./links.js";
 import { addUp, mergeUp, groupByBusiness, sortKey } from "./spend.js";
 import { rowAmount } from "./money-core.js";
+import { cleanText } from "./pure.js";
 
 // One paged read of me/businesses (graph.js readPaged). A token that cannot read an extra field just loses that field.
 // Only what the tab uses: the verification state (a failed one is a problem) and the logo.
@@ -27,7 +28,7 @@ export const BM_SLOT_MS = 60 * 1000;              // claimSlot("bms", …): one 
 // unknown, not "none").
 export const markerOf = (key) => `_no${key.replace(/(^|_)([a-z])/g, (_, __, c) => c.toUpperCase())}`;
 
-const text = (v, max = 200) => (typeof v === "string" ? v.slice(0, max) : undefined);
+const text = (v, max = 200) => (typeof v === "string" ? cleanText(v, max) : undefined);   // names: control and bidi characters out
 // Whitelist: only these keys leave Graph's answer (and go into storage.session). null = not a usable row (no numeric id).
 // skip = the Set of optional keys Graph refused so far; readPaged calls this per row, so a row keeps the skip state of its
 // own page.

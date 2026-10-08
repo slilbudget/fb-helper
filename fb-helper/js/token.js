@@ -2,7 +2,7 @@
 // "Token + cookies + UA" block.
 
 import { t } from "./i18n.js";
-import { ownerVerdict, profileBlock } from "./pure.js";
+import { ownerVerdict, profileBlock, cleanText } from "./pure.js";
 import { $, el, fill, pill, errText, numEl, toast, copy } from "./dom.js";
 import { state, Stale, saveSession, checkOwner, newGeneration, isDead, deadCode, clearDead } from "./state.js";
 import { graph } from "./graph.js";
@@ -233,9 +233,9 @@ async function checkToken() {
           el("div", { class: "perm-list" }, granted.join(" · "))) : null);
     }
     fill(box,
-      el("dt", {}, t("check.profile")), el("dd", {}, me.name ? `${me.name} · ` : "", numEl(me.id ?? "—")),
+      el("dt", {}, t("check.profile")), el("dd", {}, cleanText(me.name) ? `${cleanText(me.name)} · ` : "", numEl(me.id ?? "—")),
       el("dt", {}, t("check.app")), el("dd", {}, app.err ? errText(t("check.failed", { m: app.err.message }))
-        : [`${app.v.name} · `, numEl(app.v.id), KNOWN_APPS[app.v.id] ? ` (${KNOWN_APPS[app.v.id]})` : ""]),
+        : [`${cleanText(app.v.name)} · `, numEl(app.v.id), KNOWN_APPS[app.v.id] ? ` (${KNOWN_APPS[app.v.id]})` : ""]),
       el("dt", {}, grantedCount === null ? t("check.perms") : t("check.permsN", { n: grantedCount })), el("dd", {}, permsDd),
     );
   } catch (e) {

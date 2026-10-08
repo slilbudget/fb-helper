@@ -369,3 +369,8 @@ test("every label and tooltip of the problems and their fixes exists in both lan
   for (const l of ["ru", "en"]) for (const f of Object.values(FIXES)) assert.ok(STRINGS[l][f.label].length <= 32, `${l} ${f.label}`);
   for (const part of ["«Use Facebook Page»", "Identity → Instagram account", "once", "automated launches to Instagram placements fail"]) assert.ok(STRINGS.en["pages.igNoneTitle"].includes(part), part);
 });
+
+test("slimPage: control and bidi characters leave every name (page, business, Instagram handle, ineligibility reason)", () => {
+  const r = slimPage({ id: "5", name: "Nova\u202Etxt", business: { id: "9", name: "Biz\u2067" }, instagram_business_account: { id: "7", username: "@h\u202Ee" }, promotion_ineligible_reason: "no\nway\u2066" });
+  assert.equal(r.name, "Novatxt"); assert.equal(r.business.name, "Biz"); assert.equal(r.instagram_business_account.username, "he"); assert.equal(r.promotion_ineligible_reason, "no way");
+});

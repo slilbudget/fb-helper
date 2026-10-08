@@ -1,9 +1,14 @@
 // Every request to Graph goes through here: API version handling, usage and throttle bookkeeping, dead-session
 // detection, paged reads. No DOM: the "usage" event tells header.js to redraw the pill, markDead (state.js) tells
 // token.js. The host itself is handed in by the entry (config.js).
+//
+// What can go out, and when: GET only (graph() sends no body and no other method), to a path made of word segments only (an id from
+// Graph never gets to add "/", "?" or ".."), never while the token is dead, never during the API pause (30 min after a throttle answer, or
+// once the usage header says 95 %) and never past the soft budget of 600 requests per hour (counted here, kept in storage.session so a
+// reopened popup and a second window share it). The three "stop" cases answer with an error that has `local = true`: nothing was sent.
 
 import { t } from "./i18n.js";
-import { isSessionError, sessionLabel, verNum, latestVersion } from "./pure.js";
+import { isSessionError, sessionLabel, verNum, latestVersion, cleanText } from "./pure.js";
 import { getGraphUrl } from "./config.js";
 import { state, Stale, saveSession, onLoad, deadOf, sessionError, markDead } from "./state.js";
 import { on, emit } from "./bus.js";
@@ -12,6 +17,9 @@ const DEPRECATED_VERSION_CODE = 2635;
 const COOLDOWN_MS = 30 * 60 * 1000;          // throttle → 30 min hands off, no retries
 const TIMEOUT_MS = 20 * 1000;
 const THROTTLE_CODES = new Set([4, 17, 32, 613]);
+const USAGE_PAUSE_PCT = 95;                  // Meta's own usage figure this high: the next call would be throttled, so stop for the same 30 min
+const BUDGET_PER_HOUR = 600, BUCKET_MS = 10 * 60 * 1000, WINDOW_MS = 60 * 60 * 1000;
+const PATH_OK = /^\w+(\/\w+)*$/;             // "me", "me/adaccounts", "act_123/ads": nothing else may be asked for
 
 // Switch to a newer API version named in Graph's text (upgrade warning, #2635, or our own storage).
 // Only forward, and only a few majors ahead: a garbled message must not send us to v999.
@@ -39,6 +47,7 @@ export function setUsage(headers) {
   }
   if (worst !== null) { state.usage = worst; saveSession({ usage: worst }); }
   emit("usage");
+  if (worst !== null && worst >= USAGE_PAUSE_PCT && state.cooldownUntil <= Date.now()) startCooldown();   // not yet throttled, but one more call would be
 }
 export function startCooldown() {
   state.cooldownUntil = Date.now() + COOLDOWN_MS;
@@ -57,15 +66,48 @@ on("session", (ch) => {
   if (ch.cooldownUntil) { state.cooldownUntil = ch.cooldownUntil.newValue || 0; emit("usage"); }
 });
 
+// ---------- the soft hourly budget ----------
+// state.budget = [[bucketStart, n], …]: requests per 10-minute bucket of the last hour (small enough to write on every request).
+// Soft on purpose: two popup windows may both count one request, and the count is a guard against a runaway loop, not an accounting.
+Object.assign(state, { budget: [] });
+const liveBuckets = (now = Date.now()) => state.budget.filter(([at]) => now - at < WINDOW_MS);
+// Milliseconds until the budget has room again (0 = room now).
+export function budgetLeft(now = Date.now()) {
+  const live = liveBuckets(now);
+  if (live.reduce((n, [, c]) => n + c, 0) < BUDGET_PER_HOUR) return 0;
+  return Math.max(1, live[0][0] + WINDOW_MS - now);                  // the oldest bucket leaving the hour frees room
+}
+function budgetTake(now = Date.now()) {
+  const live = liveBuckets(now), at = now - (now % BUCKET_MS), last = live[live.length - 1];
+  if (last && last[0] === at) last[1]++; else live.push([at, 1]);
+  state.budget = live;
+  saveSession({ budget: live });
+}
+onLoad(["budget"], (ses) => { state.budget = Array.isArray(ses.budget) ? ses.budget.filter((b) => Array.isArray(b) && Number.isFinite(b[0]) && Number.isFinite(b[1])) : []; });
+on("session", (ch) => { if (ch.budget) state.budget = Array.isArray(ch.budget.newValue) ? ch.budget.newValue : []; });
+
+// Why nothing may be sent right now, as the text to show: the API pause, or the hourly budget. null = nothing stops a request (a dead token
+// is not in here: isDead() / sessionError say that). The list loaders ask BEFORE they take a rate slot, so a pause never burns a slot.
+export function pauseNote() {
+  const pause = state.cooldownUntil - Date.now();
+  if (pause > 0) return t("err.cooldown", { n: Math.ceil(pause / 60000) });
+  const left = budgetLeft();
+  return left > 0 ? t("err.budget", { n: Math.ceil(left / 60000) }) : null;
+}
+// Nothing was sent: a refusal made before the network (no token, dead session, pause, budget, a path that is not allowed).
+const local = (err) => Object.assign(err, { local: true });
+
 // One GET. The token and generation are fixed when the call starts.
 // retried: already re-sent once after #2635 moved us to a newer API version.
 export async function graph(path, params = {}, retried = false) {
   const token = state.token, gen = state.gen, ctl = state.ctl;
-  if (!token) throw new Error(t("err.noToken"));
+  if (!token) throw local(new Error(t("err.noToken")));
   const dead = deadOf(token);
-  if (dead) throw sessionError(dead.code);
-  const left = state.cooldownUntil - Date.now();
-  if (left > 0) throw new Error(t("err.cooldown", { n: Math.ceil(left / 60000) }));
+  if (dead) throw local(sessionError(dead.code));
+  if (!PATH_OK.test(String(path))) throw local(new Error(t("err.path")));
+  const pause = pauseNote();
+  if (pause) throw local(Object.assign(new Error(pause), { pause: true }));
+  budgetTake();
   const qs = new URLSearchParams(params).toString();
   const url = `${getGraphUrl()}${state.apiVersion}/${path}${qs ? `?${qs}` : ""}`;
   const signal = AbortSignal.any([ctl.signal, AbortSignal.timeout(TIMEOUT_MS)]);
@@ -97,8 +139,8 @@ export async function graph(path, params = {}, retried = false) {
     throw sessionError(code);
   }
   if (e) {
-    const err = new Error(e.error_user_msg || e.message || t("err.graph"));
-    err.code = e.code; err.subcode = e.error_subcode; err.raw = e.message || "";
+    const err = new Error(cleanText(e.error_user_msg || e.message, 500) || t("err.graph"));        // Graph's words reach a toast: cleaned like a name
+    err.code = e.code; err.subcode = e.error_subcode; err.raw = cleanText(e.message, 500);
     throw err;
   }
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -110,7 +152,7 @@ export async function graph(path, params = {}, retried = false) {
 // host permission makes them first-party here). No retry from inside the FB tab: Graph answers
 // Access-Control-Allow-Origin: *, which forbids credentialed CORS from a page (checked 2026-09-28).
 export async function fetchFromPopup(url, token, signal) {
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, credentials: "include", signal });
+  const res = await fetch(url, { method: "GET", headers: { Authorization: `Bearer ${token}` }, credentials: "include", signal });
   let body = null;
   try { body = await res.json(); } catch { body = null; }
   return { ok: res.ok, status: res.status, headers: res.headers, body };

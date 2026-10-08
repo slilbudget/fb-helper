@@ -1,5 +1,16 @@
 // Pure helpers: no DOM, no chrome.*. Split out of the popup modules so test/pure.test.mjs can run them in plain Node.
 
+// ---------- text and ids from Graph ----------
+// Everything Graph hands over is somebody else's text. A name can carry control characters (a newline would forge a line of the copied
+// block, a tab breaks a column) and bidi controls: U+202A-202E (embeddings / overrides) and U+2066-2069 (isolates) reorder what comes after
+// them, so a name ending in an override followed by "fdp.exe" would read as "exe.pdf". The controls are dropped, line breaks and tabs become
+// spaces, the rest is cut to `max`.
+// -> a string ("" when v is not one). Used for every name, label and message Graph sends that reaches the screen, storage or the clipboard.
+export const cleanText = (v, max = 200) =>
+  (typeof v === "string" ? v.replace(/[\u202A-\u202E\u2066-\u2069]/g, "").replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, " ").trim().slice(0, max) : "");
+// An id that may go into a path or a URL: 1–25 digits (an ad account id without "act_"). Anything else gives null.
+export const digitsId = (v) => ((typeof v === "string" || typeof v === "number") && /^\d{1,25}$/.test(String(v)) ? String(v) : null);
+
 // Graph says "this login / token is dead": code 190 (invalid / expired token; subcodes 458–467 say why — checkpoint,
 // password changed, logged out…) or 102 (API session). Subcodes alone are not trusted: they only mean this under 190.
 export function isSessionError(code) {
@@ -46,7 +57,7 @@ export const AD_PROBLEMS = ["DISAPPROVED", "WITH_ISSUES"];
 // Problem ads first; the rest keep Graph's order (Array.sort is stable).
 export const adRank = (status) => (AD_PROBLEMS.includes(status) ? 0 : 1);
 
-const asText = (v) => (typeof v === "string" ? v : v === null || v === undefined ? "" : JSON.stringify(v));
+const asText = (v) => cleanText(typeof v === "string" ? v : v === null || v === undefined ? "" : JSON.stringify(v), 2000);
 const placeName = (s) => { const w = String(s).replace(/_/g, " "); return w.charAt(0).toUpperCase() + w.slice(1); };
 // Why an ad is rejected, one line per reason. Sources (Meta docs, AdgroupReviewFeedback / AdgroupIssuesInfo):
 //   ad_review_feedback.global              map<reason, description> — all placements
@@ -89,9 +100,9 @@ export function ownerVerdict(firstParty, meId, cookieUser) {
 // The last paragraph of the token + cookies + UA block, always in English: whose profile, which BMs.
 // id: the profile id, only when it is the real one (owner verified); a custom app's /me id is app-scoped.
 // businesses: [{ id, name }], or null when the token could not read them; more: Graph has a next page.
-// Names come from Graph and can hold anything: control characters (a newline would forge a paragraph) become spaces.
+// Names come from Graph and can hold anything: control characters (a newline would forge a paragraph) become spaces, bidi controls go (cleanText).
 export function profileBlock({ name, id, businesses, more = false }) {
-  const clean = (s) => String(s ?? "").replace(/[\x00-\x1f\x7f]+/g, " ").trim();
+  const clean = (s) => cleanText(String(s ?? ""), 500);
   const who = clean(name);
   const profile = who && id ? `${who} (${id})` : who || clean(id) || "unknown";
   const list = Array.isArray(businesses) ? businesses.filter((b) => b?.id).map((b) => `${clean(b.name) || "no name"} (${clean(b.id)})`) : null;

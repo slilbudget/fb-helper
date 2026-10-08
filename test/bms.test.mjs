@@ -340,3 +340,8 @@ test("the plural words: 3 кабинета · 1 заблокирован / 3 ad 
     assert.deepEqual([1, 3].map((n) => tn(n, "bms.disabledWord")), ["disabled", "disabled"]);
   } finally { await set("en"); }
 });
+
+test("slimBm: control and bidi characters leave the name (it is drawn, searched and stored)", () => {
+  const r = slimBm({ id: "5", name: "Nova\u202E fdp\nMedia\u2066" });
+  assert.equal(r.name, "Nova fdp Media");
+});

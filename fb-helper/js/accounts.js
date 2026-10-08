@@ -8,7 +8,7 @@
 // and the ads. What a row says about an account is nextsteps.js accountState (pure, tested).
 
 import { t, tn, getLang } from "./i18n.js";
-import { AD_PROBLEMS, adRank, reviewLines, spendFloor, insightRow } from "./pure.js";
+import { AD_PROBLEMS, adRank, reviewLines, spendFloor, insightRow, cleanText, digitsId } from "./pure.js";
 import { $, $$, el, fill, toast, copy, keepFocus } from "./dom.js";
 import { numFmt, ago, sameDay, tzLabel, major } from "./format.js";
 import { state, Stale, saveSession, fbUser, claimSlot, slotLeft, registerCache, isDead, deadCode } from "./state.js";
@@ -104,10 +104,14 @@ on("session", (ch) => {
 // and keep only the display string of the funding source.
 // _floor: what the insights already prove was spent (today + last 30 days), kept for the "All time" figure.
 const spendOfRow = (x) => Number(x?.data?.[0]?.spend);
+// Every text Graph sends is cleaned (pure.js cleanText: control and bidi characters): names go to the screen, to storage and into search.
 const slimWith = (skip) => (a) => ({ ...a, _noInsights: skip.has("insights") || undefined,
+  name: cleanText(a.name), business_country_code: cleanText(a.business_country_code, 8) || undefined,
+  business: a.business && typeof a.business === "object" ? { id: a.business.id, name: cleanText(a.business.name) } : undefined,
   _floor: skip.has("insights") ? undefined : spendFloor(spendOfRow(a.p_today), spendOfRow(a.p_month)),
   _noPixels: skip.has("adspixels") || undefined,
-  funding_source_details: a.funding_source_details ? { display_string: a.funding_source_details.display_string } : undefined });
+  adspixels: Array.isArray(a.adspixels?.data) ? { data: a.adspixels.data.map((p) => ({ id: p?.id, name: cleanText(p?.name) })) } : a.adspixels,
+  funding_source_details: a.funding_source_details ? { display_string: cleanText(a.funding_source_details.display_string) } : undefined });
 const slim = (a) => slimWith(state.skip)(a);
 
 // me/adaccounts lists only the accounts assigned to the person. A BM admin also reads every account of the BM
@@ -451,12 +455,19 @@ function renderAds(box, { ads, more, error, stale, stats, statsAt, statsAll, sta
       steps.length ? el("div", { class: "ad-acts" }, steps.map((x) => fixLink(x, { tone: x.primary ? "bad" : "", owner: ad.name, focus: `adact:${ad.id}:${x.id}`, cls: "ad-act" }))) : null);
   }), ...(more ? [el("div", { class: "hint" }, t("ads.more", { n: ads.length }))] : []));
 }
+// The ads edge of an account. The id came from Graph: only digits go into a path (graph.js checks the shape of the whole path too).
+const adsPath = (id) => {
+  const d = digitsId(id);
+  if (!d) throw new Error(t("err.path"));
+  return `act_${d}/ads`;
+};
+const cleanAd = (ad) => ({ ...ad, name: cleanText(ad?.name) });         // an ad's name is somebody else's text like any other
 // One GET of an account's ads. issues_info (the reason for "with issues") is optional like the account fields:
 // if Graph rejects it, the call is repeated once without it.
 async function readAds(id, extra = {}) {
   for (;;) {
     const fields = `id,name,effective_status,ad_review_feedback${state.skip.has("issues_info") ? "" : ",issues_info"}`;
-    try { return await graph(`act_${id}/ads`, { fields, limit: "100", ...extra }); }
+    try { return await graph(adsPath(id), { fields, limit: "100", ...extra }); }
     catch (e) {
       if (e instanceof Stale || state.skip.has("issues_info") || !(e.raw || e.message || "").includes("issues_info")) throw e;
       state.skip.add("issues_info");
@@ -469,7 +480,7 @@ async function readAds(id, extra = {}) {
 // The first 100 ads only. The all-time part ("maximum") is the heaviest: if Graph refuses ("reduce the amount of
 // data", or the field) it is dropped for this account and the other periods are read again; a refusal of the rest
 // is remembered for the account too (never asked again until the token changes).
-const readStats = (id, withAll) => graph(`act_${id}/ads`, { fields: `id,${PERIOD_INSIGHTS}${withAll ? `,${AD_ALL_INSIGHTS}` : ""}`, limit: "100" });
+const readStats = (id, withAll) => graph(adsPath(id), { fields: `id,${PERIOD_INSIGHTS}${withAll ? `,${AD_ALL_INSIGHTS}` : ""}`, limit: "100" });
 const refused = (e) => e.code === 1 || e.code === 100;
 async function loadAdStats(id, gen, entry) {
   if (state.noStats.has(id) || gen !== state.gen) return;
@@ -526,13 +537,13 @@ async function loadAds(id) {
   try {
     const res = await readAds(id);
     if (!Array.isArray(res.data)) throw new Error(t("err.noData"));
-    let list = res.data;
+    let list = res.data.map(cleanAd);
     if (res.paging?.next) {
       // More than one page: the ads that need attention must not hide behind the first 100.
       try {
         const bad = await readAds(id, { effective_status: JSON.stringify(AD_PROBLEMS) });
         const have = new Set(list.map((a) => a.id));
-        if (Array.isArray(bad.data)) list = list.concat(bad.data.filter((a) => !have.has(a.id)));
+        if (Array.isArray(bad.data)) list = list.concat(bad.data.filter((a) => !have.has(a.id)).map(cleanAd));
       } catch (e) {
         if (e instanceof Stale) throw e;
         toast(e.message, true);                        // the first page is still worth showing

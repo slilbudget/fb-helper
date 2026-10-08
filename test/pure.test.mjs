@@ -1,7 +1,7 @@
 // Unit tests for fb-helper/js/pure.js — plain Node, no browser: `node --test test/*.test.mjs`
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isSessionError, sessionLabel, verNum, latestVersion, adRank, reviewLines, ownerVerdict, profileBlock, isUserAgent, lifetimeSpend, spendFloor, insightRow } from "../fb-helper/js/pure.js";
+import { isSessionError, sessionLabel, verNum, latestVersion, adRank, reviewLines, ownerVerdict, profileBlock, isUserAgent, lifetimeSpend, spendFloor, insightRow, cleanText, digitsId } from "../fb-helper/js/pure.js";
 
 test("session errors: code 190 (any subcode) and 102; subcodes alone are not enough", () => {
   for (const c of [190, "190", 102]) assert.ok(isSessionError(c), String(c));
@@ -194,4 +194,26 @@ test("i18n: status and reason words of an ad account are short, in both language
   }
   assert.ok(!has("reason.other"), "no generic 'Reason' word: an unknown code is a plain Disabled");
   await setLang("en");
+});
+
+// ---------- text and ids from Graph ----------
+const RLO = "\u202E", LRE = "\u202A", PDF = "\u202C", LRI = "\u2066", PDI = "\u2069";
+test("cleanText: bidi controls U+202A-202E and U+2066-2069 are dropped, control characters become spaces, the text is cut and trimmed", () => {
+  assert.equal(cleanText(`Invoice ${RLO}fdp.exe`), "Invoice fdp.exe");
+  assert.equal(cleanText(`${LRE}a${PDF}${LRI}b${PDI}`), "ab");
+  for (let c = 0x202A; c <= 0x202E; c++) assert.equal(cleanText(`x${String.fromCharCode(c)}y`), "xy", c.toString(16));
+  for (let c = 0x2066; c <= 0x2069; c++) assert.equal(cleanText(`x${String.fromCharCode(c)}y`), "xy", c.toString(16));
+  assert.equal(cleanText("two\nlines\r\n\tand a tab\u0000x\u2028y"), "two lines and a tab x y");
+  assert.equal(cleanText("  padded  "), "padded");
+  assert.equal(cleanText("abcdef", 3), "abc");
+  assert.equal(cleanText("Кириллица и 日本語 stay"), "Кириллица и 日本語 stay");
+  for (const bad of [null, undefined, 5, {}, ["a"], true]) assert.equal(cleanText(bad), "", String(bad));
+});
+test("digitsId: 1-25 digits (string or number) or null; nothing that could add a path segment", () => {
+  assert.equal(digitsId("123"), "123"); assert.equal(digitsId(123), "123"); assert.equal(digitsId("1".repeat(25)), "1".repeat(25));
+  for (const bad of [null, undefined, "", "act_1", "1/2", "1?x", "../1", " 1", "1 ", "1.5", -1, "1".repeat(26), {}, [1]]) assert.equal(digitsId(bad), null, JSON.stringify(bad));
+});
+test("reviewLines and profileBlock clean Graph's text of bidi controls too", () => {
+  assert.deepEqual(reviewLines({ ad_review_feedback: { global: { [`Rule ${RLO}x`]: `desc${LRI}` } } }), ["Rule x — desc"]);
+  assert.equal(profileBlock({ name: `Alex${RLO}`, id: "1", businesses: [{ id: "2", name: `Nova${LRE}` }] }), "Profile: Alex (1)\nBM: Nova (2)");
 });

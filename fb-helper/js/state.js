@@ -25,7 +25,10 @@ export const state = {
 export class Stale extends Error {}
 
 // ---------- storage ----------
-export const saveSession = (patch) => chrome.storage.session.set(patch);
+// Never rejects: resolves true when written, false when storage refused (quota, a closing page). Most callers do not wait for it, and a
+// rejected promise nobody handles is only noise in the console; the data is still in memory, so the screen is right either way.
+// Callers that must have it stored before going on (a list load) `await` it.
+export const saveSession = (patch) => chrome.storage.session.set(patch).then(() => true, (e) => { console.warn("storage.session.set failed:", e?.message || e); return false; });
 
 // Modules restore their part of the saved state through onLoad (keys to read from storage.session, then fn(session) —
 // may be async) or registerCache (below, for lists that belong to the FB user). Both are collected here so that

@@ -1,6 +1,6 @@
 // The Pages tab without the screen: which fields are asked for, how a row is reduced, which pages come from where (the
 // profile's own list and every business's owned / client pages), what a page's Instagram / publishing / ad-rights state is, the
-// problems with their fixes, the problem chips, search and order. No DOM, no chrome.*; the only import is links.js (pure):
+// problems with their fixes, the problem chips, search and order. No DOM, no chrome.*; the only imports are links.js and pure.js (both pure):
 // test/pages.test.mjs runs it in plain Node. pages.js draws it.
 //
 // The tab answers one question: is each page ready to run ads (an Instagram identity, published, may advertise, my access)?
@@ -10,6 +10,7 @@
 // storage or the screen. The business edges are read with the same list (minus `tasks`) and the same whitelist.
 
 import { LINKS, imageUrl } from "./links.js";
+import { cleanText } from "./pure.js";
 
 // Fields asked for on top of id and name. Docs are thin and none of this is live-verified, so each one is optional:
 // readPaged drops the one Graph complains about and asks the same page again. { key: expression }.
@@ -72,10 +73,7 @@ export function keysToDrop(e, skipped) {
 // of the business through which a page that me/accounts did not list was found).
 export const ROW_KEYS = ["id", "name", ...Object.keys(OPTIONAL), "_skip", "_viaBm"];
 const bool = (v) => (typeof v === "boolean" ? v : undefined);
-const text = (v, max = 200) => {
-  const s = typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f]+/g, " ").trim() : "";
-  return s ? s.slice(0, max) : undefined;
-};
+const text = (v, max = 200) => cleanText(v, max) || undefined;           // control and bidi characters out (pure.js cleanText)
 const idOf = (v) => ((typeof v === "string" || typeof v === "number") && /^\d{1,25}$/.test(String(v)) ? String(v) : undefined);
 // { id, ...extra } or undefined when the node has no usable id.
 const node = (v, extra = () => ({})) => { const id = idOf(v?.id); return id ? { id, ...extra(v) } : undefined; };

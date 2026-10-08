@@ -7,8 +7,8 @@ import { on, emit } from "../fb-helper/js/bus.js";
 import { registerTab, tabInfo, tabNames, registerRender, registerInit, registerStart, runInit, runStart, runRenders } from "../fb-helper/js/registry.js";
 import { addStrings, setLang, t, tn, has } from "../fb-helper/js/i18n.js";
 import { setGraphUrl } from "../fb-helper/js/config.js";
-import { state, Stale, loadState, onLoad, registerCache, cacheKeys, dropCache, checkOwner, claimSlot, slotLeft, newGeneration, markDead } from "../fb-helper/js/state.js";
-import { readPaged, optionalFieldIn } from "../fb-helper/js/graph.js";
+import { state, Stale, loadState, onLoad, registerCache, cacheKeys, dropCache, checkOwner, claimSlot, slotLeft, newGeneration, markDead, saveSession } from "../fb-helper/js/state.js";
+import { graph, readPaged, optionalFieldIn, pauseNote, budgetLeft } from "../fb-helper/js/graph.js";
 
 // ---------- fakes ----------
 function fakeChrome({ session = {}, cookies = {} } = {}) {
@@ -182,15 +182,16 @@ test("newGeneration and markDead announce themselves on the bus instead of calli
 // A fake Graph: handler(url) → { status, body }; every url is recorded.
 function fakeGraph(handler) {
   const urls = [];
-  globalThis.fetch = async (url) => {
-    const u = new URL(url); urls.push(u);
+  urls.opts = [];                                          // the second argument of every fetch, same order
+  globalThis.fetch = async (url, opts) => {
+    const u = new URL(url); urls.push(u); urls.opts.push(opts);
     const out = handler(u, urls.length) || {};
-    return { ok: (out.status || 200) < 400, status: out.status || 200, headers: new Headers(), json: async () => out.body };
+    return { ok: (out.status || 200) < 400, status: out.status || 200, headers: new Headers(out.headers || {}), json: async () => out.body };
   };
   return urls;
 }
 const fieldErr = (name) => ({ status: 400, body: { error: { code: 100, message: `(#100) Tried accessing nonexisting field (${name}) on node type (Page)` } } });
-const prime = () => { fakeChrome(); Object.assign(state, { token: "EAAB" + "x".repeat(70), dead: [], cooldownUntil: 0, gen: state.gen, skip: new Set() }); };
+const prime = () => { fakeChrome(); Object.assign(state, { token: "EAAB" + "x".repeat(70), dead: [], cooldownUntil: 0, budget: [], gen: state.gen, skip: new Set() }); };
 // key = the field name Graph complains about; value = what goes into `fields`
 const OPT = { picture: "picture{url}", about: "about", fan_count: "fan_count" };
 
@@ -266,4 +267,101 @@ test("optionalFieldIn: only a field complaint that names a not-yet-dropped optio
   assert.equal(optionalFieldIn(e(1, "Unknown field about"), OPT, new Set()), "about", "any error that talks about a field");
   assert.equal(optionalFieldIn(e(1, "boom about"), OPT, new Set()), null, "not a field error");
   assert.equal(optionalFieldIn(e(100, "(#100) something else"), OPT, new Set()), null, "names no optional key");
+});
+
+// ---------- graph(): what may go out ----------
+test("graph(): every request is an explicit GET with the token as a header and the cookies riding along, nothing else", async () => {
+  prime();
+  const urls = fakeGraph(() => ({ body: { id: "1" } }));
+  await graph("me", { fields: "id" });
+  assert.equal(urls.opts[0].method, "GET");
+  assert.equal(urls.opts[0].body, undefined);
+  assert.equal(urls.opts[0].credentials, "include");
+  assert.match(urls.opts[0].headers.Authorization, /^Bearer EAAB/);
+  assert.ok(!urls[0].search.includes("access_token"), "the token is never a query parameter");
+});
+
+test("graph(): only word segments are a path; anything else is refused before the network (an id from Graph cannot add '/', '?', '..')", async () => {
+  prime();
+  const urls = fakeGraph(() => ({ body: {} }));
+  for (const good of ["me", "me/adaccounts", "act_123/ads", "123/owned_ad_accounts"]) await graph(good);
+  assert.equal(urls.length, 4);
+  for (const bad of ["", "/me", "me/", "me//x", "../me", "me/../x", "act_1/ads?x=1", "1 2/ads", "me/ads#x", "act_1/ads\n", "https://evil.test/x", "a-b", "me/adaccounts/", "%2e%2e/x", "é/x"]) {
+    await assert.rejects(graph(bad), (e) => e.local === true && /disallowed path/.test(e.message), JSON.stringify(bad));
+  }
+  assert.equal(urls.length, 4, "nothing of the refused ones was sent");
+});
+
+test("graph(): the usage header at 95 % starts the same 30 minute pause as a throttle answer; below it only the pill moves", async () => {
+  prime(); state.usage = null;
+  fakeGraph(() => ({ body: { data: [] }, headers: { "x-app-usage": JSON.stringify({ call_count: 94, total_time: 12 }) } }));
+  await graph("me");
+  assert.equal(state.usage, 94); assert.equal(state.cooldownUntil, 0, "94 % is no pause");
+  fakeGraph(() => ({ body: { data: [] }, headers: { "x-business-use-case-usage": JSON.stringify({ 1001: [{ call_count: 20, total_cputime: 96 }] }) } }));
+  await graph("me");
+  assert.equal(state.usage, 96);
+  assert.ok(state.cooldownUntil > Date.now() + 29 * 60000 && state.cooldownUntil <= Date.now() + 30 * 60000, "30 min pause");
+  const urls = fakeGraph(() => ({ body: {} }));
+  await assert.rejects(graph("me"), (e) => e.local === true && e.pause === true && /another 30 min|hands off/.test(e.message));
+  assert.equal(urls.length, 0, "during the pause nothing goes out");
+  assert.match(pauseNote(), /hands off for another (29|30) min/);
+});
+
+test("graph(): the soft hourly budget (600) counts every request per 10-minute bucket, persists it, and stops with a calm pause message", async () => {
+  const fake = fakeChrome(); Object.assign(state, { token: "EAAB" + "x".repeat(70), dead: [], cooldownUntil: 0, budget: [], skip: new Set() });
+  const urls = fakeGraph(() => ({ body: {} }));
+  for (let i = 0; i < 3; i++) await graph("me");
+  assert.equal(state.budget.reduce((n, [, c]) => n + c, 0), 3);
+  assert.deepEqual(fake.store.budget, state.budget, "written to storage.session");
+  assert.equal(budgetLeft(), 0);
+  // 600 requests within the last hour: the oldest bucket decides when there is room again
+  const now = Date.now();
+  state.budget = [[now - 50 * 60000, 400], [now - 5 * 60000, 200]];
+  const left = budgetLeft(now);
+  assert.ok(left > 9 * 60000 && left <= 10 * 60000, `room again in ${left} ms (the 50-minute-old bucket leaves in 10 minutes)`);
+  const before = urls.length;
+  await assert.rejects(graph("me/adaccounts"), (e) => e.local === true && e.pause === true && /600 requests per hour.*(9|10) min/.test(e.message), "calm message with the minutes");
+  assert.equal(urls.length, before, "nothing sent past the budget");
+  assert.match(pauseNote(), /600 requests per hour/);
+  // buckets older than an hour do not count
+  state.budget = [[now - 61 * 60000, 600]];
+  assert.equal(budgetLeft(now), 0);
+  await graph("me");
+  assert.equal(state.budget.length, 1, "the old bucket is dropped when a new request is counted");
+  // a reopened popup reads the budget back (loadState), another window's count is followed
+  const f2 = fakeChrome({ session: { budget: [[now, 599], ["x", 1], null] } });
+  await loadState();
+  assert.deepEqual(state.budget, [[now, 599]], "junk entries are dropped");
+  emit("session", { budget: { newValue: [[now, 600]] } });
+  assert.ok(budgetLeft(now) > 0);
+  assert.ok(f2);
+});
+
+test("graph(): a refusal before the network says so (local); a Graph error answer does not", async () => {
+  prime();
+  state.token = null;
+  await assert.rejects(graph("me"), (e) => e.local === true);
+  prime();
+  state.dead = [{ token: state.token, code: "190" }];
+  await assert.rejects(graph("me"), (e) => e.local === true && e.session === true);
+  prime();
+  fakeGraph(() => ({ status: 400, body: { error: { code: 100, message: "(#100) bad" } } }));
+  await assert.rejects(graph("me"), (e) => e.local !== true && e.code === 100);
+  fakeGraph(() => ({ status: 400, body: { error: { code: 190, message: "expired" } } }));
+  await assert.rejects(graph("me"), (e) => e.session === true && e.local !== true, "a session error from Graph went out");
+});
+
+test("graph(): Graph's own words are cleaned like a name (bidi and control characters)", async () => {
+  prime();
+  fakeGraph(() => ({ status: 400, body: { error: { code: 1, message: "Bad \u202Eexe.pdf\nsecond line" } } }));
+  await assert.rejects(graph("me"), (e) => e.message === "Bad exe.pdf second line" && !/[\u202A-\u202E]/.test(e.raw));
+});
+
+test("saveSession never rejects: a refused write resolves false (nobody leaves an unhandled rejection behind)", async () => {
+  fakeChrome();
+  chrome.storage.session.set = async () => { throw new Error("QUOTA_BYTES quota exceeded"); };
+  const warn = console.warn; console.warn = () => {};
+  try { assert.equal(await saveSession({ a: 1 }), false); } finally { console.warn = warn; }
+  fakeChrome();
+  assert.equal(await saveSession({ a: 1 }), true);
 });
