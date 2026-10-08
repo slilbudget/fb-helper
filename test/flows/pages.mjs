@@ -130,7 +130,7 @@ async function pagesFlow() {
   await idle(pop, "#tab-pages");
   ok("…six requests: the profile's pages, the businesses, the owned edges of both businesses, then the client edges", pageReqs(b).map(pathOf).join() === ["/me/accounts", "/me/businesses", "/555/owned_pages", "/777/owned_pages", "/555/client_pages", "/777/client_pages"].join(), pageReqs(b).map(pathOf).join());
   ok("…and no toast for an automatic load", (await toastOf(pop)) === "", await toastOf(pop));
-  ok("the popup opens at full height on the Pages tab", await pop.evaluate(() => document.body.getBoundingClientRect().height >= 600));
+  ok("the popup is as tall as its content on the Pages tab (no fixed height)", await pop.evaluate(() => getComputedStyle(document.body).minHeight === "0px"));
   const mine = fieldsOf(reqs(b)[0]), edge = fieldsOf(edgeReqs(b)[0]);
   ok("me/accounts names id, name and every optional field (with tasks)", ["id", "name", ...OPT_ALL].every((f) => mine.includes(f)), mine);
   ok("every business edge names the same fields without tasks", ["id", "name", ...OPT_ALL.filter((f) => f !== "tasks")].every((f) => edge.includes(f)) && !has(edge, "tasks") && edgeReqs(b).length === 4 && edgeReqs(b).every((h) => !has(fieldsOf(h), "tasks") && fieldsOf(h) === edge), edgeReqs(b).map(fieldsOf).join(" || "));

@@ -121,7 +121,7 @@ async function bmsFlow() {
     bmHits(b).length === 1 && has(bmHits(b)[0], "limit=50") && fieldsOf(bmHits(b)[0]) === "id,name,verification_status,profile_picture_uri", bmHits(b).join() + fieldsOf(bmHits(b)[0]));
   ok("…and it loads the Ad accounts list too (its spend, counts and state come from there): one request", accHits(b).length === 1, String(accHits(b).length));
   ok("…and no toast for an automatic load", (await toastOf(pop)) === "", await toastOf(pop));
-  ok("the tab is full height", await pop.evaluate(() => document.body.getBoundingClientRect().height >= 600));
+  ok("the tab is as tall as its content (no fixed height)", await pop.evaluate(() => getComputedStyle(document.body).minHeight === "0px"));
   ok("one row grammar: shared .lrow rows with a 24 px business picture; no pill or boxed action in the list", await pop.evaluate(() => document.querySelectorAll("#bmsList .lrow").length === 6 && !document.querySelector("#bmsList .pill, #bmsList .btn")
     && [...document.querySelectorAll("#bmsList .lrow .lav")].every((a) => a.offsetWidth === 24 && a.classList.contains("lav-square"))));
   await settled(pop);

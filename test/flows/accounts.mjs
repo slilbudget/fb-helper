@@ -353,7 +353,7 @@ async function autoFlows() {
   await resetLocks(pop);
   pop = await popup(b); await rowsAre(pop, ROW, 1); await settle(pop); await idle(pop, "#tab-accounts");
   ok("reopen after a minute, FB page not reloaded: no request", hitsOf(b) === 1, String(hitsOf(b)));
-  ok("the popup opens at full height on the Accounts tab", await pop.evaluate(() => document.body.getBoundingClientRect().height >= 600));
+  ok("the popup is as tall as its content on the Accounts tab (no fixed height)", await pop.evaluate(() => getComputedStyle(document.body).minHeight === "0px"));
   // 4. the FB page is reloaded: within 10 minutes of the last load that is no reason to spend a request (P6)…
   await fbTab.reload(); await resetLocks(pop);
   pop = await popup(b); await rowsAre(pop, ROW, 1); await settle(pop); await idle(pop, "#tab-accounts");

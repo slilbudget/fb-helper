@@ -106,9 +106,9 @@ async function tabApiFlows() {
   await pop.focus('[data-tab="pages"]');   // the last real tab: the test tabs come right after it
   await pop.keyboard.press("ArrowRight"); await pop.keyboard.press("Enter"); let s = await look();    // arrows only move focus: Enter opens
   ok("a registered tab shows its panel, is remembered, and its onShow runs", s.tab === "zz" && s.panel === "tab-zz" && s.saved === "zz" && s.shown === "zz", JSON.stringify(s));
-  ok("every tab has the same full height (no per-tab option)", s.h >= 600, JSON.stringify(s));
+  ok("an empty tab is short: the popup follows the content height", s.h < 300, JSON.stringify(s));
   await pop.keyboard.press("ArrowRight"); await pop.keyboard.press("Enter"); s = await look();
-  ok("the next tab shows, at the same height", s.tab === "zy" && s.h >= 600 && s.shown === "zz,zy", JSON.stringify(s));
+  ok("the next tab shows, still as short as its content", s.tab === "zy" && s.h < 300 && s.shown === "zz,zy", JSON.stringify(s));
   await pop.keyboard.press("ArrowLeft"); await pop.keyboard.press("Space"); s = await look();      // Space activates a focused tab too
   ok("onShow runs every time the tab is shown", s.tab === "zz" && s.shown === "zz,zy,zz", JSON.stringify(s));
   await done(b);

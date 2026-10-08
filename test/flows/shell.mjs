@@ -11,7 +11,7 @@ async function tabFlows() {
   await adsPage(b);
   let pop = await popup(b);
   let s = await look(pop);
-  ok("opens on the Token tab, full height (600 px on every tab), no request", s.tab === "token" && s.panel === "tab-token" && s.selected === "token" && s.h >= 600 && reads(b) === 0, JSON.stringify(s));
+  ok("opens on the Token tab, as tall as its content (well under 600 px), no request", s.tab === "token" && s.panel === "tab-token" && s.selected === "token" && s.h < 600 && reads(b) === 0, JSON.stringify(s));
 
   // the order of the tabs is the order in the page, so it is the order of the keyboard: Token · Cookies · Businesses · Accounts · Pages
   const order = await pop.evaluate(() => ({ tabs: [...document.querySelectorAll(".tab")].map((n) => n.dataset.tab), panels: [...document.querySelectorAll("main > .panel")].map((n) => n.id),
@@ -25,6 +25,10 @@ async function tabFlows() {
   ok("structure: the product's name ('FB Helper', 'Ads Helper' in the store build) is the one h1; the tab strip is a tablist named 'Sections'; every panel is labelled by its tab", struct.h1 === struct.name && struct.h1s === 1 && struct.list === tr("tabs.aria") && struct.panelsLabelled, JSON.stringify(struct));
   ok("exactly one tab stop in the strip (roving tabindex): the open tab", s.tabbable === "token", s.tabbable);
 
+  // height follows what is open (user decision): the Token tab grows when "Token types" opens and shrinks back when it closes
+  const hb = () => pop.evaluate(() => Math.round(document.body.getBoundingClientRect().height));
+  const h0 = await hb(); await pop.click(".guide summary"); const h1 = await hb(); await pop.click(".guide summary"); const h2 = await hb();
+  ok("Token tab: closed sections → short; open → taller; closed again → back to the same height", h0 < 450 && h1 > h0 && h2 === h0, JSON.stringify([h0, h1, h2]));
   // keyboard (WAI-ARIA tabs, MANUAL activation): arrows / Home / End only move focus (a tab that loads a list must not send requests as the arrow passes it);
   // Enter or Space opens the focused tab
   await pop.focus('[data-tab="token"]');
@@ -32,11 +36,11 @@ async function tabFlows() {
   ok("ArrowRight moves focus to Cookies and does NOT open it (Token stays open)", s.focus === "cookies" && s.tab === "token" && s.panel === "tab-token" && s.selected === "token", JSON.stringify(s));
   ok("…the focused tab is the strip's one tab stop now", s.tabbable === "cookies", s.tabbable);
   await pop.keyboard.press("Enter"); s = await look(pop);
-  ok("Enter opens the focused tab", s.tab === "cookies" && s.panel === "tab-cookies" && s.selected === "cookies" && s.h >= 600, JSON.stringify(s));
+  ok("Enter opens the focused tab", s.tab === "cookies" && s.panel === "tab-cookies" && s.selected === "cookies" && s.h < 600, JSON.stringify(s));
   await pop.keyboard.press("ArrowRight"); s = await look(pop);
   ok("ArrowRight again: focus on Businesses; its list is NOT loaded just because the arrow passed over it", s.focus === "bms" && s.tab === "cookies" && reads(b) === 0, JSON.stringify(s) + reads(b));
   await pop.keyboard.press("Space"); s = await look(pop);
-  ok("Space opens it, at the same height", s.tab === "bms" && s.panel === "tab-bms" && s.h >= 600, JSON.stringify(s));
+  ok("Space opens it, as tall as its content", s.tab === "bms" && s.panel === "tab-bms" && s.h < 600, JSON.stringify(s));
   ok("…and it loads the Ad accounts list by itself too (its spend and counts come from there)", await until(pop, () => document.querySelectorAll("#accountsList .lrow").length === 1) && reads(b) === 1, String(reads(b)));
   await pop.keyboard.press("ArrowRight"); await pop.keyboard.press("Enter"); s = await look(pop);
   ok("Businesses → Accounts: the list is already there, nothing more is read", s.tab === "accounts" && s.panel === "tab-accounts" && (await rowsAre(pop, ROW, 1)) && reads(b) === 1, JSON.stringify(s) + reads(b));
@@ -58,11 +62,11 @@ async function tabFlows() {
     await pop.click(`[data-tab="${name}"]`);
     pop = await popup(b);
     s = await look(pop);
-    ok(`reopened on ${name}: that tab, full height`, s.tab === name && s.panel === `tab-${name}` && s.h >= 600 && s.saved === name, JSON.stringify(s));
+    ok(`reopened on ${name}: that tab, as tall as its content`, s.tab === name && s.panel === `tab-${name}` && s.h < 600 && s.saved === name, JSON.stringify(s));
   }
   await pop.evaluate(() => localStorage.setItem("tab", "nonsense")); await pop.reload();
   s = await look(pop);
-  ok("a saved tab nobody knows falls back to Token", s.tab === "token" && s.h >= 600, JSON.stringify(s));
+  ok("a saved tab nobody knows falls back to Token", s.tab === "token" && s.h < 600, JSON.stringify(s));
   ok("switching and reopening sent no further request", reads(b) === 1, String(reads(b)));
   await done(b);
 }
