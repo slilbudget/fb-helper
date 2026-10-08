@@ -1,7 +1,7 @@
 // UI strings: Russian and English, one flat dictionary each. The choice lives in chrome.storage.local — it
 // must survive a browser restart, unlike the token and the account cache. First run: the browser's UI
 // language, but only as a default — antidetect profiles are usually English while the user is not.
-// Status labels follow the Meta enum names (ACTIVE, UNSETTLED, ADS_INTEGRITY_POLICY, …) so they match Ads Manager.
+// Status and disable-reason words of an ad account are one short word each (design.md section 8), not Meta's enum names.
 
 export const LANGS = ["ru", "en"];
 let lang = "ru";
@@ -38,13 +38,14 @@ const D = {
     "period.today": "Сегодня", "period.yesterday": "Вчера", "period.week": "7 дней", "period.month": "30 дней", "period.all": "Всё время",
     "period.noToday": "Без сегодняшнего дня", "period.allNote": "Большее из двух: итог Meta или 30 дней + сегодня",
 
-    "status.1": "Активен", "status.2": "Заблокирован", "status.3": "Не оплачен", "status.7": "Проверка риска",
-    "status.8": "Ожидает оплаты", "status.9": "Льготный период", "status.100": "Закрывается", "status.101": "Закрыт",
-    "status.other": "Статус {n}",
-    "reason.1": "Правила рекламы / Integrity", "reason.2": "Проверка IP", "reason.3": "Платёжный риск", "reason.4": "Серый аккаунт закрыт",
-    "reason.5": "Проверка AFC", "reason.6": "Integrity бизнеса", "reason.7": "Закрыт навсегда", "reason.8": "Неиспользуемый реселлер",
-    "reason.9": "Неиспользуемый кабинет", "reason.10": "Umbrella-кабинет", "reason.11": "Правила бизнес-портфолио", "reason.12": "Искажённые данные",
-    "reason.13": "Юрлицо отозвано", "reason.14": "Проверка переписки", "reason.15": "Кабинет взломан", "reason.other": "Причина",
+    // Short words: the status of an ad account as one word. A disable reason REPLACES "Заблокирован" on the row (it says more), so it is one word too.
+    "status.1": "Активен", "status.2": "Заблокирован", "status.3": "Долг", "status.7": "Проверка",
+    "status.8": "Оплата идёт", "status.9": "Отсрочка", "status.100": "Закрывается", "status.101": "Закрыт",
+    "status.restricted": "Ограничен", "status.other": "Статус {n}",
+    "reason.1": "Правила рекламы", "reason.2": "IP-проверка", "reason.3": "Платёжный риск", "reason.4": "Закрыт",
+    "reason.5": "AFC-проверка", "reason.6": "Integrity бизнеса", "reason.7": "Закрыт навсегда", "reason.8": "Не используется",
+    "reason.9": "Не используется", "reason.10": "Не используется", "reason.11": "Integrity бизнеса", "reason.12": "Искажение данных",
+    "reason.13": "Юрлицо отвязано", "reason.14": "Проверка переписки", "reason.15": "Взлом",
     "ad.ACTIVE": "Активно", "ad.PAUSED": "Пауза", "ad.PENDING_REVIEW": "На проверке", "ad.IN_PROCESS": "Обработка",
     "ad.DISAPPROVED": "Отклонено", "ad.WITH_ISSUES": "С ошибками", "ad.CAMPAIGN_PAUSED": "Кампания на паузе",
     "ad.ADSET_PAUSED": "Группа на паузе", "ad.PREAPPROVED": "Предодобрено", "ad.PENDING_BILLING_INFO": "Нужна оплата",
@@ -85,14 +86,12 @@ const D = {
     "acc.updated": "обновлено {t}", "acc.spend": "Спенд", "acc.refreshDash": "— обнови",
     "acc.notAllTitle": "По части кабинетов нет данных за период — обнови список", "acc.notAllShort": "не по всем",
     "acc.empty": "Кабинеты не загружены — нажми кнопку обновления сверху", "acc.loading": "Загрузка кабинетов…", "acc.noMatch": "Ничего не найдено", "acc.bmFilterClear": "Показать кабинеты всех бизнесов", "acc.noName": "Без имени",
-    "acc.copyId": "Копировать ID", "acc.idCopied": "ID скопирован", "acc.openAds": "Открыть в Ads Manager",
+    "acc.copyId": "Копировать ID", "acc.idCopied": "ID скопирован",
     "acc.noPeriod": "Нет данных за этот период — обнови список",
-    "acc.inBm": "Кабинет в бизнес-портфолио {n} · {id}",
-    "acc.personalTitle": "Личный кабинет: Graph не вернул бизнес-портфолио, которому он принадлежит", "acc.personal": "Личный",
-    "acc.tz": "Часовой пояс кабинета: {tz}", "acc.imp": "{n} показов",
+    "acc.personal": "Личные кабинеты", "acc.noAccess": "Нет доступа", "acc.imp": "{n} показов",
     "acc.spent": "Всего потрачено", "acc.balance": "Не оплачено", "acc.threshold": "Порог списания", "acc.daily": "Лимит в день",
     "acc.noLimit": "без лимита", "acc.spendCap": "Spend cap", "acc.no": "нет", "acc.funding": "Оплата", "acc.pixels": "Пиксели",
-    "acc.noPixel": "нет пикселя", "acc.owner": "Владелец", "acc.noBm": "без бизнеса", "acc.country": "Страна / создан",
+    "acc.clicks": "Клики", "acc.cpc": "CPC", "acc.timezone": "Часовой пояс", "acc.country": "Страна", "acc.created": "Создан",
 
     "ads.btn": "Объявления", "ads.refresh": "Обновить объявления", "ads.none": "Объявлений нет",
     "ads.count": ["объявление", "объявления", "объявлений"], "ads.live": " · {n} активно", "ads.rejected": " · {n} отклонено",
@@ -103,7 +102,7 @@ const D = {
   },
   en: {
     "lang.title": "Interface language",
-    "tab.token": "Token", "tab.cookies": "Cookies", "tab.accounts": "Ad accounts", "tab.bms": "Businesses", "tab.pages": "Pages",
+    "tab.token": "Token", "tab.cookies": "Cookies", "tab.accounts": "Accounts", "tab.bms": "Businesses", "tab.pages": "Pages",
     "check": "Check", "check.title": "Profile, app and permissions of the token", "check.aria": "Check token",
     "token.refresh": "Re-read the token from the FB tab", "token.refreshed": "Token refreshed", "token.retry": "Same token — the dead-session mark is cleared, the next request will try it again",
     "copyToken": "Copy token", "copyEnv": "Token + cookies + UA",
@@ -132,13 +131,14 @@ const D = {
     "period.today": "Today", "period.yesterday": "Yesterday", "period.week": "7 days", "period.month": "30 days", "period.all": "All time",
     "period.noToday": "Excludes today", "period.allNote": "The larger of Meta's total and last 30 days + today",
 
-    "status.1": "Active", "status.2": "Disabled", "status.3": "Unsettled", "status.7": "Pending risk review",
-    "status.8": "Pending settlement", "status.9": "In grace period", "status.100": "Pending closure", "status.101": "Closed",
-    "status.other": "Status {n}",
-    "reason.1": "Ads integrity policy", "reason.2": "Ads IP review", "reason.3": "Payment risk", "reason.4": "Gray account shut down",
-    "reason.5": "AFC review", "reason.6": "Business integrity (RAR)", "reason.7": "Permanent close", "reason.8": "Unused reseller account",
-    "reason.9": "Unused account", "reason.10": "Umbrella ad account", "reason.11": "Business Manager integrity policy", "reason.12": "Misrepresented ad account",
-    "reason.13": "Legal entity de-shared", "reason.14": "Thread review", "reason.15": "Compromised ad account", "reason.other": "Reason",
+    // Short words: the status of an ad account as one word. A disable reason REPLACES "Disabled" on the row (it says more), so it is one word too.
+    "status.1": "Active", "status.2": "Disabled", "status.3": "Unpaid", "status.7": "In review",
+    "status.8": "Settling", "status.9": "Grace period", "status.100": "Closing", "status.101": "Closed",
+    "status.restricted": "Restricted", "status.other": "Status {n}",
+    "reason.1": "Ads policy", "reason.2": "IP review", "reason.3": "Payment risk", "reason.4": "Shut down",
+    "reason.5": "AFC review", "reason.6": "Business integrity", "reason.7": "Closed for good", "reason.8": "Unused",
+    "reason.9": "Unused", "reason.10": "Unused", "reason.11": "Business integrity", "reason.12": "Misrepresented",
+    "reason.13": "Entity unshared", "reason.14": "Thread review", "reason.15": "Compromised",
     "ad.ACTIVE": "Active", "ad.PAUSED": "Paused", "ad.PENDING_REVIEW": "Pending review", "ad.IN_PROCESS": "In process",
     "ad.DISAPPROVED": "Disapproved", "ad.WITH_ISSUES": "With issues", "ad.CAMPAIGN_PAUSED": "Campaign paused",
     "ad.ADSET_PAUSED": "Ad set paused", "ad.PREAPPROVED": "Preapproved", "ad.PENDING_BILLING_INFO": "Pending billing info",
@@ -179,14 +179,12 @@ const D = {
     "acc.updated": "updated {t}", "acc.spend": "Spend", "acc.refreshDash": "— refresh",
     "acc.notAllTitle": "Some accounts have no data for this period — refresh the list", "acc.notAllShort": "not all",
     "acc.empty": "Ad accounts not loaded — press the refresh button above", "acc.loading": "Loading ad accounts…", "acc.noMatch": "Nothing found", "acc.bmFilterClear": "Show ad accounts of every business", "acc.noName": "Unnamed",
-    "acc.copyId": "Copy ID", "acc.idCopied": "ID copied", "acc.openAds": "Open in Ads Manager",
+    "acc.copyId": "Copy ID", "acc.idCopied": "ID copied",
     "acc.noPeriod": "No data for this period — refresh the list",
-    "acc.inBm": "Account in business portfolio {n} · {id}",
-    "acc.personalTitle": "Personal account: Graph returned no business portfolio that owns it", "acc.personal": "Personal",
-    "acc.tz": "Account timezone: {tz}", "acc.imp": "{n} impressions",
+    "acc.personal": "Personal ad accounts", "acc.noAccess": "No access", "acc.imp": "{n} impressions",
     "acc.spent": "Total spent", "acc.balance": "Unpaid balance", "acc.threshold": "Billing threshold", "acc.daily": "Daily limit",
     "acc.noLimit": "no limit", "acc.spendCap": "Spend cap", "acc.no": "none", "acc.funding": "Payment", "acc.pixels": "Pixels",
-    "acc.noPixel": "no pixel", "acc.owner": "Owner", "acc.noBm": "no business", "acc.country": "Country / created",
+    "acc.clicks": "Clicks", "acc.cpc": "CPC", "acc.timezone": "Timezone", "acc.country": "Country", "acc.created": "Created",
 
     "ads.btn": "Ads", "ads.refresh": "Refresh ads", "ads.none": "No ads",
     "ads.count": ["ad", "ads"], "ads.live": " · {n} active", "ads.rejected": " · {n} disapproved",

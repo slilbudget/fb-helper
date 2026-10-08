@@ -1,18 +1,25 @@
 // The Ad accounts tab: the account list (one paged read, optional fields, spend periods) and each account's ads
 // (list, then the per-ad numbers). Accounts and ads live in one file on purpose: a row draws its ads card and an ads
 // read redraws the row, so splitting them would make the two import each other.
+//
+// The list answers "which account works, how much does it spend, what is broken and how do I fix it" (design.md section 2 + 8):
+// accounts grouped by business (sticky header + subtotal), each one the shared row of row.js: name | spend of the period on line 1;
+// on line 2 nothing for a healthy account, else the problem word, its one fix and "+N". The expanded body holds the numbers, what to do
+// and the ads. What a row says about an account is nextsteps.js accountState (pure, tested).
 
-import { t, tn, has } from "./i18n.js";
+import { t, tn, getLang } from "./i18n.js";
 import { AD_PROBLEMS, adRank, reviewLines, spendFloor, insightRow } from "./pure.js";
-import { $, $$, el, fill, pill, numEl, toast, copy, keepFocus } from "./dom.js";
-import { fmt, money, numFmt, ago, sameDay, tzLabel } from "./format.js";
+import { $, $$, el, fill, toast, copy, keepFocus } from "./dom.js";
+import { numFmt, ago, sameDay, tzLabel, major } from "./format.js";
 import { state, Stale, saveSession, fbUser, claimSlot, slotLeft, registerCache, isDead, deadCode } from "./state.js";
 import { graph, readPaged } from "./graph.js";
 import { settledGrab, grabToken, tokenReady } from "./token.js";
 import { on, emit } from "./bus.js";
-import { accountSteps, adSteps } from "./nextsteps.js";
-import { actLink } from "./rows.js";
-import { PERIODS, statsOf as spendStats, periodRange as rangeOf, addUp } from "./spend.js";
+import { accountState, adSteps } from "./nextsteps.js";
+import { LINKS } from "./links.js";
+import { row, groupHeader, fixLink, kv, whatToDo, linksRow } from "./row.js";
+import { fmtMoney, rowAmount, toUsd, rates, cachedRates } from "./money.js";
+import { PERIODS, statsOf as spendStats, periodRange as rangeOf, addUp, mergeUp, groupByBusiness, sortKey } from "./spend.js";
 import { bindPeriods, fillTotal, refreshTip } from "./period.js";
 import "./strings/actions.js";
 import { registerTab, registerRender, registerInit, registerStart } from "./registry.js";
@@ -40,8 +47,7 @@ const OPTIONAL_FIELDS = {
   adspixels: "adspixels{id,name}",
   insights: PERIOD_INSIGHTS,
 };
-// Tone per Meta status code; the label is t("status.<code>") / t("ad.<status>"), disable reasons t("reason.<n>").
-const ACCOUNT_STATUS = { 1: "ok", 2: "bad", 3: "warn", 7: "warn", 8: "warn", 9: "warn", 100: "bad", 101: "bad" };
+// Tone per Meta status code of an AD; the label is t("ad.<status>").
 const AD_STATUS = {
   ACTIVE: "ok", PAUSED: "", PENDING_REVIEW: "warn", IN_PROCESS: "warn", DISAPPROVED: "bad", WITH_ISSUES: "bad",
   CAMPAIGN_PAUSED: "", ADSET_PAUSED: "", PREAPPROVED: "warn", PENDING_BILLING_INFO: "warn", DELETED: "", ARCHIVED: "",
@@ -108,6 +114,8 @@ const slim = (a) => slimWith(state.skip)(a);
 // (owned + client) without being assigned to it (live-checked 2026-10-08: 20 BM accounts, 7 of them assigned), so the
 // list adds those. Best effort: a BM or an edge this token can't read is skipped, the rest of the list stays.
 // Own skip set per edge read: a field refused on an unassigned account must not drop it for the assigned list too.
+// These rows are marked _viaBm (not assigned to the person: "No access" + "Assign me" in the list); _bmId is the business they were
+// read through, whose settings page is where the person assigns themselves (for a client account that is not the owner business).
 const BM_EDGES = ["owned_ad_accounts", "client_ad_accounts"];
 async function readBmAccounts(have) {
   let bms;
@@ -120,7 +128,7 @@ async function readBmAccounts(have) {
       const skip = new Set(state.skip);
       try {
         const r = await readPaged(`${bm.id}/${edge}`, { base: BASE_FIELDS, optional: OPTIONAL_FIELDS, skip, map: slimWith(skip) });
-        for (const a of r.rows) if (a.account_id && !have.has(a.account_id)) { have.add(a.account_id); rows.push(a); }
+        for (const a of r.rows) if (a.account_id && !have.has(a.account_id)) { have.add(a.account_id); rows.push({ ...a, _viaBm: true, _bmId: String(bm.id) }); }
         truncated ||= r.truncated;
       } catch (e) { if (e instanceof Stale) throw e; }
     }
@@ -200,17 +208,27 @@ export async function ensureAccounts() {
 // The Businesses tab's refresh button also refreshes this list (its spend and counts come from it). Silent where a click on this
 // tab would complain (the one-minute slot, no token…): the Businesses tab has its own message for its own refresh.
 export const reloadAccounts = () => fetchAccounts({ auto: true });
+
+// ---------- what a row says ----------
 // Spend for the selected period (spend.js: the Businesses tab reads the same numbers the same way). null = unknown.
 const statsOf = (a, key = state.period) => spendStats(a, key, state.fetchedAt);
 const periodRange = () => rangeOf(state.accounts, state.period, state.fetchedAt);
+// accountState is pure over the account object, which is never changed after a load: one answer per object.
+const memo = new WeakMap();
+const stateOf = (a) => { let s = memo.get(a); if (!s) memo.set(a, s = accountState(a)); return s; };
+const word = (w) => t(w.key, w.vars);
+// The status chips filter by status, not by reason: "Disabled 2", not one chip per reason.
+const CHIP_ORDER = ["active", "2", "3", "restricted", "noaccess", "7", "8", "9", "100", "101"];
+const chipRank = (id) => { const i = CHIP_ORDER.indexOf(id); return i < 0 ? CHIP_ORDER.length : i; };
+
 // Rows matching the search + status filter + BM filter. The total, the count and "Active IDs" all follow it.
 function visibleRows() {
   const q = state.filter.trim().toLowerCase();
   return state.accounts.filter((a) => {
-    const [label] = accStatus(a);
-    if (state.statusFilter && label !== state.statusFilter) return false;
+    const s = stateOf(a);
+    if (state.statusFilter && s.chip.id !== state.statusFilter) return false;
     if (state.bmFilter && a.business?.id !== state.bmFilter.id) return false;
-    return !q || `${a.name} ${a.account_id} ${label} ${a.business?.name || ""}`.toLowerCase().includes(q);
+    return !q || `${a.name} ${a.account_id} ${word(s.word)} ${word(s.chip)} ${a.business?.name || ""}`.toLowerCase().includes(q);
   });
 }
 const isFiltered = () => !!(state.filter.trim() || state.statusFilter || state.bmFilter);
@@ -219,11 +237,7 @@ function copyLiveIds() {
   if (!ids.length) return toast(t("acc.noLive"), true);
   copy(ids.join("\n"), t("acc.idsCopied", { n: ids.length }) + (state.truncated ? t("acc.partial") : ""));
 }
-// [label, tone] for an account; unknown codes are shown as their number.
-function accStatus(a) {
-  const c = a.account_status;
-  return c in ACCOUNT_STATUS ? [t(`status.${c}`), ACCOUNT_STATUS[c]] : [t("status.other", { n: c }), "warn"];
-}
+
 function renderHint() {
   const total = $("#accountsTotal");
   refreshTip($("#loadAccounts"), t("refresh"), state.fetchedAt);          // "Refresh · updated 3 min ago"
@@ -236,112 +250,136 @@ function renderHint() {
   fillTotal(total, { metaText, range: state.period === "all" ? "" : periodRange(), zeroCur: rows[0].currency,
     sum: addUp(rows.map((a) => ({ spend: statsOf(a)?.spend ?? null, currency: a.currency }))) });
 }
+
+// Rows are ordered by the USD value of their spend, so two or more currencies on screen need the rates: asked for here (one shared
+// lookup: cached for a day, no repeat after a failure), and the list is drawn once more when a table arrives that the last draw did not use.
+let usedRates = null;
+function wantRates(rows) {
+  if (new Set(rows.map((a) => a.currency || "USD")).size < 2) return;
+  rates().then((r) => { if ((r?.rates ?? null) !== usedRates) renderAccounts(); });
+}
+
 function renderAccounts() { keepFocus(drawAccounts); }
 function drawAccounts() {
   const list = $("#accountsList");
   renderHint();
   $("#copyLiveIds").disabled = !state.accounts.some((a) => a.account_status === 1);
-  const counts = {};
-  for (const a of state.accounts) { const [l] = accStatus(a); counts[l] = (counts[l] || 0) + 1; }
-  if (state.statusFilter && !counts[state.statusFilter]) state.statusFilter = null;
+  const counts = new Map();
+  for (const a of state.accounts) { const c = stateOf(a).chip; const e = counts.get(c.id); if (e) e.n++; else counts.set(c.id, { chip: c, n: 1 }); }
+  if (state.statusFilter && !counts.has(state.statusFilter)) state.statusFilter = null;
   // A status filter is only useful when statuses differ; with one status it just repeats the count.
-  if (Object.keys(counts).length < 2) { state.statusFilter = null; for (const k of Object.keys(counts)) delete counts[k]; }
+  if (counts.size < 2) { state.statusFilter = null; counts.clear(); }
   // The BM filter (set from the BM tab) comes first as its own chip; clicking it clears it.
   const bm = state.bmFilter;
   fill($("#statusChips"), bm ? el("button", { class: "pill chip on", "aria-pressed": "true", "data-focus": "chip:bm", title: t("acc.bmFilterClear"),
       onclick: () => { state.bmFilter = null; renderAccounts(); } }, el("i", { class: "i i-bm" }), `${bm.name || bm.id} ✕`) : null,
-    ...Object.entries(counts).map(([label, n]) => {
-    const tone = Object.entries(ACCOUNT_STATUS).find(([c]) => t(`status.${c}`) === label)?.[1] || "";
-    const on = state.statusFilter === label;
-    return el("button", { class: `pill chip ${tone}${on ? " on" : ""}`, "aria-pressed": String(on), "data-focus": `chip:${label}`,
-      onclick: () => { state.statusFilter = on ? null : label; renderAccounts(); } }, `${label} ${n}`);
+  ...[...counts.values()].sort((x, y) => chipRank(x.chip.id) - chipRank(y.chip.id)).map(({ chip, n }) => {
+    const on = state.statusFilter === chip.id;
+    return el("button", { class: `pill chip ${chip.tone}${on ? " on" : ""}`, "aria-pressed": String(on), "data-focus": `chip:${chip.id}`,
+      onclick: () => { state.statusFilter = on ? null : chip.id; renderAccounts(); } }, `${word(chip)} ${n}`);
   }));
   const rows = visibleRows();
   if (!state.accounts.length) return fill(list, el("div", { class: "empty" }, state.accLoading ? t("acc.loading") : t("acc.empty")));
   if (!rows.length) return fill(list, el("div", { class: "empty" }, t("acc.noMatch")));
-  // Stats once per row: the sort comparator would otherwise recompute them O(n log n) times.
+
+  // Groups by business, the biggest spender first (USD equivalent); inside a group active accounts by spend, then the ones with a
+  // problem, then the dead ones. Stats once per row: the comparators would otherwise recompute them O(n log n) times.
+  const r = cachedRates();
+  usedRates = r?.rates ?? null;
   const stats = new Map(rows.map((a) => [a, statsOf(a)]));
-  const spendOf = (a) => stats.get(a)?.spend ?? -1;
-  rows.sort((a, b) => (b.account_status === 1) - (a.account_status === 1) || spendOf(b) - spendOf(a));
-  fill(list, ...rows.map((a) => renderAccount(a, stats.get(a))));
+  const part = new Map(rows.map((a) => [a, addUp([{ spend: stats.get(a)?.spend ?? null, currency: a.currency }])]));
+  const key = new Map(rows.map((a) => [a, sortKey(part.get(a), r)]));
+  const RANK = { active: 0, problem: 1, dead: 2 };
+  const byName = (x, y) => String(x || "").localeCompare(String(y || ""), getLang());
+  const groups = groupByBusiness(rows);
+  for (const g of groups) {
+    g.accounts.sort((a, b) => RANK[stateOf(a).group] - RANK[stateOf(b).group] || key.get(b) - key.get(a) || byName(a.name, b.name));
+    g.sum = mergeUp(g.accounts.map((a) => part.get(a)));
+    g.key = sortKey(g.sum, r);
+  }
+  groups.sort((a, b) => (a.id === null) - (b.id === null) || b.key - a.key || byName(a.name, b.name));   // the personal group (no business) is last
+  // No header while one business is filtered (it would repeat the chip), nor above a list that is all personal (it would repeat the total).
+  const headers = !state.bmFilter && !(groups.length === 1 && groups[0].id === null);
+  fill(list, ...groups.flatMap((g) => [headers ? groupEl(g, r) : null, ...g.accounts.map((a) => renderAccount(a, stats.get(a), r))]));
+  wantRates(rows);
 }
-function renderAccount(a, st) {
-  const [label, tone] = accStatus(a);
-  const cur = a.currency;
+
+// [16 px picture] Business · 3 ........ subtotal. A personal group gets a user icon on a circle instead of a building.
+function groupEl(g, r) {
+  const personal = g.id === null;
+  const line = rowAmount(g.sum.totals, r);
+  const unknown = g.sum.unknown;
+  const value = line.main || (unknown ? "—" : fmtMoney(0, g.accounts[0].currency));
+  const title = [line.title, unknown ? t(line.main ? "acc.notAllTitle" : "acc.noPeriod") : ""].filter(Boolean).join("\n") || null;
+  const h = groupHeader({ avatar: { kind: personal ? "page" : "business", url: null }, name: personal ? t("acc.personal") : g.name || g.id,
+    count: g.accounts.length, value, valueTitle: title });
+  if (personal) h.querySelector(".lav .i")?.classList.replace("i-flag", "i-user");
+  return h;
+}
+
+// The amount on line 1: the account's own currency, exact; zero or unknown is muted. A non-USD amount says its USD value in the tooltip
+// when the rates are known (never on screen: "≈" belongs to the grand total only).
+function valueOf(a, st, r) {
+  if (!st) return { text: "—", muted: true, title: t("acc.noPeriod") };
+  const usd = st.spend && (a.currency || "USD") !== "USD" ? toUsd(st.spend, a.currency, r) : null;
+  return { text: fmtMoney(st.spend, a.currency), muted: !st.spend, title: usd !== null ? `≈ ${fmtMoney(usd, "USD")}` : null };
+}
+
+function renderAccount(a, st, r) {
+  const s = stateOf(a), id = a.account_id;
+  const name = a.name || t("acc.noName");
+  const v = valueOf(a, st, r);
+  return row({
+    key: id, name, value: v.text, valueTitle: v.title, valueMuted: v.muted,
+    status: { tone: s.tone, text: word(s.word), title: s.title ? s.title.map((k) => t(k)).join(": ") : null },
+    fix: s.fix && { label: s.fix.label, url: s.fix.url, tip: s.help ? t(s.help) : null }, more: s.more,
+    id: { value: id, copiedMsg: t("acc.idCopied") },
+    open: state.open.has(id),
+    onToggle: (open) => { state.open[open ? "add" : "delete"](id); saveView(); },
+    body: () => accountBody(a, s, st, name),
+  });
+}
+
+// The expanded body: the facts (only the ones Graph gave), what to do, the two places to open, then the ads. Built when the row opens.
+function accountBody(a, s, st, name) {
+  const id = a.account_id, cur = a.currency;
+  const n = numFmt();
+  const money = (minor) => (minor === undefined || minor === null || minor === "" ? "—" : fmtMoney(major(minor, cur), cur));
   const threshold = a.adspaymentcycle?.data?.[0]?.threshold_amount;
   const dsl = a.adtrust_dsl;
-  const cpc = st?.clicks ? st.spend / st.clicks : null;
-  const isOpen = state.open.has(a.account_id);
-  const steps = accountSteps(a), quick = steps.actions.find((x) => x.primary) || steps.actions[0];
-  const card = el("div", { class: `acc${isOpen ? " open" : ""}` });
-  const toggle = () => {
-    const open = card.classList.toggle("open");
-    state.open[open ? "add" : "delete"](a.account_id);
-    title.setAttribute("aria-expanded", String(open));
-    saveView();
-  };
-  // The whole row toggles on click (mouse); the keyboard / screen-reader control is the title button.
-  // Its click bubbles to the row, so it has no handler of its own. The row itself is not a button:
-  // it holds the copy-ID button and the Ads Manager link, and interactive controls must not nest.
-  const title = el("button", { type: "button", class: "acc-title", "aria-expanded": String(isOpen), "data-focus": `acc:${a.account_id}` },
-    el("i", { class: "i i-chevron", "aria-hidden": "true" }),
-    el("span", { class: "acc-name", title: a.name }, a.name || t("acc.noName")));
-  const head = el("div", { class: "acc-head", onclick: toggle },
-    title,
-    pill(label, tone),
-    el("div", { class: "acc-ids" },
-      el("button", { class: "acc-id", title: t("acc.copyId"), "data-focus": `id:${a.account_id}`,
-                     onclick: (ev) => { ev.stopPropagation(); copy(a.account_id, t("acc.idCopied")); } },
-         a.account_id, el("i", { class: "i i-copy" })),
-      // Open in Ads Manager straight from the collapsed row; must not toggle the row.
-      el("a", { class: "acc-link", title: t("acc.openAds"), "aria-label": t("acc.openAds"), target: "_blank", rel: "noopener noreferrer", "data-focus": `link:${a.account_id}`,
-                href: `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${a.account_id}`,
-                onclick: (ev) => ev.stopPropagation() }, el("i", { class: "i i-external" }))),
-    st ? el("div", { class: "acc-spend" }, fmt(st.spend, cur))
-       : el("div", { class: "acc-spend muted", title: t("acc.noPeriod") }, "—"),  // .acc-spend uses the number font in CSS
-    el("div", { class: "acc-meta" },
-      a.business
-        ? el("span", { class: "owner", title: t("acc.inBm", { n: a.business.name, id: a.business.id }) }, el("i", { class: "i i-bm" }), el("span", { class: "owner-name" }, a.business.name))
-        : el("span", { class: "owner", title: t("acc.personalTitle") }, el("i", { class: "i i-user" }), t("acc.personal")),
-      a.timezone_name ? el("span", { title: t("acc.tz", { tz: a.timezone_name }) }, tzLabel(a.timezone_name)) : null,
-      a.disable_reason ? el("span", { class: "err-text" }, `${has(`reason.${a.disable_reason}`) ? t(`reason.${a.disable_reason}`) : t("reason.other")} (${a.disable_reason})`) : null,
-      // Problem → its fix, right after it: the one next step (appeal, pay…; or where to look when there is nothing to push),
-      // a plain underlined link in the status colour. The help line is its tooltip; the expanded row lists every step.
-      quick ? actLink(quick, `act-inline ${steps.tone}`, `act:${a.account_id}:${quick.id}`, { tip: t(steps.help), owner: a.name }) : null),
-    st && st.imp !== null && (st.imp || st.clicks)
-      ? el("div", { class: "acc-sub", title: t("acc.imp", { n: numFmt().format(st.imp) }) },
-          numEl(numFmt().format(st.clicks)), ` ${tn(st.clicks, "ads.clk")}`, cpc !== null ? [" · CPC ", numEl(fmt(cpc, cur))] : null)
-      : el("div", { class: "acc-sub" }),
-  );
-  const adsBox = el("div", { class: "ads", "data-ads-box": a.account_id });
   const pixels = a.adspixels?.data;
-  const body = el("div", { class: "acc-body" },
-    // What to do: the help line and every next step, above the numbers (only for an account that has a problem).
-    steps.help ? el("div", { class: `act-box ${steps.tone}`, role: "group", "aria-label": t("next.title") },
-      el("div", { class: "act-title" }, t("next.title")),
-      el("p", { class: "act-help" }, t(steps.help)),
-      steps.actions.length ? el("div", { class: "act-btns" },
-        steps.actions.map((x) => actLink(x, `btn act-link${x.primary ? " primary" : ""}`, `step:${a.account_id}:${x.id}`))) : null) : null,
-    el("dl", { class: "kv" },
-      el("dt", {}, t("acc.spent")), el("dd", {}, numEl(fmt(statsOf(a, "all").spend, cur))),   // same number as the "All time" period
-      el("dt", {}, t("acc.balance")), el("dd", {}, numEl(money(a.balance, cur))),
-      el("dt", {}, t("acc.threshold")), el("dd", {}, threshold !== undefined ? numEl(money(threshold, cur)) : "—"),
-      el("dt", {}, t("acc.daily")), el("dd", {}, dsl === undefined ? "—" : Number(dsl) < 0 ? t("acc.noLimit") : numEl(fmt(Number(dsl), cur))),
-      el("dt", {}, t("acc.spendCap")), el("dd", {}, Number(a.spend_cap || 0) ? numEl(money(a.spend_cap, cur)) : t("acc.no")),
-      el("dt", {}, t("acc.funding")), el("dd", {}, a.funding_source_details?.display_string || "—"),
-      el("dt", {}, t("acc.pixels")), el("dd", {}, a._noPixels ? "—"
-        : pixels?.length ? pixels.flatMap((p, i) => [i ? ", " : null, p.name, " · ", numEl(p.id)]) : pill(t("acc.noPixel"), "warn")),
-      el("dt", {}, t("acc.owner")), el("dd", {}, a.business ? [a.business.name, " · ", numEl(a.business.id)] : t("acc.noBm")),
-      el("dt", {}, t("acc.country")), el("dd", {}, a.business_country_code || "—", " · ", a.created_time ? numEl(a.created_time.slice(0, 10)) : "—"),
-    ),
-    // One grey card for the ads, full width (it reaches back over the indent of the rows above, so the gutters match).
-    // Its header is the same box before the first load, collapsed and open: toggling only adds or removes the list below.
-    el("div", { class: "ads-card" }, adsControls(a.account_id), adsBox),
-  );
-  card.append(head, body);
-  if (state.ads[a.account_id]) renderAds(adsBox, state.ads[a.account_id], a);
-  return card;
+  const funding = a.funding_source_details?.display_string || "—";
+  const pixelText = pixels?.length ? pixels.map((p) => `${p.name} · ${p.id}`).join(", ") : "";
+  const showClicks = st && st.imp !== null && (st.imp || st.clicks);
+  // Long values take a row of their own in the two-column layout; short ones sit beside their neighbour.
+  const long = (text) => (String(text).length > 24 ? { wide: true } : undefined);
+  const places = [{ id: "ads", label: "next.adsManager", url: LINKS.adsManager(id) }, { id: "billing", label: "next.billing", url: LINKS.billing(id) }];
+  const box = el("div", { class: "ads", "data-ads-box": id });
+  const parts = [
+    kv([
+      showClicks ? [t("acc.clicks"), n.format(st.clicks), t("acc.imp", { n: n.format(st.imp) })] : null,
+      showClicks && st.clicks ? [t("acc.cpc"), fmtMoney(st.spend / st.clicks, cur)] : null,
+      [t("acc.spent"), fmtMoney(statsOf(a, "all").spend, cur)],                                  // same number as the "All time" period
+      [t("acc.balance"), money(a.balance)],
+      [t("acc.threshold"), money(threshold)],
+      [t("acc.daily"), dsl === undefined ? "—" : Number(dsl) < 0 ? t("acc.noLimit") : fmtMoney(Number(dsl), cur)],
+      [t("acc.spendCap"), Number(a.spend_cap || 0) ? money(a.spend_cap) : t("acc.no")],
+      [t("acc.funding"), funding, long(funding)],
+      [t("acc.pixels"), a._noPixels ? "—" : pixelText || el("span", { class: "acc-warn" }, t("acc.no")), long(pixelText)],
+      [t("acc.timezone"), tzLabel(a.timezone_name) || "—"],
+      [t("acc.country"), a.business_country_code || "—"],
+      [t("acc.created"), a.created_time ? a.created_time.slice(0, 10) : "—"],
+    ]),
+    // What to do: the help line and the steps that are not already on line 2 or in the links row below.
+    whatToDo({ help: s.help ? t(s.help) : null, actions: s.actions, skip: [...(s.fix ? [s.fix] : []), ...places], tone: s.tone === "ok" ? "" : s.tone, owner: name, focus: `todo:${id}` }),
+    linksRow(places, { owner: name, focus: `link:${id}` }),
+    // The ads: a flat section (no tinted box). Its header is the same before the first load, collapsed and open: toggling only adds or removes the list below.
+    el("div", { class: "ads-sec" }, adsControls(id), box),
+  ];
+  if (state.ads[id]) renderAds(box, state.ads[id], a);
+  return parts;
 }
+
 // ---------- ads ----------
 const adsBlocked = (id) => state.adsBusy.has(id) || slotLeft(adsKey(id)) > 0;
 // Buttons are looked up by account id each time: a re-render replaces the nodes.
@@ -351,7 +389,7 @@ function syncAdsButtons() {
 const adsBox = (id) => document.querySelector(`[data-ads-box="${CSS.escape(id)}"]`);
 // Only successful reads are kept across popup reopens: an error text would sit on the row long after it is stale.
 const adsToSave = () => Object.fromEntries(Object.entries(state.ads).filter(([, v]) => !v.error).map(([k, { stale, statsFail, ...v }]) => [k, v]));
-// The card's header row. Before the first load: "Ads" (loads them). After: "Ads · N", a show/hide toggle (no request,
+// The section's header row. Before the first load: "Ads" (loads them). After: "Ads · N", a show/hide toggle (no request,
 // uses the cached list), and a refresh icon that re-reads this account's ads (the only control bound to the 30 s lock;
 // the button above the list refreshes the accounts only, so the ads cost nothing unless asked).
 function adsControls(id) {
@@ -373,9 +411,12 @@ function adStatsLine(s, status, cur) {
   const [spend, imp, clicks] = s;
   if (!spend && !imp && !clicks) return status === "ACTIVE" ? el("div", { class: "ad-stats" }, t("ads.noDelivery")) : null;
   const n = numFmt();
-  return el("div", { class: "ad-stats" }, numEl(fmt(spend, cur)), " · ", numEl(n.format(imp)), ` ${tn(imp, "ads.imp")} · `, numEl(n.format(clicks)), ` ${tn(clicks, "ads.clk")}`,
-    clicks ? [" · CPC ", numEl(fmt(spend / clicks, cur))] : null);
+  return el("div", { class: "ad-stats" }, fmtMoney(spend, cur), " · ", n.format(imp), ` ${tn(imp, "ads.imp")} · `, n.format(clicks), ` ${tn(clicks, "ads.clk")}`,
+    clicks ? [" · CPC ", fmtMoney(spend / clicks, cur)] : null);
 }
+// An ad's status: a dot and a word in the status colour, the grammar of a row; an active ad says nothing on screen (the summary counts them).
+const adStatus = (label, tone) => (tone === "ok" ? el("span", { class: "sr-only" }, label)
+  : el("span", { class: `lrow-status ${tone}` }, el("i", { class: "lrow-dot", "aria-hidden": "true" }), el("span", { class: "lrow-status-text" }, label)));
 function renderAds(box, { ads, more, error, stale, stats, statsAt, statsAll, statsFail }, acc) {
   if (!box) return;
   const id = box.dataset.adsBox;
@@ -403,11 +444,11 @@ function renderAds(box, { ads, more, error, stale, stats, statsAt, statsAll, sta
     const st = ad.effective_status;
     const [l, tone] = st in AD_STATUS ? [t(`ad.${st}`), AD_STATUS[st]] : [st, ""];
     const why = reviewLines(ad), steps = adSteps(ad, id);
-    return el("div", { class: "ad" }, el("span", {}, ad.name), pill(l, tone),
+    return el("div", { class: "ad" }, el("span", { class: "ad-name" }, ad.name), adStatus(l, tone),
       shown ? adStatsLine(stats[ad.id]?.[alias] ?? null, st, acc?.currency) : null,
       why.length ? el("small", {}, why.map((line) => el("span", { class: "why" }, line))) : null,
-      // Rejected ad: ask for a review / open it in Ads Manager (links only).
-      steps.length ? el("div", { class: "ad-acts" }, steps.map((x) => actLink(x, "ad-act", `adact:${ad.id}:${x.id}`, { owner: ad.name }))) : null);
+      // Rejected ad: ask for a review / open it in Ads Manager (links only), in the style of a row's fix link.
+      steps.length ? el("div", { class: "ad-acts" }, steps.map((x) => fixLink(x, { tone: x.primary ? "bad" : "", owner: ad.name, focus: `adact:${ad.id}:${x.id}`, cls: "ad-act" }))) : null);
   }), ...(more ? [el("div", { class: "hint" }, t("ads.more", { n: ads.length }))] : []));
 }
 // One GET of an account's ads. issues_info (the reason for "with issues") is optional like the account fields:
@@ -524,8 +565,8 @@ let sig = "";
 // The Accounts tab takes Chrome's full 600 px from the start (tall), so a list arriving a moment later doesn't make the
 // window jump; showing it starts the auto-load.
 registerTab("accounts", { tall: true, onShow: ensureAccounts });
-// RU · EN: the status filter holds a translated label, so it is cleared; everything else is redrawn from state.
-registerRender(() => { state.statusFilter = null; renderAccounts(); });
+// RU · EN: every word on the rows comes from keys, so a redraw from state is all it takes.
+registerRender(() => renderAccounts());
 registerRender(() => {
   syncAdsButtons();
   const now = todaySig();

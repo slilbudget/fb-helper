@@ -1,13 +1,12 @@
-/* actions: styles of the "next step" links (js/nextsteps.js, drawn by js/accounts.js). Shared look (rows, pills, kv, buttons)
-   comes from popup.css; only what is specific goes here. */
+/* actions: the Ad accounts tab's own styles (js/accounts.js). The row, its body, the group header, the fix link and the key-value list are
+   css/rows.css; the tokens are popup.css. Here: the colour of a fix link (.act-inline, which row.js fixLink uses) and the ads section. */
 
-/* Tone of a problem: the same two colours as the status pill (bad = red, warn = amber). */
-.act-inline.bad, .act-box.bad { --act-fg: var(--color-error); --act-bg: var(--color-error-muted); }
-.act-inline.warn, .act-box.warn { --act-fg: var(--color-warning); --act-bg: var(--color-warning-muted); }
+/* Tone of a problem: the same two colours as the status words (bad = red, warn = amber). */
+.act-inline.bad { --act-fg: var(--color-error); }
+.act-inline.warn { --act-fg: var(--color-warning); }
 
-/* Collapsed row: the fix sits right after the problem on the meta line ("Ads integrity policy (1)  Request review ↗"),
-   plain text in the status colour with a thin underline, no pill and no fill: the row stays calm, the way out is still
-   one click. The underline is on the label only (the icon stays clean); it firms up on hover / keyboard focus. */
+/* The fix is plain text in the status colour with a thin underline, no pill and no fill: the row stays calm, the way out is one click.
+   The underline is on the label only; it firms up on hover / keyboard focus. */
 .act-inline { display: inline-flex; align-items: center; gap: 3px; min-width: 0; max-width: 100%; white-space: nowrap;
   color: var(--act-fg); text-decoration: none; border-radius: 2px; }
 .act-inline .act-label { min-width: 0; overflow: hidden; text-overflow: ellipsis;
@@ -15,23 +14,46 @@
   text-decoration-color: color-mix(in srgb, currentColor 45%, transparent); }
 .act-inline:hover .act-label, .act-inline:focus-visible .act-label { text-decoration-color: currentColor; }
 .act-inline:focus-visible { outline: 1.5px solid currentColor; outline-offset: 2px; }
-.act-inline .i { --size-icon: 12px; }
-.act-link .act-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
-/* Expanded row: "What to do" = a tinted card as wide as the ads card (it reaches back over the indent), the help line, then
-   every step as a button: the primary one in the accent colour, the others plain (white, so they stay visible on the tint). */
-.act-box { margin-left: calc(-1 * var(--acc-indent)); display: grid; gap: var(--spacing-2); min-width: 0;
-  padding: var(--spacing-3); border-radius: calc(var(--radius-element) + 4px); background: var(--act-bg); }
-.act-title { font-size: var(--text-sm); color: var(--act-fg); }
-.act-help { margin: 0; overflow-wrap: anywhere; }
-.act-btns { display: flex; flex-wrap: wrap; gap: var(--spacing-1-5); min-width: 0; }
-.act-link { height: var(--size-element-sm); max-width: 100%; min-width: 0; padding: 0 var(--spacing-3); }
-.act-link .i { --size-icon: 14px; }
-.act-link:not(.primary) { background: var(--color-background-surface); }
-.act-link:not(.primary):hover, .act-link:not(.primary):focus-visible { background: var(--color-hover-row); color: var(--color-text-primary); }
+/* "Pixels: none" in an expanded body: the one fact worth a colour. */
+.acc-warn { color: var(--color-warning); }
 
-/* A rejected ad: two small links under its reasons, like the "Ads Manager ↗" links in the token guide. */
-.ad-acts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: var(--spacing-1) var(--spacing-3); }
-.ad-act { display: inline-flex; align-items: center; gap: 3px; font-size: var(--text-sm); color: var(--color-accent); text-decoration: none; }
-.ad-act:hover, .ad-act:focus-visible { color: var(--color-accent-hover); }
-.ad-act .i { --size-icon: 12px; }
+/* A group header belongs to the rows BELOW it: more air above than below (rows.css makes both 8 px, which leaves it floating between two groups).
+   The air is a margin, not padding: a stuck header (position: sticky) sits flush under the tabs and keeps its text 6 px from the edges. */
+#accountsList .lgroup { padding-top: 6px; padding-bottom: 6px; }
+#accountsList .lrow + .lgroup { margin-top: 10px; }
+
+/* ---------- the ads of an account: a flat section at the end of the expanded body ---------- */
+.ads-sec { min-width: 0; }
+.ads-head { display: flex; align-items: center; gap: var(--spacing-2); }
+/* The toggle is the same box before the first load, collapsed and open, so folding the list moves nothing. Words darken on hover, no fill. */
+.ads-toggle {
+  appearance: none; border: 0; background: transparent; cursor: pointer; flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--spacing-1-5);
+  height: 28px; padding: 0; color: var(--color-text-secondary); font: var(--text-md) var(--font); text-align: left; white-space: nowrap;
+}
+.ads-toggle .i { --size-icon: 14px; }
+.ads-toggle:hover:not(:disabled), .ads-toggle:focus-visible { color: var(--color-text-primary); }
+.ads-toggle:disabled { color: var(--color-text-disabled); cursor: default; }
+.ads-refresh {
+  appearance: none; border: 0; background: transparent; cursor: pointer; flex: none; margin-right: -6px;
+  width: 28px; height: 28px; display: grid; place-items: center; color: var(--color-text-secondary);
+}
+.ads-refresh .i { --size-icon: 16px; }
+.ads-refresh:hover:not(:disabled), .ads-refresh:focus-visible { color: var(--color-text-primary); }
+.ads-refresh:disabled { color: var(--color-text-disabled); cursor: default; }
+.i-chevron.up { transform: rotate(180deg); }
+.ads { display: grid; }
+.ads:empty { display: none; }
+.ads-sum { padding: var(--spacing-1) 0 var(--spacing-2); color: var(--color-text-secondary); font-size: var(--text-sm); }
+.ads .hint:not(:last-child) { padding-bottom: var(--spacing-2); }
+
+/* One ad: name | status word; its numbers; the reasons (red); the two links under them. Hairlines between ads, like the rows above. */
+.ad { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px var(--spacing-3); align-items: center; padding: var(--spacing-2) 0; border-top: 1px solid var(--color-border); }
+.ad-name { min-width: 0; overflow-wrap: anywhere; }
+.ad .lrow-status { font-size: var(--text-sm); }
+.ad .lrow-status:not(.warn):not(.bad) { color: var(--color-text-secondary); }
+.ad-stats { grid-column: 1 / -1; color: var(--color-text-secondary); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+.ad small { grid-column: 1 / -1; color: var(--color-error); overflow-wrap: anywhere; }
+.ad small .why { display: block; }
+.ad-acts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 0 var(--spacing-4); font-size: var(--text-sm); }
+.ad-acts a.lrow-fix { margin: 0; padding: 4px 0; z-index: auto; }

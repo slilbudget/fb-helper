@@ -2,7 +2,7 @@
 // origins (never the network): "≈ $…" + the muted breakdown + the tooltip with the date and the attribution; the fallback source;
 // both sources down (the per-currency sum, no "≈", no console error, no retry for 10 minutes); the 24 h cache across popups;
 // one currency (no request at all); Russian. Graph is a mock (fictional data).
-import { TOK, ok, has, boot, adsPage, popup, text, until, rowsAre, adsFb, ratesOk, fxEr, fxCdn, FX } from "../harness.mjs";
+import { TOK, ok, has, boot, adsPage, popup, text, until, rowsAre, adsFb, ratesOk, fxEr, fxCdn, FX, ROW } from "../harness.mjs";
 
 const day = new Date().toISOString().slice(0, 10);
 const ins = (spend) => ({ data: [{ spend: String(spend), impressions: "100", inline_link_clicks: "10", date_start: day, date_stop: day }] });
@@ -32,7 +32,7 @@ const plain = (p, box = "#accountsTotal") => until(p, (sel) => /\$1,696/.test(do
 const noErrs = (b) => ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
 // Waits (up to 5 s) until the mock has seen n requests.
 const hitsReach = async (b, p, n) => { for (let i = 0; i < 50 && b.rateHits.length < n; i++) await p.waitForTimeout(100); return b.rateHits.length === n; };
-const open3 = async (b) => { await adsPage(b); const pop = await popup(b, "accounts"); ok("three accounts load", await rowsAre(pop, ".acc", 3)); return pop; };
+const open3 = async (b) => { await adsPage(b); const pop = await popup(b, "accounts"); ok("three accounts load", await rowsAre(pop, ROW,3)); return pop; };
 
 // ---------- rates answered by the primary source ----------
 async function ratesFlows() {
@@ -50,7 +50,7 @@ async function ratesFlows() {
   ok("…exactly one request to the primary source, none to the fallback", b.rateHits.length === 1 && b.rateHits[0] === ER, b.rateHits.join());
   const fx = await pop.evaluate(() => chrome.storage.local.get(["fx", "fxFail"]));
   ok("…the table is kept in chrome.storage.local (USD base, source, date, numbers) and there is no failure mark", fx.fx?.base === "USD" && fx.fx.source === "exchangerate-api" && fx.fx.date === day && fx.fx.rates.VND === FX.VND && typeof fx.fx.fetchedAt === "number" && !fx.fxFail, JSON.stringify(fx).slice(0, 200));
-  ok("…the rows keep their own exact amounts (no '≈' on a row)", (await pop.$$eval(".acc-spend", (n) => n.map((x) => x.textContent.replace(/\s+/g, " ").trim()))).every((x) => !x.includes("≈")), "rows");
+  ok("…the rows keep their own exact amounts (no '≈' on a row)", (await pop.$$eval(`${ROW} .lrow-value`, (n) => n.map((x) => x.textContent.replace(/\s+/g, " ").trim()))).every((x) => !x.includes("≈")), "rows");
 
   // the Businesses tab adds the same three currencies: same rates, no second request
   await pop.click('[data-tab="bms"]');
@@ -71,7 +71,7 @@ async function ratesFlows() {
 
   // second popup: the saved table is used, nothing is asked
   const pop2 = await popup(b, "accounts");
-  ok("a second popup within 24 h shows '≈ $1,770' again and sends nothing", (await rowsAre(pop2, ".acc", 3)) && (await approx(pop2)) && b.rateHits.length === 1, b.rateHits.join());
+  ok("a second popup within 24 h shows '≈ $1,770' again and sends nothing", (await rowsAre(pop2, ROW,3)) && (await approx(pop2)) && b.rateHits.length === 1, b.rateHits.join());
   // a table older than 24 h is asked for again
   await pop2.evaluate(() => chrome.storage.local.get("fx").then(({ fx }) => chrome.storage.local.set({ fx: { ...fx, fetchedAt: Date.now() - 25 * 3600e3 } })));
   const pop3 = await popup(b, "accounts");
@@ -88,7 +88,7 @@ async function lateFlow() {
   const b = await boot({ fb: adsFb(TOK), graph: graphFor(THREE), rates: (u) => ({ ...ratesOk(u), delay: 900 }) });
   await adsPage(b);
   const pop = await popup(b, "accounts");
-  ok("rows", await rowsAre(pop, ".acc", 3));
+  ok("rows", await rowsAre(pop, ROW,3));
   ok("the total is drawn at once as the per-currency sum…", await plain(pop), await text(pop, "#accountsTotal .total-value"));
   ok("…without the muted line", (await totalOf(pop, "#accountsTotal")).sub === null);
   ok("…and turns into '≈ $1,770' when the rates are there", await approx(pop), await text(pop, "#accountsTotal .total-value"));
@@ -127,12 +127,12 @@ async function downFlows() {
     noErrs(b);
     // another popup within 10 minutes: nothing is sent again
     const pop2 = await popup(b, "accounts");
-    ok(`${name}: a popup opened right after sends nothing (10-minute pause)`, (await rowsAre(pop2, ".acc", 3)) && (await pop2.waitForTimeout(500), b.rateHits.length === 2), b.rateHits.join());
+    ok(`${name}: a popup opened right after sends nothing (10-minute pause)`, (await rowsAre(pop2, ROW,3)) && (await pop2.waitForTimeout(500), b.rateHits.length === 2), b.rateHits.join());
     ok(`${name}: …and the total is still the plain sum`, !(await text(pop2, "#accountsTotal .total-value")).includes("≈"));
     // ten minutes later it tries again
     await pop2.evaluate(() => chrome.storage.local.set({ fxFail: { at: Date.now() - 11 * 60e3 } }));
     const pop3 = await popup(b, "accounts");
-    ok(`${name}: with a mark older than 10 minutes both sources are tried again`, (await rowsAre(pop3, ".acc", 3)) && (await hitsReach(b, pop3, 4)), b.rateHits.join());
+    ok(`${name}: with a mark older than 10 minutes both sources are tried again`, (await rowsAre(pop3, ROW,3)) && (await hitsReach(b, pop3, 4)), b.rateHits.join());
     noErrs(b);
     await b.ctx.close();
   }
@@ -144,7 +144,7 @@ async function oneCurrencyFlow() {
   const b = await boot({ fb: adsFb(TOK), graph: graphFor(ONE), rates: ratesOk });
   await adsPage(b);
   const pop = await popup(b, "accounts");
-  ok("two USD accounts", await rowsAre(pop, ".acc", 2));
+  ok("two USD accounts", await rowsAre(pop, ROW,2));
   await pop.waitForTimeout(500);
   const t = await totalOf(pop, "#accountsTotal");
   ok("the total is the exact sum '$1,700' (1 695.70 + 4.30), no '≈', no muted line, no tooltip", t.value === "$1,700" && t.sub === null && !t.valueTitle, JSON.stringify(t));
