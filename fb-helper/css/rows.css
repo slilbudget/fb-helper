@@ -1,6 +1,5 @@
 /* rows: the one list row of the Businesses, Ad accounts and Pages tabs (js/row.js, design.md §1 + §8). Tokens come from popup.css.
-   Class prefix: .lrow = a row, .lgroup = a group header, .lav = a picture. (The older .row / .acc rules in popup.css belong to the tabs
-   that have not moved over yet.)
+   Class prefix: .lrow = a row, .lgroup = a group header, .lav = a picture, .lsk = a skeleton row, .lempty = an empty / error state.
 
    collapsed row = a 2 x 2 grid in .lrow-head:
      [ name button ............ ]  [ value ]        line 1
@@ -163,7 +162,30 @@ a.lrow-todo-link.primary { font-weight: 500; }
 .lgroup .lav { --lav: 16px; }
 .lgroup .lav .i { --size-icon: 10px; }
 
-/* A muted line under a list ("some businesses couldn't be read…") and the same kind of line inside an expanded body. */
+/* ---------- the states of a list with no rows (js/list-state.js) ---------- */
+/* A muted Lucide icon, one calm line, one button; centred in the room under the controls. */
+.lempty { display: grid; justify-items: center; gap: var(--spacing-3); padding: 56px var(--spacing-4) var(--spacing-4); text-align: center; color: var(--color-text-secondary); }
+.lempty .i { --size-icon: 32px; color: var(--color-icon); }
+.lempty-text { margin: 0; max-width: 44ch; text-wrap: balance; }
+.lempty-detail { margin: -4px 0 0; max-width: 44ch; font-size: var(--text-sm); overflow-wrap: anywhere; }
+.lempty .btn { margin-top: var(--spacing-1); }
+/* A refresh that was refused, above the old rows. */
+.list-note, .pg-note { padding: var(--spacing-3) var(--spacing-4) 0; }
+
+/* Skeleton rows: the shape of the rows that are coming (grey bars; the shimmer is switched off for reduced motion below). */
+.lsk-list { display: grid; }
+.lsk { display: grid; grid-template-columns: minmax(0, 1fr) minmax(var(--lrow-right), auto); grid-template-rows: 24px 17px; column-gap: var(--spacing-3); row-gap: 2px; align-items: center;
+  padding: var(--spacing-3) var(--spacing-4); position: relative; }
+.lsk:not(:last-child)::after { content: ""; position: absolute; inset-inline: var(--spacing-4); bottom: 0; height: 1px; background: var(--color-border); }
+.lsk i { display: block; height: 12px; border-radius: var(--radius-full); background: linear-gradient(90deg, var(--color-background-muted) 30%, var(--color-hover-fill) 50%, var(--color-background-muted) 70%) 100% 0 / 300% 100%; animation: lsk 1.4s ease-in-out infinite; }
+.lsk i:nth-child(1) { grid-area: 1 / 1; width: 46%; margin-inline-start: 22px; }
+.lsk i:nth-child(2) { grid-area: 1 / 2; justify-self: end; width: 64px; }
+.lsk i:nth-child(3) { grid-area: 2 / 1; width: 24%; height: 10px; margin-inline-start: 22px; }
+.lsk:nth-child(2n) i:nth-child(1) { width: 36%; }
+.lsk:nth-child(3n) i:nth-child(1) { width: 56%; }
+@keyframes lsk { to { background-position: 0 0; } }
+
+/* A muted line under a list ("some businesses couldn't be read…"). */
 .pg-foot, .acc-foot { padding: var(--spacing-3) var(--spacing-4) var(--spacing-4); color: var(--color-text-secondary); font-size: var(--text-sm); text-align: center; }
 .lrow-note { margin: 0; color: var(--color-text-secondary); font-size: var(--text-sm); }
 

@@ -21,6 +21,10 @@ export const state = {
   gen: 0, ctl: new AbortController(),
   skip: new Set(),                                   // optional fields Graph refused for this token (see readPaged); reset with the generation
   grabOp: 0,                                         // latest token grab wins; older ones are dropped
+  // Why a list tab has nothing to show: { accounts: { perm, msg }, bms: …, pages: … } from the last load that failed (list-loader.js), cleared by the
+  // next load that goes out and by a token change. perm = this token cannot read it at all (pure.js isPermError).
+  listErr: {},
+  tokenHint: null,                                   // the Token tab's reason for having no token ("Open Facebook in this profile"), shown by the list tabs too
 };
 export class Stale extends Error {}
 
@@ -115,6 +119,7 @@ export function newGeneration() {
   state.ctl.abort();
   state.ctl = new AbortController();
   state.skip = new Set();
+  state.listErr = {};                                  // the new token may read what the old one could not
   emit("generation");
 }
 

@@ -14,16 +14,18 @@
 //      another tab's cache is dropped, so no cache is ever stamped as belonging to a user it does not;
 //   7. `commit` puts the result in state and storage and returns the toast text (null = say nothing);
 //   8. whatever happened, the button and the loading state are put back (finally), and `sent` runs when a request really went out.
-// An error shows as a toast unless the tab handles it (`fail`, e.g. "this token cannot read it" as a calm note in the list).
+// An error shows as a toast, except "this token cannot read it" (pure.js isPermError): that is a calm state in the list. Either way the reason is kept
+// (state.listErr[name] = { perm, msg }) for list-state.js, so an automatic load that stayed silent still explains an empty list.
 //
 // A tab's cache is registered here (registerCache), and when another window of the extension loads or drops the list (its `atKey` changes
 // in storage.session) this window takes the saved list over through the very same `load` the popup start-up uses.
 
 import { t } from "./i18n.js";
 import { toast } from "./dom.js";
+import { isPermError } from "./pure.js";
 import { state, Stale, fbUser, checkOwner, claimSlot, registerCache, isDead, deadCode } from "./state.js";
 import { pauseNote, requestsSent } from "./graph.js";
-import { settledGrab, grabToken, tokenReady } from "./token.js";
+import { settledGrab, grabToken, tokenReady, rereadToken } from "./token.js";
 import { on, emit } from "./bus.js";
 
 const TOKEN_WAIT_MS = 15 * 1000;                 // the silent token read of the popup start may take long on a busy machine; not forever
@@ -41,7 +43,6 @@ const TOKEN_WAIT_MS = 15 * 1000;                 // the silent token read of the
 //   due         the automatic load is wanted (nothing cached; accounts: also an old list on a new FB page load)
 //   read        async ({ gen, auto }) → result; throws what graph() throws (Stale for a token change)
 //   commit      async (result, { gen, auto, owner }) → toast text | null
-//   fail        optional, (error) → true when the tab shows the error itself
 //   sent        optional, ({ gen }) a request went out (also when it failed)
 export function listLoader(cfg) {
   const panel = cfg.panel || `#tab-${cfg.name}`;
@@ -91,6 +92,7 @@ export function listLoader(cfg) {
     const btn = document.querySelector(cfg.button), before = requestsSent();
     try {
       if (btn) { btn.disabled = true; btn.setAttribute("aria-busy", "true"); }
+      delete state.listErr[cfg.name];                                // a request goes out: whatever the last one said is old
       cfg.loading(true);
       try {
         const result = await cfg.read({ gen, auto });
@@ -102,7 +104,9 @@ export function listLoader(cfg) {
         if (msg) toast(msg);
       } catch (e) {
         if (e instanceof Stale) return undefined;
-        if (!cfg.fail?.(e)) toast(e.message, true);
+        const perm = isPermError(e);
+        state.listErr[cfg.name] = { perm, msg: e.message };
+        if (!perm) toast(e.message, true);
       } finally {
         if (requestsSent() > before) cfg.sent?.({ gen });
       }
@@ -132,5 +136,12 @@ export function listLoader(cfg) {
     }
   }
 
-  return { load, ensure, busy: () => busy };
+  // The button of an empty state ("Try again" / "Load" / "Refresh"): a missing or dead token is read again first (the same deliberate retry as the
+  // token tab's ⟳), then the list is loaded like a click on refresh. A click on a button is never "automatic": it explains itself with toasts.
+  async function retry() {
+    if (!state.token || isDead()) { const { got } = await rereadToken(); if (!got) return undefined; }
+    return load();
+  }
+
+  return { load, ensure, retry, busy: () => busy };
 }

@@ -15,12 +15,13 @@ import { state, Stale, saveSession } from "./state.js";
 import { readPaged } from "./graph.js";
 import { readBusinessEdges } from "./biz-edges.js";
 import { listLoader } from "./list-loader.js";
+import { emptyView, listNote } from "./list-state.js";
 import { on } from "./bus.js";
 import { registerTab, registerRender, registerInit, registerStart } from "./registry.js";
 import { LINKS } from "./links.js";
 import { row, kv, whatToDo, fixLink, linksRow } from "./row.js";
 import {
-  OPTIONAL, BASE, BIZ_OPTIONAL, BIZ_EDGES, PROBLEMS, isPermissionError, keysToDrop, slimPage, finishPages, accessVerdict, viaBusiness,
+  OPTIONAL, BASE, BIZ_OPTIONAL, BIZ_EDGES, PROBLEMS, keysToDrop, slimPage, finishPages, accessVerdict, viaBusiness,
   igOf, handleOf, accessOf, humanTask, issuesOf, problemCounts, filterPages, sortPages,
 } from "./pages-model.js";
 
@@ -29,7 +30,7 @@ const PAGE_SIZE = 50, MAX_PAGES = 4;         // per edge: up to 200 pages; more 
 
 Object.assign(state, {
   pages: [], pagesAt: 0, pagesTruncated: false, pagesBizFail: false,   // pagesBizFail: a business or one of its edges could not be read (the pages only in it may be missing)
-  pagesQ: "", pagesProblem: null, pagesLoading: false, pagesNote: null, pagesOpen: new Set(),
+  pagesQ: "", pagesProblem: null, pagesLoading: false, pagesOpen: new Set(),
 });
 
 // ---------- storage ----------
@@ -39,7 +40,9 @@ Object.assign(state, {
 // Optional fields Graph refused for this token. Our own set: state.skip is shared with the Ad accounts tab. Replaced on a
 // token change (the new token may read what the old one could not), hence the function form where it is handed to readPaged.
 let skip = new Set();
-on("generation", () => { skip = new Set(); state.pagesNote = null; renderPages(); });
+on("generation", () => { skip = new Set(); renderPages(); });
+on("token-hint", () => renderPages());               // the Token tab's reason for having no token changed
+on("token-dead", () => renderPages());
 on("cache-dropped", () => { state.pagesProblem = null; renderPages(); });
 
 // ---------- load ----------
@@ -79,12 +82,12 @@ const readBusinessPages = (gen) => {
 const loader = listLoader({
   name: "pages", button: "#loadPages", slotMs: SLOT_MS, waitKey: "pages.wait",   // one list read per minute; the slot covers ALL requests of a refresh
   keys: ["pages", "pagesAt", "pagesTruncated", "pagesBizFail"],
-  reset: () => Object.assign(state, { pages: [], pagesAt: 0, pagesTruncated: false, pagesBizFail: false, pagesNote: null, pagesOpen: new Set() }),
+  reset: () => Object.assign(state, { pages: [], pagesAt: 0, pagesTruncated: false, pagesBizFail: false, pagesOpen: new Set() }),
   load: (ses) => Object.assign(state, { pages: Array.isArray(ses.pages) ? ses.pages : [], pagesAt: ses.pagesAt || 0, pagesTruncated: !!ses.pagesTruncated, pagesBizFail: !!ses.pagesBizFail }),
   has: () => !!state.pagesAt,
   atKey: "pagesAt", at: () => state.pagesAt,
   followed: () => renderPages(),
-  loading: (on) => { state.pagesLoading = on; if (on) state.pagesNote = null; renderPages(); },
+  loading: (on) => { state.pagesLoading = on; renderPages(); },
   // The tab loads by itself on the first visit of a popup that has nothing cached for this FB user. A cached list is only refreshed by the
   // button: reopening the popup or switching tabs never sends a request.
   empty: () => !state.pagesAt, due: () => !state.pagesAt,
@@ -101,12 +104,6 @@ const loader = listLoader({
     Object.assign(state, { pages, pagesAt: Date.now(), pagesTruncated: truncated, pagesBizFail: biz.failed, owner });   // before the write: our own storage event must find nothing new
     await saveSession({ pages, pagesAt: state.pagesAt, pagesTruncated: truncated, pagesBizFail: biz.failed, owner });
     return !auto || truncated ? t("pages.loaded", { n: pages.length }) + (truncated ? t("pages.truncated") : "") : null;
-  },
-  // The token cannot read pages: not an error of ours, a calm line in the list says what to do (and no red toast).
-  fail: (e) => {
-    if (!isPermissionError(e)) return false;
-    state.pagesNote = "perm";
-    return true;
   },
 });
 
@@ -139,18 +136,16 @@ function drawPages() {
   renderTotal();
   renderChips();
   const rows = visiblePages();
-  const perm = state.pagesNote === "perm" ? t("pages.perm") : null;
-  if (!state.pagesAt) {
-    return fill(list, el("div", { class: "empty" }, state.pagesLoading ? t("pages.loading") : perm || t("pages.empty")));
-  }
+  const empty = () => emptyView({ tab: "pages", loaded: !!state.pagesAt, loading: state.pagesLoading, none: t("pages.none"), loadingText: t("pages.loading"), retry: () => loader.retry() });
+  if (!state.pagesAt) return fill(list, empty());
   const notes = [
-    perm ? el("div", { class: "hint pg-note" }, perm) : null,
+    listNote("pages", "pg-note"),                                   // a refresh was refused: the old list stays, the note says why it is old
     // The fix for the problem the chip shows, written out (the word's tooltip says it too, but a tooltip is easy to miss).
     state.pagesProblem === "noIg" ? el("div", { class: "hint pg-note" }, t("pages.igFix")) : null,
   ];
   // Pages that are only in a business: read through the business edges. A muted line only when one of those reads failed.
   const foot = state.pagesBizFail ? el("div", { class: "pg-foot" }, t("pages.bmHint")) : null;
-  if (!state.pages.length) return fill(list, ...notes, el("div", { class: "empty" }, t("pages.none")), foot);
+  if (!state.pages.length) return fill(list, ...notes, empty(), foot);
   if (!rows.length) return fill(list, ...notes, el("div", { class: "empty" }, t("pages.noMatch")), foot);
   fill(list, ...notes, ...rows.map(renderPage), foot);
 }

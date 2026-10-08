@@ -62,6 +62,10 @@ body.tall { min-height: 600px; }
 .i-flag     { --icon: url(../images/icons/flag.svg); }
 .i-chevron  { --icon: url(../images/icons/chevron-down.svg); }
 
+.i-inbox    { --icon: url(../images/icons/inbox.svg); }
+.i-key-round { --icon: url(../images/icons/key-round.svg); }
+.i-lock     { --icon: url(../images/icons/lock.svg); }
+.i-cloud-off { --icon: url(../images/icons/cloud-off.svg); }
 /* ---------- header + tabs ---------- */
 .bar {
   position: sticky; top: 0; z-index: 3;

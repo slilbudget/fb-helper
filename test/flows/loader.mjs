@@ -64,7 +64,7 @@ async function pauseFlow() {
   await pop.waitForTimeout(600);
   ok("budget used up: the automatic load sends nothing, takes no slot, marks nothing, and stays quiet", b.hits.length === 0 && !(await slotsOf(pop)).includes("accounts") && (await stored(pop, "autoPage")) === undefined && (await toastOf(pop)) === "", `${b.hits.length} ${await toastOf(pop)}`);
   const toast = await clickToast(pop, "#loadAccounts");
-  ok("a click says so calmly, with the minutes (the oldest bucket leaves the hour in about 40)", b.hits.length === 0 && /600 requests per hour/.test(toast) && /(39|40|41) min/.test(toast) && !(await slotsOf(pop)).includes("accounts"), `${b.hits.length} ${toast}`);
+  ok("a click says so calmly, with the minutes (the oldest bucket leaves the hour in about 40)", b.hits.length === 0 && /600 requests/.test(toast) && /(39|40|41) min/.test(toast) && !(await slotsOf(pop)).includes("accounts"), `${b.hits.length} ${toast}`);
   await pop.evaluate(() => chrome.storage.session.set({ budget: [[Date.now() - 61 * 60000, 600]] }));
   await pop.click("#loadAccounts");
   ok("buckets older than an hour do not count: the refresh goes out", (await rowsAre(pop, ROW, 1)) && b.hits.length >= 1, String(b.hits.length));
@@ -143,7 +143,7 @@ async function ownerFlow() {
   ok("the accounts list is stored under 2002", (await stored(pop, "owner")) === "2002" && !!(await stored(pop, "accounts")));
   ok("…and the Businesses and Pages caches of the other login are gone, not stamped with the new user", (await stored(pop, "bms")) === undefined && (await stored(pop, "pages")) === undefined, JSON.stringify([await stored(pop, "bmsAt"), await stored(pop, "pagesAt")]));
   await pop.click('[data-tab="bms"]');
-  ok("…the Businesses tab is empty again for the new user (the one automatic try of this popup was used up: it says to press refresh)", (await pop.locator("#bmsList .lrow").count()) === 0 && has(await text(pop, "#bmsList"), "press the refresh button"), await text(pop, "#bmsList"));
+  ok("…the Businesses tab is empty again for the new user (the one automatic try of this popup was used up: 'Not loaded yet' and a Load button)", (await pop.locator("#bmsList .lrow").count()) === 0 && (await text(pop, "#bmsList .lempty-text")) === "Not loaded yet" && (await text(pop, "#bmsList .lempty .btn")) === "Load", await text(pop, "#bmsList"));
   noErrs(b);
   await b.ctx.close();
 }
@@ -164,7 +164,7 @@ async function waitFlow() {
   await pop.click("#loadBms");
   for (let i = 0; i < 50 && TABS.bms.reads(b) < own0 + 1; i++) await pop.waitForTimeout(100);
   ok("the Businesses list refreshes (one request of its own)", TABS.bms.reads(b) === own0 + 1, `${own0} -> ${TABS.bms.reads(b)}`);
-  ok("…and the toast says the Ad accounts are not refreshed yet (the spend is the old one), with the seconds left", await until(pop, () => /Ad accounts: refresh available in (4\d|3\d) s/.test(document.querySelector("#toast").textContent)), await toastOf(pop));
+  ok("…and the toast says the Accounts are not refreshed yet (the spend is not updated), with the seconds left", await until(pop, () => /Accounts: refresh available in (4\d|3\d) s — spend not updated yet/.test(document.querySelector("#toast").textContent)), await toastOf(pop));
   ok("…no request went to the Ad accounts", accReads() === a0, `${a0} -> ${accReads()}`);
   // the refresh button's tooltip is the age of the BUSINESS list
   await pop.waitForTimeout(100);

@@ -15,6 +15,7 @@ import { state, Stale, saveSession, claimSlot, slotLeft, onLoad, isDead, deadCod
 import { graph, readPaged, pauseNote } from "./graph.js";
 import { readBusinessEdges } from "./biz-edges.js";
 import { listLoader } from "./list-loader.js";
+import { emptyView, listNote } from "./list-state.js";
 import { settledGrab, grabToken } from "./token.js";
 import { on, emit } from "./bus.js";
 import { accountState, adSteps } from "./nextsteps.js";
@@ -78,7 +79,10 @@ onLoad(["autoPage"], (ses) => { state.autoPage = ses.autoPage || null; });
 // Token changed: the per-token sets of the rows start empty (the account cache itself stays).
 on("generation", () => {
   state.adsBusy = new Set(); state.statsBusy = new Set(); state.noStats = new Set(); state.noAll = new Set();
+  renderAccounts();                                  // the empty state follows the token (no token, a dead one, a new one)
 });
+on("token-hint", () => renderAccounts());            // the Token tab's reason for having no token changed
+on("token-dead", () => renderAccounts());
 // The cached lists belonged to another FB user and are gone: draw the empty list.
 on("cache-dropped", () => { state.bmFilter = null; renderAccounts(); });
 // The Businesses tab asks for the ad accounts of one business ({ id, name }; null clears). It switches the tab itself (bus "show-tab").
@@ -162,20 +166,22 @@ const loader = listLoader({
     const mine = await readPaged("me/adaccounts", { base: BASE_FIELDS, optional: OPTIONAL_FIELDS, skip: () => state.skip, map: slim });
     if (gen !== state.gen) throw new Stale();
     const viaBm = await readBmAccounts(gen, new Set(mine.rows.map((a) => a.account_id)));
-    // Not all of it: a limit was hit (cap, page limit) or the business list itself was not readable. A business whose edge could not be read is
-    // NOT that: it is named in failedBms and only its own verdict is withheld.
-    return { rows: [...mine.rows, ...viaBm.rows], truncated: mine.truncated || viaBm.truncated || viaBm.listFailed, failedBms: viaBm.failedBms };
+    // "Not all of it" for everybody: a limit was hit (`cut`: a cap, a page limit) or the business list itself was not readable (`listFailed`: no
+    // business can be named). A business whose edge could not be read is NOT that: it is named in failedBms and only its own verdict is withheld.
+    return { rows: [...mine.rows, ...viaBm.rows], cut: mine.truncated || viaBm.truncated, listFailed: viaBm.listFailed, failedBms: viaBm.failedBms };
   },
-  commit: async ({ rows, truncated, failedBms }, { auto, owner }) => {
+  commit: async ({ rows, cut, listFailed, failedBms }, { auto, owner }) => {
     // Another user's list: their ads and open rows don't belong to this one.
     if (owner !== state.owner) Object.assign(state, { open: new Set(), ads: {}, adsHidden: new Set() });
+    const truncated = cut || listFailed;
     Object.assign(state, { accounts: rows, fetchedAt: Date.now(), truncated, failedBms, owner });
     await saveSession({ accounts: rows, fetchedAt: state.fetchedAt, truncated, failedBms, owner, ads: adsToSave() });
     await saveView();
-    // The list itself is the answer to an automatic load; it only speaks up for a cut-off one (a business that could not be read is said by a
-    // click, and always by the muted line under the list and in that business's row).
-    return !auto || truncated
-      ? t("acc.loaded", { n: rows.length }) + (truncated ? t("acc.truncated") : "") + (failedBms.length ? t("acc.readFail", { n: failedBms.length, w: tn(failedBms.length, "acc.bizCount") }) : "")
+    // The list itself is the answer to an automatic load; it only speaks up for a cut-off one (a failed read has its own message - a dead session, a
+    // refused edge - and is said by a click, and always by the "not all" on the count line / the muted line under the list / the business's row).
+    return !auto || cut
+      ? t("acc.loaded", { n: rows.length }) + (cut ? t("acc.truncated") : "")
+        + (listFailed ? t("acc.listFail") : failedBms.length ? t("acc.readFail", { n: failedBms.length, w: tn(failedBms.length, "acc.bizCount") }) : "")
       : null;
   },
   // A request went out: this FB page load has had its list (never written for a refusal made before the network).
@@ -243,6 +249,10 @@ function wantRates(rows) {
 function renderAccounts() { keepFocus(drawAccounts); }
 function drawAccounts() {
   const list = $("#accountsList");
+  // The period, the total and "Active IDs" mean something only next to rows: while there are none (loading, no token, an error, an empty list) the
+  // tab shows the search, the refresh and one calm state.
+  const any = state.accounts.length > 0;
+  for (const sel of ["#periodSeg", "#accountsTotal", "#copyLiveIds"]) $(sel).classList.toggle("hidden", !any);
   renderHint();
   $("#copyLiveIds").disabled = !state.accounts.some(isLive);
   // The chips count the rows the business filter leaves (not the search or the chip itself: the other chips must stay to switch to).
@@ -261,8 +271,8 @@ function drawAccounts() {
       onclick: () => { state.statusFilter = on ? null : chip.id; renderAccounts(); } }, `${word(chip)} ${n}`);
   }));
   const rows = visibleRows();
-  if (!state.accounts.length) return fill(list, el("div", { class: "empty" }, state.accLoading ? t("acc.loading") : t("acc.empty")));
-  if (!rows.length) return fill(list, el("div", { class: "empty" }, t("acc.noMatch")));
+  if (!any) return fill(list, emptyView({ tab: "accounts", loaded: !!state.fetchedAt, loading: state.accLoading, none: t("acc.none"), loadingText: t("acc.loading"), retry: () => loader.retry() }));
+  if (!rows.length) return fill(list, listNote("accounts"), el("div", { class: "empty" }, t("acc.noMatch")));
 
   // Groups by business, the biggest spender first (USD equivalent; without rates only comparable amounts are compared: spend.js compareSpend);
   // inside a group active accounts by spend, then the ones with a problem, then the dead ones. Stats once per row: the comparators would
@@ -284,7 +294,7 @@ function drawAccounts() {
   // A business that could not be read: its accounts may be missing. One muted line, only when it concerns what is on screen (the business filter
   // names one business; without it, any).
   const unread = state.bmFilter ? state.failedBms.includes(state.bmFilter.id) : state.failedBms.length > 0;
-  fill(list, ...groups.flatMap((g) => [headers ? groupEl(g, r) : null, ...g.accounts.map((a) => renderAccount(a, stats.get(a), r))]),
+  fill(list, listNote("accounts"), ...groups.flatMap((g) => [headers ? groupEl(g, r) : null, ...g.accounts.map((a) => renderAccount(a, stats.get(a), r))]),
     unread ? el("div", { class: "acc-foot" }, t("acc.bmHint")) : null);
   wantRates(rows);
 }

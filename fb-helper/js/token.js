@@ -168,8 +168,13 @@ async function grabTokenNow({ toClipboard = true, silent = false } = {}) {
   }
   return pick;
 }
+// The list tabs show the Token tab's reason for having no token (state.tokenHint): "token-hint" tells them when it changes.
+let hintShown = "";
 function renderToken(hint) {
   const tok = state.token;
+  state.tokenHint = tok ? null : hint ?? state.tokenHint;
+  const shown = tok ? "" : state.tokenHint || "";
+  if (shown !== hintShown) { hintShown = shown; emit("token-hint"); }
   // Full token, one line; the field clips whatever runs past its right edge.
   $("#tokenBox").textContent = tok || hint || "—";
   $("#tokenBox").classList.toggle("filled", !!tok);
@@ -313,15 +318,20 @@ async function copyEnvNow() {
 // The ⟳ next to the token: read it again from the open FB tabs (no clipboard, no request to Graph).
 // It is also the deliberate way to try a token Graph called dead: the mark is cleared first, so the next
 // request with it goes out once. The account cache stays; rate locks and the throttle pause are not touched.
-async function refreshToken() {
-  const btn = $("#refreshToken");
-  btn.disabled = true; btn.setAttribute("aria-busy", "true");
+// → { got, was, wasDead }. Also what the list tabs' "Try again" does when there is no token or it is dead.
+export async function rereadToken() {
   const was = state.token, wasDead = isDead();
   clearDead(was);
   state.checked = null;                                 // the owner is verified again on the next export
   chrome.storage.session.remove("checked");
+  const got = await grabToken({ toClipboard: false });   // no token: grabToken toasts why
+  return { got, was, wasDead };
+}
+async function refreshToken() {
+  const btn = $("#refreshToken");
+  btn.disabled = true; btn.setAttribute("aria-busy", "true");
   try {
-    const got = await grabToken({ toClipboard: false });   // no token: grabToken toasts why
+    const { got, was, wasDead } = await rereadToken();
     if (got) toast(wasDead && got === was ? t("token.retry") : t("token.refreshed"));
   } finally { btn.disabled = false; btn.removeAttribute("aria-busy"); }
 }

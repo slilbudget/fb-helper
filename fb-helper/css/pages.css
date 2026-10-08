@@ -1,8 +1,8 @@
 /* pages: styles of js/pages.js. The row itself (lines, picture, status, fix, ID, body, dividers) is the shared .lrow of rows.css;
    only what is specific to a page goes here. */
 
-/* Lines around the rows: what to do about the filtered problem, "this token can't read pages", "some businesses couldn't be read". */
-.pg-note { padding: var(--spacing-3) var(--spacing-4) 0; }
+/* Lines around the rows: what to do about the filtered problem, "this token can't read pages". (The muted "some businesses couldn't be read" line under
+   the list is rows.css .pg-foot.) */
 
 /* The Instagram handle at the right of line 1 is a muted 13 px word; a long handle is cut, never allowed to squeeze the name. */
 #pagesList .lrow-value { max-width: min(168px, 34vw); overflow: hidden; text-overflow: ellipsis; }

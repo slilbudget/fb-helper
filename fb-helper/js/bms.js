@@ -13,6 +13,7 @@ import { $, el, fill, toast, keepFocus } from "./dom.js";
 import { state, Stale, saveSession } from "./state.js";
 import { readPaged } from "./graph.js";
 import { listLoader } from "./list-loader.js";
+import { emptyView, listNote } from "./list-state.js";
 import { LINKS } from "./links.js";
 import { on, emit } from "./bus.js";
 import { registerTab, registerRender, registerInit, registerStart } from "./registry.js";
@@ -21,14 +22,13 @@ import { bindPeriods, fillTotal, refreshTip } from "./period.js";
 import { fmtMoney, cachedRates, rates as fetchRates } from "./money.js";
 import { statsOf, periodRange } from "./spend.js";
 import { ensureAccounts, reloadAccounts } from "./accounts.js";
-import { BM_BASE, BM_OPTIONAL, BM_LIMIT, BM_MAX_PAGES, BM_SLOT_MS, slimBm, bmKeysToDrop, buildRows, filterRows, sortRows, totalOf, spendOf, isPermError } from "./bms-model.js";
+import { BM_BASE, BM_OPTIONAL, BM_LIMIT, BM_MAX_PAGES, BM_SLOT_MS, slimBm, bmKeysToDrop, buildRows, filterRows, sortRows, totalOf, spendOf } from "./bms-model.js";
 
 // bmQuery is this tab's search (not saved). Not to be confused with accounts.js's state.bmFilter, the business the Accounts tab
 // is filtered by. state.accounts / fetchedAt / truncated / failedBms / accLoading below are the Accounts tab's: the spend, counts and
 // status of a business are read from that list (failedBms = the businesses whose accounts could not be read: no verdict for those).
 Object.assign(state, {
   bms: [], bmsAt: 0, bmsTruncated: false, bmsLoading: false,
-  bmPerm: false,                                     // the last read was refused as a permission error: the list draws the calm note
   bmQuery: "",
 });
 let bmSkip = new Set();                              // optional fields Graph refused for this token; own set, so no other tab's refusals mix in
@@ -40,8 +40,10 @@ const active = () => ready && $("#tab-bms").classList.contains("active");   // a
 // Kept across popup reopen and token changes, dropped together with the other lists when the FB user changes. The cache is registered
 // by the shared loader (list-loader.js, below), which also takes over what another window of the extension loaded.
 
-// Token changed: Graph's refusals and the "can't read" note belonged to the old one (the list itself stays).
-on("generation", () => { bmSkip = new Set(); state.bmPerm = false; renderBms(); });
+// Token changed: Graph's refusals and the "can't read" state (state.listErr, cleared by the generation) belonged to the old one (the list itself stays).
+on("generation", () => { bmSkip = new Set(); renderBms(); });
+on("token-hint", () => renderBms());                 // the Token tab's reason for having no token changed
+on("token-dead", () => renderBms());
 // The cached lists belonged to another FB user and are gone: draw the empty list.
 on("cache-dropped", () => { openRows.clear(); renderBms(); });
 // The Ad accounts list (spend, counts, status) is loading, loaded or changed; the spend period was switched (here or on the
@@ -69,7 +71,7 @@ async function readBms() {
 const loader = listLoader({
   name: "bms", button: "#loadBms", slotMs: BM_SLOT_MS, waitKey: "bms.wait",
   keys: ["bms", "bmsAt", "bmsTruncated"],
-  reset: () => Object.assign(state, { bms: [], bmsAt: 0, bmsTruncated: false, bmPerm: false }),
+  reset: () => Object.assign(state, { bms: [], bmsAt: 0, bmsTruncated: false }),
   load: (ses) => Object.assign(state, { bms: Array.isArray(ses.bms) ? ses.bms : [], bmsAt: ses.bmsAt || 0, bmsTruncated: !!ses.bmsTruncated }),
   has: () => !!state.bmsAt,
   atKey: "bmsAt", at: () => state.bmsAt,
@@ -80,14 +82,9 @@ const loader = listLoader({
   read: readBms,
   commit: async ({ rows, truncated }, { auto, owner }) => {
     const bms = rows.filter(Boolean);                // a row without a usable id is not a business
-    Object.assign(state, { bms, bmsAt: Date.now(), bmsTruncated: truncated, bmPerm: false, owner });
+    Object.assign(state, { bms, bmsAt: Date.now(), bmsTruncated: truncated, owner });
     await saveSession({ bms, bmsAt: state.bmsAt, bmsTruncated: truncated, owner });
     return !auto || truncated ? t("bms.loaded", { n: bms.length }) + (truncated ? t("bms.truncated") : "") : null;   // the list itself is the answer to an automatic load
-  },
-  fail: (e) => {
-    if (!isPermError(e)) return false;
-    state.bmPerm = true;                             // this token can't read businesses: say so in the list, calmly
-    return true;
   },
 });
 
@@ -137,10 +134,11 @@ function drawBms() {
   const list = $("#bmsList");
   const all = allRows();
   renderTotal(all);
+  // The period and the total mean something only next to rows (no list yet, no token, an error, no business at all: one calm state instead).
+  for (const sel of ["#bmsPeriod", "#bmsTotal"]) $(sel).classList.toggle("hidden", !all.length);
   // No business list (not read yet, or this token cannot read it) but ad accounts that name their businesses: those businesses are shown.
-  if (!state.bmsAt && !all.length) return fill(list, el("div", { class: "empty" }, state.bmPerm ? t("bms.noPerm") : state.bmsLoading ? t("bms.loading") : t("bms.empty")));
-  const note = state.bmPerm ? el("div", { class: "hint bm-note" }, t("bms.noPerm")) : null;   // a refresh was refused: the old list stays, the note says why it is old
-  if (!all.length) return fill(list, note, el("div", { class: "empty" }, state.bmsLoading ? t("bms.loading") : t("bms.none")));
+  if (!all.length) return fill(list, emptyView({ tab: "bms", loaded: !!state.bmsAt, loading: state.bmsLoading, none: t("bms.none"), loadingText: t("bms.loading"), retry: () => loader.retry() }));
+  const note = listNote("bms");                       // a refresh was refused: the old list stays, the note says why it is old
   const used = cachedRates();                         // the order and the "≈" of a row follow the rates known right now…
   const rows = sortRows(filterRows(all, state.bmQuery), used);
   if (!rows.length) return fill(list, note, el("div", { class: "empty" }, t("bms.noMatch")));
