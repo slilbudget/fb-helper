@@ -142,8 +142,8 @@ async function accountWords() {
   const bodyAcc = await one(pop, `${ROW}[data-row="2"] .lrow-body`);
   await pop.click(`${ROW}.open [data-ads]`);
   await until(pop, () => /Rejected ad/.test(document.querySelector("#accountsList .lrow.open .ads")?.textContent || "") && /metrics updated/.test(document.querySelector("#accountsList .lrow.open .ads")?.textContent || ""));
-  golden("Ad accounts tab: an opened row (facts, What to do, the places) and its ads", { body: bodyAcc, ads: ages(await one(pop, "#accountsList .lrow.open .ads-sec")) }, {
-    body: "Spent $1,000 To pay $0 Pixels none UTC What to do Ads policy violation. Appeal in Account Quality — it shows what exactly was flagged. Appeal Ads Manager · Billing Ads",
+  golden("Ad accounts tab: an opened row (facts, What to do, the footer line: small facts · places) and its ads", { body: bodyAcc, ads: ages(await one(pop, "#accountsList .lrow.open .ads-sec")) }, {
+    body: "Spent $1,000 To pay $0 Pixels none What to do Ads policy violation. Appeal in Account Quality — it shows what exactly was flagged. Appeal UTC Ads Manager · Billing Ads",
     ads: "Ads · 2 2 ads · 1 active · 1 disapproved · metrics updated <age> Rejected ad Disapproved Personal attributes — Implies knowledge of personal traits Appeal Open ad Fine ad Active No delivery in this period",
   });
   await pop.click(`${ROW}.open .lrow-title`);

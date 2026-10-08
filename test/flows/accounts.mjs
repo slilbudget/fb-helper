@@ -283,7 +283,7 @@ async function adsFlows() {
     return { bg: cs.backgroundColor, radius: cs.borderRadius, left: Math.round(r.left - kv.getBoundingClientRect().left), right: Math.round(bb.right - r.right) };
   });
   const gOpen = await geo(), fl = await flat();
-  ok("ads section: no tinted box (transparent, square) and the same left edge as the facts", fl.bg === "rgba(0, 0, 0, 0)" && fl.radius === "0px" && fl.left === 0, JSON.stringify(fl));
+  ok("ads section: one grey card (as before the redesign), rounded, reaching back over the body's indent to the row's 16 px gutter", fl.bg === "rgb(240, 242, 245)" && fl.radius === "12px" && fl.left === -22, JSON.stringify(fl));
   ok("…and the same 16 px gutter on the right as every row", fl.right === 16, JSON.stringify(fl));
   await pop.hover(`${ROW}.open .ads-toggle`);
   ok("hover on the ads header keeps the bar as it is (words only, like the tabs)", (await pop.$eval(`${ROW}.open .ads-toggle`, (n) => getComputedStyle(n).backgroundColor)) === "rgba(0, 0, 0, 0)");
@@ -825,12 +825,12 @@ async function bodyFlow() {
 
   await open("1001");
   let bd = await body("1001");
-  ok("a full account: the facts, ONE muted line of small facts, the two places, then the Ads section (no ID line: the ID is on line 2; no 'What to do' for a healthy one)", JSON.stringify(bd.children) === JSON.stringify(["lrow-kv", "lrow-meta", "lrow-links", "ads-sec"]) && !bd.idIn && bd.todo === null && bd.ads, JSON.stringify(bd.children));
+  ok("a full account: the facts, ONE muted footer line (small facts · the two places), then the Ads card (no ID line: the ID is on line 2; no 'What to do' for a healthy one)", JSON.stringify(bd.children) === JSON.stringify(["lrow-kv", "acc-foot-line", "ads-sec"]) && !bd.idIn && bd.todo === null && bd.ads, JSON.stringify(bd.children));
   ok("…Clicks · CPC · Spent · To pay · Billing threshold · Daily limit · Payment · Pixels (Spend cap only when one is set: none here; timezone, country and creation date are the muted line)", bd.kvs.map((x) => x[0]).join() === KV("acc.clicksCpc", "acc.spent", "acc.balance", "acc.threshold", "acc.daily", "acc.funding", "acc.pixels"), bd.kvs.map((x) => x[0]).join());
   const kv = Object.fromEntries(bd.kvs);
-  ok("…with the values: 310 clicks · $4.00 per click, spent $11,165, to pay $120.00, threshold $250.00, limit $2,500, Visa, the pixel",
+  ok("…with the values: 310 clicks · $4.00 per click, spent $11,165, to pay $120.00, threshold $250.00, limit $2,500, Visa, the pixel ID only (no name)",
     kv[tr("acc.clicksCpc")] === "310 · $4.00" && kv[tr("acc.spent")] === "$11,165" && kv[tr("acc.balance")] === "$120.00" && kv[tr("acc.threshold")] === "$250.00" && kv[tr("acc.daily")] === "$2,500"
-    && kv[tr("acc.funding")] === "Visa ·· 4242" && kv[tr("acc.pixels")] === "Main pixel · 55501", JSON.stringify(kv));
+    && kv[tr("acc.funding")] === "Visa ·· 4242" && kv[tr("acc.pixels")] === "55501", JSON.stringify(kv));
   ok("…the muted line: 'UTC+3 <city> · US · created Mar 4, 2025' (one line, 12 px, secondary grey)", new RegExp(`^UTC\\+3 \\S.* · US · ${trx("acc.createdOn", { d: "Mar 4, 2025" }).source}$`).test(bd.meta), String(bd.meta));
   ok("…and not one value is a dash", bd.kvs.every((x) => x[1] && x[1] !== "—"));
   ok("the body has no ID line (the ID with its copy button is first on line 2 of the row); 'Ads Manager ↗ · Billing ↗' keep their icons and go to this account", !bd.idIn && JSON.stringify(bd.links) === JSON.stringify([[tr("next.adsManager"), LINKS.adsManager("1001"), true], [tr("next.billing"), LINKS.billing("1001"), true]]), JSON.stringify(bd.links));

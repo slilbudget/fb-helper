@@ -276,7 +276,7 @@ function accountBody(a, s, st, name) {
   const dsl = a.adtrust_dsl;
   const pixels = a.adspixels?.data;
   const funding = a.funding_source_details?.display_string || "—";
-  const pixelText = pixels?.length ? pixels.map((p) => `${p.name} · ${p.id}`).join(", ") : "";
+  const pixelText = pixels?.length ? pixels.map((p) => p.id).join(", ") : "";   // the pixel ID only: the name adds nothing a tool needs, and one line stays one line
   const showClicks = st && st.imp !== null && (st.imp || st.clicks);
   // Long values take a row of their own in the two-column layout; short ones sit beside their neighbour.
   const long = (text) => (String(text).length > 24 ? { wide: true } : undefined);
@@ -296,11 +296,11 @@ function accountBody(a, s, st, name) {
       [t("acc.funding"), funding, long(funding)],
       [t("acc.pixels"), a._noPixels ? "—" : pixelText || el("span", { class: "acc-warn" }, t("acc.no")), long(pixelText)],
     ]),
-    facts ? el("p", { class: "lrow-meta" }, facts) : null,
-    // What to do: the help line and every step (the one on line 2 included) except the two places the links row below has.
+    // What to do: the help line and every step (the one on line 2 included) except the two places the footer line has.
     whatToDo({ help: s.help ? t(s.help) : null, actions: s.actions, skip: places, tone: s.tone === "ok" ? "" : s.tone, owner: name, focus: `todo:${id}` }),
-    linksRow(places, { owner: name, focus: `link:${id}` }),
-    // The ads: a flat section (no tinted box). Its header is the same before the first load, collapsed and open: toggling only adds or removes the list below.
+    // ONE muted footer line: the small facts, then the two places to open ("UTC+3 Kiev · US · created 04.03.2025 · Ads Manager ↗ · Billing ↗").
+    el("div", { class: "acc-foot-line" }, facts ? el("span", { class: "lrow-meta" }, facts) : null, linksRow(places, { owner: name, focus: `link:${id}` })),
+    // The ads: one grey card (as before the redesign). Its header is the same before the first load, collapsed and open: toggling only adds or removes the list below.
     el("div", { class: "ads-sec" }, adsControls(id), box),
   ];
   if (state.ads[id]) renderAds(box, state.ads[id], a);

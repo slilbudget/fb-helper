@@ -22,20 +22,25 @@
 #accountsList .lgroup { padding-top: 6px; padding-bottom: 6px; }
 #accountsList .lrow + .lgroup { margin-top: 10px; }
 
-/* ---------- the ads of an account: a flat section at the end of the expanded body ---------- */
-.ads-sec { min-width: 0; }
-.ads-head { display: flex; align-items: center; gap: var(--spacing-2); }
-/* The toggle is the same box before the first load, collapsed and open, so folding the list moves nothing. Words darken on hover, no fill. */
+/* ---------- the expanded account: one muted footer line (facts · places), then the ads card ---------- */
+.acc-foot-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--spacing-2); min-width: 0; color: var(--color-text-secondary); font-size: var(--text-sm); }
+.acc-foot-line > .lrow-meta:not(:last-child)::after { content: "·"; margin-inline-start: var(--spacing-2); }   /* after the facts, not before the links: a wrap never starts a line with "·" */
+.acc-foot-line .lrow-links { display: inline-flex; }
+
+/* The ads of an account: one grey card (the look it had before the redesign). Its header (.ads-toggle) is the same box before the first load,
+   collapsed and open, so toggling moves nothing; the card reaches back over the body's indent, so its gutters left and right are equal. */
+.ads-sec { min-width: 0; margin-inline-start: calc(-1 * var(--lrow-indent)); background: var(--color-background-muted); border-radius: calc(var(--radius-element) + 4px); overflow: hidden; }
+.ads-head { display: flex; align-items: center; }
 .ads-toggle {
   appearance: none; border: 0; background: transparent; cursor: pointer; flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--spacing-1-5);
-  height: 28px; padding: 0; color: var(--color-text-secondary); font: var(--text-md) var(--font); text-align: start; white-space: nowrap;
+  height: var(--size-element-md); padding: 0 var(--spacing-3); color: var(--color-text-secondary); font: var(--text-md) var(--font); text-align: start; white-space: nowrap;
 }
 .ads-toggle .i { --size-icon: 14px; }
 .ads-toggle:hover:not(:disabled), .ads-toggle:focus-visible { color: var(--color-text-primary); }
 .ads-toggle:disabled { color: var(--color-text-disabled); cursor: default; }
 .ads-refresh {
-  appearance: none; border: 0; background: transparent; cursor: pointer; flex: none; margin-inline-end: -6px;
-  width: 28px; height: 28px; display: grid; place-items: center; color: var(--color-text-secondary);
+  appearance: none; border: 0; background: transparent; cursor: pointer; flex: none;
+  width: var(--size-element-md); height: var(--size-element-md); display: grid; place-items: center; color: var(--color-text-secondary);
 }
 .ads-refresh .i { --size-icon: 16px; }
 .ads-refresh:hover:not(:disabled), .ads-refresh:focus-visible { color: var(--color-text-primary); }
@@ -43,11 +48,12 @@
 .i-chevron.up { transform: rotate(180deg); }
 .ads { display: grid; }
 .ads:empty { display: none; }
-.ads-sum { padding: var(--spacing-1) 0 var(--spacing-2); color: var(--color-text-secondary); font-size: var(--text-sm); }
+.ads-sec .ads { padding: 0 var(--spacing-3) var(--spacing-1); }
+.ads-sum { padding-bottom: var(--spacing-2); color: var(--color-text-secondary); font-size: var(--text-sm); }
 .ads .hint:not(:last-child) { padding-bottom: var(--spacing-2); }
 
 /* One ad: name | status word; its numbers; the reasons (red); the two links under them. Hairlines between ads, like the rows above. */
-.ad { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px var(--spacing-3); align-items: center; padding: var(--spacing-2) 0; border-top: 1px solid var(--color-border); }
+.ad { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px var(--spacing-3); align-items: center; padding: var(--spacing-2) 0; border-top: 1px solid rgba(28, 30, 33, .08); }
 .ad-name { min-width: 0; overflow-wrap: anywhere; }
 .ad .lrow-status { font-size: var(--text-sm); }
 .ad .lrow-status:not(.warn):not(.bad) { color: var(--color-text-secondary); }
