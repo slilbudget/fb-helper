@@ -1,10 +1,26 @@
-/* pages: styles of js/pages.js. The row itself (lines, picture, problems, links, dividers) is the shared .row grammar in popup.css;
+/* pages: styles of js/pages.js. The row itself (lines, picture, status, fix, ID, body, dividers) is the shared .lrow of rows.css;
    only what is specific to a page goes here. */
 
-/* Lines around the rows: what to do about a filtered problem, "this token can't read pages", the business portfolio reminder. */
+/* Lines around the rows: what to do about the filtered problem, "this token can't read pages", "some businesses couldn't be read". */
 .pg-note { padding: var(--spacing-3) var(--spacing-4) 0; }
 .pg-foot { padding: var(--spacing-3) var(--spacing-4) var(--spacing-4); color: var(--color-text-secondary); font-size: var(--text-sm); text-align: center; }
 
-@media (max-width: 460px) {
-  #copyPageIds span { display: none; }
+/* The Instagram handle at the right of line 1 is a muted 13 px word; a long handle is cut, never allowed to squeeze the name. */
+#pagesList .lrow-value { max-width: min(168px, 34vw); overflow: hidden; text-overflow: ellipsis; }
+
+/* The other problems of a page in the body ("What to do"): each one = its word, then its fix, the fixes in one column. */
+.pg-probs { display: grid; grid-template-columns: minmax(0, max-content) max-content; justify-content: start; align-items: center; column-gap: var(--spacing-3); }
+.pg-prob { display: contents; }
+.pg-prob-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-prob-text.warn { color: var(--color-warning); }
+.pg-prob-text.bad { color: var(--color-error); }
+
+/* Below 480 px the ID is hidden (rows.css), so line 2 may use the whole width: a problem word and its fix are never cut for the sake of
+   the handle above them. (Wanted in rows.css for every list tab.) The other problems in the body then stand one per line, the fix wrapping
+   under its word when the pair does not fit. */
+@media (max-width: 479.98px) {
+  #pagesList .lrow-sub { grid-column: 1 / -1; }
+  .pg-probs { grid-template-columns: minmax(0, 1fr); }
+  .pg-prob { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--spacing-3); }
+  .pg-prob-text { white-space: normal; }
 }

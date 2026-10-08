@@ -1,36 +1,42 @@
-// The Pages tab: the Facebook pages the profile manages (one paged read of me/accounts), with what a media buyer checks
-// first: is there an Instagram identity (a NEW page needs "Use Facebook Page" chosen once, else automated launches to
-// Instagram placements fail), is it published, may it advertise. Every problem comes with its fix as one link. The logic is
-// in pages-model.js (plain Node, tested); this file loads, caches and draws it. Same shape as the Ad accounts tab: auto-load on the first visit when nothing is
-// cached, a refresh button otherwise, one request per minute, dead session / API pause respected, other windows followed.
+// The Pages tab: every Facebook page this token can see, and whether each is ready to run ads (an Instagram identity: a NEW page
+// needs "Use Facebook Page" chosen once, else automated launches to Instagram placements fail; published; may advertise; my access).
+// The list = the profile's own pages (me/accounts, which carries the user's tasks) + every page of every business of the profile
+// (<business>/owned_pages and /client_pages), one row per page. Every problem comes with its fix as one link. The logic is in
+// pages-model.js (plain Node, tested); this file loads, caches and draws it with the shared row (row.js). Same shape as the other
+// tabs: auto-load on the first visit when nothing is cached, a refresh button otherwise, one refresh per minute (the whole read,
+// all requests, is under ONE rate slot), dead session / API pause respected, other windows followed.
+// Read-only: GET only, and never a Page access token (the field lists are explicit, the rows whitelisted).
 
-import { t, tn } from "./i18n.js";
+import { t, has } from "./i18n.js";
 import "./strings/pages.js";
-import { $, el, fill, numEl, toast, copy, keepFocus } from "./dom.js";
-import { numFmt, ago } from "./format.js";
+import { $, el, fill, keepFocus, toast } from "./dom.js";
+import { ago } from "./format.js";
 import { state, Stale, saveSession, fbUser, checkOwner, claimSlot, registerCache, isDead, deadCode } from "./state.js";
-import { readPaged } from "./graph.js";
+import { graph, readPaged } from "./graph.js";
 import { settledGrab, grabToken, tokenReady } from "./token.js";
 import { on, emit } from "./bus.js";
 import { registerTab, registerRender, registerInit, registerStart } from "./registry.js";
 import { LINKS } from "./links.js";
-import { avatar, problems, quietLinks } from "./rows.js";
+import { row, kv, whatToDo, fixLink, linksRow } from "./row.js";
 import {
-  OPTIONAL, BASE, PROBLEMS, isPermissionError, keysToDrop, slimPage, finishPages, isVerified, audienceOf,
-  issuesOf, statusOf, problemCounts, filterPages, sortPages, idsText, showBmHint,
+  OPTIONAL, BASE, BIZ_OPTIONAL, BIZ_EDGES, PROBLEMS, isPermissionError, keysToDrop, slimPage, finishPages, businessList, viaBusiness,
+  igOf, handleOf, accessOf, humanTask, issuesOf, problemCounts, filterPages, sortPages, MAX_BUSINESSES,
 } from "./pages-model.js";
 
-const SLOT_MS = 60 * 1000;                   // one list read per minute (a failed attempt counts too)
-const PAGE_SIZE = 50, MAX_PAGES = 4;         // up to 200 pages; more = "not all"
+const SLOT_MS = 60 * 1000;                   // one list read per minute (a failed attempt counts too); the slot covers ALL requests of a refresh
+const PAGE_SIZE = 50, MAX_PAGES = 4;         // per edge: up to 200 pages; more = "not all"
 
-Object.assign(state, { pages: [], pagesAt: 0, pagesTruncated: false, pagesQ: "", pagesProblem: null, pagesLoading: false, pagesNote: null });
+Object.assign(state, {
+  pages: [], pagesAt: 0, pagesTruncated: false, pagesBizFail: false,   // pagesBizFail: a business or one of its edges could not be read (the pages only in it may be missing)
+  pagesQ: "", pagesProblem: null, pagesLoading: false, pagesNote: null, pagesOpen: new Set(),
+});
 
 // ---------- storage ----------
 // Rows (already cut to the whitelist) kept across popup reopen and token changes, dropped when the FB user changes.
-registerCache(["pages", "pagesAt", "pagesTruncated"],
-  () => Object.assign(state, { pages: [], pagesAt: 0, pagesTruncated: false, pagesNote: null }),
+registerCache(["pages", "pagesAt", "pagesTruncated", "pagesBizFail"],
+  () => Object.assign(state, { pages: [], pagesAt: 0, pagesTruncated: false, pagesBizFail: false, pagesNote: null, pagesOpen: new Set() }),
   {
-    load: (ses) => Object.assign(state, { pages: Array.isArray(ses.pages) ? ses.pages : [], pagesAt: ses.pagesAt || 0, pagesTruncated: !!ses.pagesTruncated }),
+    load: (ses) => Object.assign(state, { pages: Array.isArray(ses.pages) ? ses.pages : [], pagesAt: ses.pagesAt || 0, pagesTruncated: !!ses.pagesTruncated, pagesBizFail: !!ses.pagesBizFail }),
     has: () => !!state.pagesAt,
   });
 
@@ -42,17 +48,17 @@ on("cache-dropped", () => { state.pagesProblem = null; renderPages(); });
 // Another window of this extension loaded or dropped the list: show the same.
 on("session", (ch) => {
   if (ch.pagesAt && (ch.pagesAt.newValue || 0) !== state.pagesAt) {
-    chrome.storage.session.get(["pages", "pagesAt", "pagesTruncated", "owner"]).then((c) => {
-      Object.assign(state, { pages: Array.isArray(c.pages) ? c.pages : [], pagesAt: c.pagesAt || 0, pagesTruncated: !!c.pagesTruncated, owner: c.owner || null });
+    chrome.storage.session.get(["pages", "pagesAt", "pagesTruncated", "pagesBizFail", "owner"]).then((c) => {
+      Object.assign(state, { pages: Array.isArray(c.pages) ? c.pages : [], pagesAt: c.pagesAt || 0, pagesTruncated: !!c.pagesTruncated, pagesBizFail: !!c.pagesBizFail, owner: c.owner || null });
       renderPages();
     });
   }
 });
 
 // ---------- load ----------
-// The whole list. A refusal readPaged cannot name (a nested field, a permission error that is really about the Instagram
+// The profile's own pages. A refusal readPaged cannot name (a nested field, a permission error that is really about the Instagram
 // fields) gives up the optional fields it can blame and asks again; what is left to blame decides when to stop.
-async function readAll() {
+async function readMine() {
   for (;;) {
     try {
       return await readPaged("me/accounts", {
@@ -66,6 +72,43 @@ async function readAll() {
       for (const k of drop) skip.add(k);
     }
   }
+}
+// The pages of the profile's businesses: me/businesses (id, name), then for each business (at most MAX_BUSINESSES) its owned_pages and
+// client_pages, sequentially, owned edges first so a page both owned and shared keeps its owner. Best effort: a business list the token
+// cannot read, a business or an edge that errors is skipped and the rest stays (failed = true then, so the screen says some pages may
+// be missing). Every edge has its own skip set (a copy of the profile's), so a field refused there never drops it from the other reads.
+// Every row is marked with the business it came through (`_viaBm`). Stops reading once the token is dead or paused (nothing more would go out).
+// `gen` = the generation the load started in: a token change in between ends it (Stale), like an aborted request does.
+async function readBusinessPages(gen) {
+  let bms;
+  try {
+    const r = await graph("me/businesses", { fields: "id,name", limit: String(MAX_BUSINESSES) });
+    bms = businessList(r.data, !!r.paging?.next);
+  } catch (e) {
+    if (e instanceof Stale) throw e;
+    return { rows: [], truncated: false, failed: true };            // no list of businesses: only the profile's own pages
+  }
+  const rows = [];
+  let truncated = bms.more, failed = false;
+  edges: for (const edge of BIZ_EDGES) {
+    for (const bm of bms.list) {
+      if (gen !== state.gen) throw new Stale();
+      const edgeSkip = new Set(skip);
+      try {
+        const r = await readPaged(`${bm.id}/${edge}`, {
+          base: BASE, optional: BIZ_OPTIONAL, skip: edgeSkip, limit: PAGE_SIZE, maxPages: MAX_PAGES,
+          map: (raw) => viaBusiness(slimPage(raw, [...edgeSkip]), bm, edge === "owned_pages"),
+        });
+        rows.push(...r.rows);
+        truncated ||= r.truncated;
+      } catch (e) {
+        if (e instanceof Stale) throw e;
+        failed = true;
+        if (isDead() || state.cooldownUntil > Date.now()) break edges;
+      }
+    }
+  }
+  return { rows, truncated, failed };
 }
 // auto: started by opening the tab, not by a click. Same limits as a click, but silent where a click would only complain
 // (no token, dead session, API pause, the one-minute slot): the empty list explains itself.
@@ -91,16 +134,19 @@ async function loadPagesNow({ auto = false } = {}) {
   btn.disabled = true; btn.setAttribute("aria-busy", "true");
   state.pagesLoading = true; state.pagesNote = null; renderPages();
   try {
-    const { rows, truncated } = await readAll();
+    const mine = await readMine();
+    if (gen !== state.gen) return;
+    const biz = await readBusinessPages(gen);           // nothing of it is an error: the profile's own pages are already in hand
     if (gen !== state.gen) return;
     // The list belongs to the FB user of this profile; a cache of another login (shared owner key) is dropped first.
     if (await checkOwner()) emit("cache-dropped");
     const owner = await fbUser();
     if (gen !== state.gen) return;
-    const pages = finishPages(rows);
-    Object.assign(state, { pages, pagesAt: Date.now(), pagesTruncated: truncated, owner });   // before the write: our own storage event must find nothing new
-    await saveSession({ pages, pagesAt: state.pagesAt, pagesTruncated: truncated, owner });
-    if (!auto || truncated) toast(t("pages.loaded", { n: pages.length }) + (truncated ? t("pages.truncated", { n: PAGE_SIZE * MAX_PAGES }) : ""));
+    const pages = finishPages([...mine.rows, ...biz.rows]);       // the profile's own row of a page wins: it has the tasks
+    const truncated = mine.truncated || biz.truncated;
+    Object.assign(state, { pages, pagesAt: Date.now(), pagesTruncated: truncated, pagesBizFail: biz.failed, owner });   // before the write: our own storage event must find nothing new
+    await saveSession({ pages, pagesAt: state.pagesAt, pagesTruncated: truncated, pagesBizFail: biz.failed, owner });
+    if (!auto || truncated) toast(t("pages.loaded", { n: pages.length }) + (truncated ? t("pages.truncated") : ""));
   } catch (e) {
     if (e instanceof Stale) return;
     // The token cannot read pages: not an error of ours, a calm line in the list says what to do (and no red toast).
@@ -131,18 +177,16 @@ async function autoLoadPages() {
 // ---------- draw ----------
 const visiblePages = () => sortPages(filterPages(state.pages, { q: state.pagesQ, problem: state.pagesProblem }));
 const isFiltered = () => !!(state.pagesQ.trim() || state.pagesProblem);
-function copyIds() {
-  const rows = visiblePages();
-  if (!rows.length) return toast(t("pages.noIds"), true);
-  copy(idsText(rows), t("pages.idsCopied", { n: rows.length }) + (state.pagesTruncated ? t("pages.partial") : ""));
-}
+// The line under the controls says something only when there is something to say: how many of the pages a filter leaves ("3 of 10
+// found"), or that the list is not complete. "Updated 3 min ago" is the refresh button's tooltip.
 function renderTotal() {
-  const box = $("#pagesTotal");
+  const box = $("#pagesTotal"), btn = $("#loadPages");
+  if (btn) btn.title = state.pagesAt ? `${t("refresh")} · ${t("pages.updated", { t: ago(state.pagesAt) })}` : t("refresh");
   if (!box) return;
-  if (!state.pagesAt) return fill(box);
-  const all = state.pages.length, n = visiblePages().length;
-  const count = isFiltered() ? t("pages.found", { n, all }) : `${all} ${tn(all, "pages.count")}`;
-  fill(box, el("span", { class: "total-label" }, `${count}${state.pagesTruncated ? t("pages.notAll") : ""} · ${t("pages.updated", { t: ago(state.pagesAt) })}`));
+  const line = !state.pagesAt ? ""
+    : isFiltered() ? `${t("pages.found", { n: visiblePages().length, all: state.pages.length })}${state.pagesTruncated ? t("pages.notAll") : ""}`
+      : state.pagesTruncated ? t("pages.notAllLine") : "";
+  fill(box, line ? el("span", { class: "total-label" }, line) : null);
 }
 function renderChips() {
   const counts = problemCounts(state.pages);
@@ -159,47 +203,73 @@ function drawPages() {
   renderTotal();
   renderChips();
   const rows = visiblePages();
-  $("#copyPageIds").disabled = !rows.length;
   const perm = state.pagesNote === "perm" ? t("pages.perm") : null;
   if (!state.pagesAt) {
     return fill(list, el("div", { class: "empty" }, state.pagesLoading ? t("pages.loading") : perm || t("pages.empty")));
   }
   const notes = [
     perm ? el("div", { class: "hint pg-note" }, perm) : null,
-    // The fix for the problem the chip shows, written out (the pill's tooltip says it too, but a tooltip is easy to miss).
+    // The fix for the problem the chip shows, written out (the word's tooltip says it too, but a tooltip is easy to miss).
     state.pagesProblem === "noIg" ? el("div", { class: "hint pg-note" }, t("pages.igFix")) : null,
   ];
-  const foot = showBmHint(state.pages.length) ? el("div", { class: "pg-foot" }, t("pages.bmHint")) : null;
+  // Pages that are only in a business: read through the business edges. A muted line only when one of those reads failed.
+  const foot = state.pagesBizFail ? el("div", { class: "pg-foot" }, t("pages.bmHint")) : null;
   if (!state.pages.length) return fill(list, ...notes, el("div", { class: "empty" }, t("pages.none")), foot);
   if (!rows.length) return fill(list, ...notes, el("div", { class: "empty" }, t("pages.noMatch")), foot);
   fill(list, ...notes, ...rows.map(renderPage), foot);
 }
-// One page = the grammar of every row (rows.js / popup.css): picture · name … ONE pill (the worst problem, else the Instagram
-// state); ID + facts; each problem with its fix; secondary links.
+
+// "Advertise, Manage, Insights": the tasks in plain words (an unknown task is shown as plain words too).
+const taskText = (tasks) => tasks.map((x) => (has(`pages.task.${x}`) ? t(`pages.task.${x}`) : humanTask(x))).filter(Boolean).join(", ");
+// The Instagram line of the body: what the identity is, with the explanation as the tooltip.
+function instagramPair(p) {
+  const ig = igOf(p);
+  const pair = (value, title) => [t("pages.kv.ig"), value, { title, wide: true }];
+  if (ig.state === "real") return pair(ig.username ? t("pages.ig.real", { u: ig.username }) : t("pages.ig.realNoName"), t("pages.igRealTitle"));
+  if (ig.state === "pbia") return pair(t("pages.ig.pbia"), t("pages.igPbiaTitle"));
+  if (ig.state === "none") return pair(t("pages.ig.none"), t("pages.igNoneTitle"));
+  return pair(t("pages.ig.unknown"), t("pages.igUnknownTitle"));
+}
+// The other problems of a page (the worst is on line 2 of the row): each as its word and its fix, so every problem has its way out.
+function otherProblems(p, issues, name) {
+  return el("span", { class: "pg-probs" }, issues.map((i) => el("span", { class: "pg-prob", "data-problem": i.key },
+    el("span", { class: `pg-prob-text ${i.tone}`, title: i.rawTip || t(i.tip) }, t(i.label)),
+    i.fix ? fixLink({ label: i.fix.label, url: i.fix.url, tip: t(i.fix.tip) }, { tone: i.tone, focus: `pfix:${p.id}:${i.key}`, owner: name }) : null)));
+}
+// One page = the shared row (row.js): picture · name … the Instagram handle; healthy = silent (only the identity of a page-backed
+// account), a problem = its word + its fix (+N for the others); the ID. The body (built when the row opens): the other problems,
+// Instagram, business, my access, links.
 function renderPage(p) {
   const name = p.name || t("pages.noName");
-  const st = statusOf(p), aud = audienceOf(p);
-  const audience = !aud ? null : `${numFmt().format(aud.n)} ${tn(aud.n, aud.kind === "followers" ? "pages.followers" : "pages.likes")}`;   // "likes" only when followers were not read
-  const issues = issuesOf(p).map((i) => ({ id: i.key, tone: i.tone, text: t(i.label), tip: i.rawTip || t(i.tip), fix: i.fix && { label: i.fix.label, tip: t(i.fix.tip), url: i.fix.url } }));
-  return el("div", { class: "row pg", "data-page": p.id },
-    el("div", { class: "row-top" },
-      el("span", { class: "row-name", title: p.name }, avatar({ url: p.picture, shape: "circle", icon: "flag" }), el("span", { class: "row-name-text" }, name)),
-      el("span", { class: `pill ${st.tone}`, title: st.rawTip || t(st.tip) }, t(st.label, st.params))),
-    el("div", { class: "row-line" },
-      el("button", { type: "button", class: "acc-id", title: t("pages.copyId"), "data-focus": `pid:${p.id}`, onclick: () => copy(p.id, t("pages.idCopied")) },
-        numEl(p.id), el("i", { class: "i i-copy", "aria-hidden": "true" })),
-      p.category ? el("span", {}, p.category) : null,
-      audience ? el("span", {}, audience) : null,
-      p.business ? el("span", { class: "owner", title: t("pages.inBm", { n: p.business.name || "", id: p.business.id }) },
-        el("i", { class: "i i-bm", "aria-hidden": "true" }), el("span", { class: "owner-name" }, p.business.name || p.business.id)) : null,
-      isVerified(p) ? el("span", { title: t("pages.verifiedTitle", { s: p.verification_status }) }, t("pages.verified")) : null),
-    problems(issues, { focus: `pfix:${p.id}`, owner: name }),
-    // Links only when the id passes links.js (digits); each opens in a new tab and changes nothing by being opened.
-    quietLinks([
-      { id: "page", label: "pages.linkPage", tip: "pages.linkPageTitle", href: LINKS.page(p.id) },
-      { id: "suite", label: "pages.linkSuite", tip: "pages.linkSuiteTitle", href: LINKS.pageSuite(p.id) },
-      { id: "bm", label: "pages.linkBm", tip: "pages.linkBmTitle", href: LINKS.bmPages(p.business?.id) },
-    ], { focus: `plink:${p.id}`, owner: name }));
+  const issues = issuesOf(p), worst = issues[0];
+  const handle = handleOf(p), pbia = igOf(p).state === "pbia";
+  return row({
+    key: p.id, avatar: { kind: "page", url: p.picture }, name,
+    value: handle, valueTitle: handle ? t("pages.igRealTitle") : null, valueMuted: true,
+    status: worst ? { tone: worst.tone, text: t(worst.label), title: worst.rawTip || t(worst.tip) } : { tone: "ok", text: t("pages.ready") },
+    context: !worst && pbia ? [el("span", { class: "lrow-ctx", title: t("pages.igPbiaTitle") }, t("pages.igPbia"))] : [],
+    fix: worst?.fix && { label: worst.fix.label, url: worst.fix.url, tip: t(worst.fix.tip) },
+    more: Math.max(0, issues.length - 1),
+    id: { value: p.id },
+    open: state.pagesOpen.has(p.id),
+    onToggle: (open) => { if (open) state.pagesOpen.add(p.id); else state.pagesOpen.delete(p.id); },
+    body: () => {
+      const acc = accessOf(p), bmId = p._viaBm || p.business?.id;     // a business I am in comes first: the owner's settings may not be mine to open
+      return [
+        issues.length > 1 ? whatToDo({ help: otherProblems(p, issues.slice(1), name), owner: name, focus: `ptodo:${p.id}` }) : null,
+        kv([
+          instagramPair(p),
+          [t("pages.kv.business"), p.business?.name || "", { wide: true }],
+          [t("pages.kv.access"), acc.via ? t("pages.access.via") : taskText(acc.tasks), { wide: true }],
+        ]),
+        linksRow([
+          { id: "page", label: "pages.linkPage", url: LINKS.page(p.id), tip: t("pages.linkPageTitle") },
+          { id: "suite", label: "pages.linkSuite", url: LINKS.pageSuite(p.id), tip: t("pages.linkSuiteTitle") },
+          { id: "bm", label: "pages.linkBm", url: LINKS.bmPages(bmId), tip: t("pages.linkBmTitle") },
+        ], { owner: name, focus: `plink:${p.id}` }),
+      ];
+    },
+  });
 }
 
 // ---------- wiring ----------
@@ -209,19 +279,17 @@ function buildControls() {
     el("div", { class: "search" },
       el("i", { class: "i i-search", "aria-hidden": "true" }),
       el("input", { id: "pageFilter", class: "field", type: "search", autocomplete: "off" }),
-      el("button", { id: "copyPageIds", type: "button", class: "btn ghost", disabled: true }, el("i", { class: "i i-copy", "aria-hidden": "true" }), el("span")),
       el("button", { id: "loadPages", type: "button", class: "icon-btn" }, el("i", { class: "i i-refresh", "aria-hidden": "true" }))),
     el("div", { class: "total", id: "pagesTotal" }),
     el("div", { class: "chips", id: "pagesChips" }));
   $("#loadPages").addEventListener("click", () => fetchPages());
-  $("#copyPageIds").addEventListener("click", copyIds);
   $("#pageFilter").addEventListener("input", (e) => { state.pagesQ = e.target.value; renderPages(); });
 }
 function labelControls() {
   const q = $("#pageFilter");
   q.placeholder = t("search"); q.setAttribute("aria-label", t("pages.searchAria"));
-  $("#copyPageIds").title = t("pages.copyIdsTitle"); $("#copyPageIds span").textContent = t("pages.copyIds");
-  $("#loadPages").title = t("refresh"); $("#loadPages").setAttribute("aria-label", t("refresh"));
+  $("#loadPages").setAttribute("aria-label", t("refresh"));
+  renderTotal();                                                                  // the refresh tooltip ("Refresh · updated 3 min ago")
 }
 
 // Full height from the start (a list arriving a moment later must not make the window jump); showing the tab starts the auto-load.
