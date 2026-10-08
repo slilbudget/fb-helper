@@ -23,7 +23,7 @@ const PATH_OK = /^\w+(\/\w+)*$/;             // "me", "me/adaccounts", "act_123/
 
 // Switch to a newer API version named in Graph's text (upgrade warning, #2635, or our own storage).
 // Only forward, and only a few majors ahead: a garbled message must not send us to v999.
-export function adoptVersion(text, persist = true) {
+function adoptVersion(text, persist = true) {
   const cur = verNum(state.apiVersion);
   const v = latestVersion(text, cur + 500);           // the newest one named (within reach), not the first
   const n = verNum(v);
@@ -32,7 +32,7 @@ export function adoptVersion(text, persist = true) {
   if (persist) chrome.storage.local.set({ apiVersion: v }).catch(() => {});
   return true;
 }
-export function setUsage(headers) {
+function setUsage(headers) {
   let worst = null;
   for (const name of ["x-business-use-case-usage", "x-app-usage", "x-ad-account-usage"]) {
     const raw = headers?.get(name);
@@ -49,7 +49,7 @@ export function setUsage(headers) {
   emit("usage");
   if (worst !== null && worst >= USAGE_PAUSE_PCT && state.cooldownUntil <= Date.now()) startCooldown();   // not yet throttled, but one more call would be
 }
-export function startCooldown() {
+function startCooldown() {
   state.cooldownUntil = Date.now() + COOLDOWN_MS;
   saveSession({ cooldownUntil: state.cooldownUntil });
   emit("usage");
@@ -154,7 +154,7 @@ export async function graph(path, params = {}, retried = false) {
 // EAAB / EAAH are session-bound: the FB cookies must ride along (credentials: include; the extension's
 // host permission makes them first-party here). No retry from inside the FB tab: Graph answers
 // Access-Control-Allow-Origin: *, which forbids credentialed CORS from a page (checked 2026-09-28).
-export async function fetchFromPopup(url, token, signal) {
+async function fetchFromPopup(url, token, signal) {
   const res = await fetch(url, { method: "GET", headers: { Authorization: `Bearer ${token}` }, credentials: "include", signal });
   let body = null;
   try { body = await res.json(); } catch { body = null; }

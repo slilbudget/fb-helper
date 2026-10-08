@@ -1,34 +1,21 @@
-// Number, money, date and timezone formatting. No DOM, no chrome.*; the UI language comes from i18n.js.
+// Number, date and timezone formatting (amounts of money are money-core.js). No DOM, no chrome.*; the UI language comes from i18n.js.
 
 import { t, locale, getLang } from "./i18n.js";
 
 // Meta currencies without a minor-unit offset (amounts are whole units).
-export const NO_OFFSET = new Set(["CLP", "COP", "CRC", "HUF", "ISK", "IDR", "JPY", "KRW", "PYG", "TWD", "VND"]);
+const NO_OFFSET = new Set(["CLP", "COP", "CRC", "HUF", "ISK", "IDR", "JPY", "KRW", "PYG", "TWD", "VND"]);
 export const major = (minor, cur) => Number(minor) / (NO_OFFSET.has(cur) ? 1 : 100);
-// Intl formatters are costly to build and run per row on every render (search, sort): one per currency / zone,
-// keyed by the UI locale too, so a language switch just starts filling new entries.
-const moneyFmts = new Map(), dayFmts = new Map(), numFmts = new Map();
+// Intl formatters are costly to build and run per row on every render (search, sort): one per zone / UI locale, so a language switch
+// just starts filling new entries. (Money is money-core.js fmtMoney.)
+const dayFmts = new Map(), numFmts = new Map();
 export const numFmt = () => { const l = locale(); if (!numFmts.has(l)) numFmts.set(l, new Intl.NumberFormat(l)); return numFmts.get(l); };
-export function fmt(value, cur) {
-  const c = cur || "USD", k = `${locale()}:${c}`;
-  if (!moneyFmts.has(k)) {
-    try { moneyFmts.set(k, new Intl.NumberFormat(locale(), { style: "currency", currency: c, maximumFractionDigits: 2 })); }
-    catch { moneyFmts.set(k, null); }                // unknown currency code → plain number + code
-  }
-  const f = moneyFmts.get(k);
-  return f ? f.format(value) : `${Number(value).toFixed(2)} ${cur || ""}`;
-}
-export function money(minor, cur) {
-  if (minor === undefined || minor === null || minor === "") return "—";
-  return fmt(major(minor, cur), cur);
-}
 export function ago(ts) {
   const m = Math.round((Date.now() - ts) / 60000);
   return m < 1 ? t("ago.now") : m < 60 ? t("ago.min", { n: m }) : t("ago.h", { n: Math.round(m / 60) });
 }
 // Was ts still today in this timezone? Cached numbers of an earlier day must not pass for today's.
 export const sameDay = (tz, ts) => dayIn(tz, ts) === dayIn(tz, Date.now());
-export function dayIn(tz, ts) {
+function dayIn(tz, ts) {
   let f = dayFmts.get(tz);
   if (!f) {
     try { f = new Intl.DateTimeFormat("en-CA", { timeZone: tz || undefined }); }

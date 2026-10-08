@@ -43,7 +43,7 @@ function announce(msg) {
 // (https, facebook.com / fbcdn.net). Every redraw builds the list again, so URLs that loaded (or failed) once are remembered.
 const KINDS = { page: { shape: "circle", icon: "flag" }, business: { shape: "square", icon: "building" } };
 const loaded = new Set(), broken = new Set();
-export function avatarEl(kind, url) {
+function avatarEl(kind, url) {
   const k = KINDS[kind] || KINDS.page, src = imageUrl(url);
   const box = el("span", { class: `lav lav-${k.shape}`, "aria-hidden": "true" }, el("i", { class: `i i-${k.icon}` }));
   if (!src || broken.has(src)) return box;

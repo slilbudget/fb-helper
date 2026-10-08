@@ -28,7 +28,7 @@ function drawPeriods() {
   });
 }
 export function bindPeriods(box, prefix = "") { boxes.set(box, prefix); drawPeriods(); }
-export function setPeriod(key) {
+function setPeriod(key) {
   if (!isPeriod(key)) return;
   state.period = key;
   try { localStorage.setItem("period", key); } catch { /* */ }

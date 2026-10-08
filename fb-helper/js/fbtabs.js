@@ -3,7 +3,7 @@
 export const TAB_READ_MS = 2500;                    // a slow FB tab ahead of one that already gave a token is waited this long…
 export const TAB_WAIT_MS = 12 * 1000;               // …and this long in all when none has a token yet (busy machine, heavy page)
 
-export function isFacebookUrl(url) {
+function isFacebookUrl(url) {
   try { const h = new URL(url).hostname; return h === "facebook.com" || h.endsWith(".facebook.com"); }
   catch { return false; }
 }

@@ -7,7 +7,7 @@ import { state } from "./state.js";
 import { on } from "./bus.js";
 import { registerRender, registerStart } from "./registry.js";
 
-export function renderUsage() {
+function renderUsage() {
   const u = $("#usage");
   const cd = state.cooldownUntil - Date.now();
   if (cd > 0) { u.textContent = t("usage.pause", { n: Math.ceil(cd / 60000) }); u.className = "pill bad"; return; }

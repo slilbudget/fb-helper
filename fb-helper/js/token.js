@@ -18,7 +18,7 @@ const TOKEN_RE = /^EAA[A-Za-z0-9]{62,}$/;
 // app = the Meta app behind the prefix; what it can do = t("kind.<prefix>") (live-checked 2026-09-27 on one profile).
 // ads: does this token actually launch/edit ads (ads_management)? live-checked per prefix.
 // false → show the "not an ads token · open Ads Manager" hint; true → hide it.
-export const TOKEN_KIND = {
+const TOKEN_KIND = {
   EAAB: { app: "Ads Manager", tone: "ok", ads: true },
   EAAG: { app: "Business Manager", tone: "info", ads: true },
   EAAd: { app: "Events Manager", tone: "info", ads: false },
@@ -29,14 +29,14 @@ export const TOKEN_KIND = {
 // hardcode. "Check" reads the real app from Graph, so keep this calm, not "this is not a token".
 const UNKNOWN_KIND = { tone: "info" };                  // app / use come from t("kind.unknown.*")
 // Friendly names for the first-party apps behind the tokens (shown after "Check").
-export const KNOWN_APPS = {
+const KNOWN_APPS = {
   "119211728144504": "Ads Manager", "436761779744620": "Business Manager",
   "515496645328243": "Commerce Manager", "2094176354154603": "Events Manager",
   "624541620938530": "Automated Rules",
 };
 const ADS_MANAGER_URL = "https://adsmanager.facebook.com/adsmanager/manage/campaigns";
 // Which FB surface the tab is on, from host + path. App names as-is; the two translated ones are t() keys.
-export function surfaceOf(host = "", path = "") {
+function surfaceOf(host = "", path = "") {
   if (host.startsWith("adsmanager.")) return "Ads Manager";
   if (/account_billing|\/billing/.test(path)) return "surface.billing";
   if (host.startsWith("business.")) {
@@ -168,7 +168,7 @@ async function grabTokenNow({ toClipboard = true, silent = false } = {}) {
   }
   return pick;
 }
-export function renderToken(hint) {
+function renderToken(hint) {
   const tok = state.token;
   // Full token, one line; the field clips whatever runs past its right edge.
   $("#tokenBox").textContent = tok || hint || "—";
@@ -252,7 +252,7 @@ async function checkToken() {
 // The same read brings the profile name and its BMs for the block's last paragraph. A token without
 // business_management (Events / Commerce Manager) is refused the BMs: then once more with id,name only.
 const PERMISSION_CODES = (c) => c === 10 || c === 100 || (c >= 200 && c <= 299);
-export async function ownerCheck(token) {
+async function ownerCheck(token) {
   const user = cookieMap().c_user?.value || null;
   if (state.checked?.token === token && state.checked.user === user) return state.checked;
   let meId = null, name = null, businesses = null, more = false, verdict = "unknown";

@@ -18,9 +18,9 @@
 //   cookies.js    Cookies tab + the User-Agent        token.js     Token tab, owner check, "Token + cookies + UA"
 //   spend.js      what an account spent in a period + adding amounts up (pure, shared by the list tabs)
 //   period.js     the spend period switch and the total line (one state.period for the Ad accounts and Businesses tabs)
-//   rows.js       parts of a list row shared by the tabs: next-step link, picture, "problem → fix" line, secondary links (the older set)
-//   row.js        THE shared list row: row(), groupHeader(), fixLink(), kv(), whatToDo(), linksRow(), avatarEl() (css/rows.css); the three
-//                 list tabs move to it, then rows.js goes
+//   row.js        THE shared list row of the three list tabs: row(), groupHeader(), fixLink(), kv(), whatToDo(), linksRow() (css/rows.css)
+//   list-loader.js THE shared loader of the three list tabs (token wait, pause / budget pre-check before the rate slot, slot, generation and
+//                 owner checks, busy button, other windows followed); biz-edges.js the one capped walk over the edges of the profile's businesses
 //   money-core.js money.js   amounts (fmtMoney), USD conversion, the lines of totals and rows (pure, tested in Node) + the daily exchange
 //                 rates (rates(): chrome.storage.local, 24 h, the one network read besides Graph; the CSP lists its two origins)
 //   accounts.js   Ad accounts tab, with the ads of each account

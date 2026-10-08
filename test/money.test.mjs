@@ -475,7 +475,8 @@ test("rates(): never throws — storage that fails, a fetch that throws, junk in
 
 test("money.js exports the whole surface the tabs use", async () => {
   const m = await world({ answer: answerOk }).popup();
-  for (const name of ["fmtMoney", "rates", "toUsd", "usdEquivalent", "totalLine", "rowAmount", "cachedRates", "loadCachedRates", "ATTRIBUTION"]) assert.ok(name in m, name);
+  for (const name of ["fmtMoney", "rates", "toUsd", "totalLine", "rowAmount", "cachedRates", "loadCachedRates"]) assert.ok(name in m, name);
+  for (const gone of ["usdEquivalent", "ATTRIBUTION", "SYMBOL_CURRENCIES"]) assert.ok(!(gone in m), `${gone} lives in money-core.js only`);
   assert.equal(typeof m.rates, "function"); assert.equal(typeof m.totalLine, "function");
 });
 

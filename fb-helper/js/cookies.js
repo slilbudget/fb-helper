@@ -24,7 +24,7 @@ export async function readCookies() {
 }
 export const cookieMap = () => Object.fromEntries(state.cookies.map((c) => [c.name, c]));
 export const hasSession = () => { const m = cookieMap(); return !!(m.c_user && m.xs); };
-export function renderCookies() {
+function renderCookies() {
   const byName = cookieMap();
   for (const id of ["#copyCookiesUa", "#copyCookieJson"]) if (!$(id).hasAttribute("aria-busy")) $(id).disabled = !state.cookies.length;
   // The whole cookie string, one colour like the token, in a short scrollable box;
@@ -49,7 +49,7 @@ function cookiesJson() {
     ...(c.expirationDate ? { expirationDate: c.expirationDate } : {}),
   })), null, 2);
 }
-export async function copyCookieJson() {
+async function copyCookieJson() {
   await readCookies();
   if (!hasSession()) return toast(t("ck.noSession"), true);
   copy(cookiesJson(), t("ck.jsonCopied"));

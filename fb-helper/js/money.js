@@ -11,7 +11,7 @@
 // "fxFail". A Web Lock keeps two open popups from both asking. rates() never throws: no table is `null`.
 
 import { SRC_ER, SRC_CDN, FX_FAIL_BACKOFF_MS, normalizeRates, readCache, isFresh, isUsable, publicRates, plausibleRates } from "./money-core.js";
-export { fmtMoney, toUsd, usdEquivalent, totalLine, rowAmount, ATTRIBUTION, SYMBOL_CURRENCIES } from "./money-core.js";
+export { fmtMoney, toUsd, totalLine, rowAmount } from "./money-core.js";
 
 const SOURCES = [
   { id: SRC_ER, url: "https://open.er-api.com/v6/latest/USD" },

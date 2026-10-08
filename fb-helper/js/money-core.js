@@ -73,7 +73,7 @@ export function cleanRates(obj) {
 // a quarter of the codes both tables name (USD aside) moved by more than 50 % the newcomer is not believed (an inverted table, another unit,
 // a broken mirror) and the held one stays. Not "any code": one real devaluation or a crypto ticker among the ~200 codes of the fallback source
 // must not freeze the rates. With fewer than MIN_CODES shared codes there is nothing to compare, so it passes.
-export const FX_MAX_MOVE = 0.5, FX_MAX_WILD_SHARE = 0.25;
+const FX_MAX_MOVE = 0.5, FX_MAX_WILD_SHARE = 0.25;
 export function plausibleRates(next, prev) {
   if (!next || !prev) return true;
   const shared = Object.keys(next).filter((k) => k !== "USD" && Object.hasOwn(prev, k));

@@ -10,7 +10,7 @@ test("ad account links take the id with or without act_", () => {
 });
 test("anything but digits gives no link", () => {
   for (const bad of [null, undefined, "", "12a", "1/../x", "javascript:alert(1)", "1?x=2", " 1", "act_", "1".repeat(26)])
-    for (const fn of [LINKS.adsManager, LINKS.billing, LINKS.bmSettings, LINKS.page, LINKS.pageSuite, LINKS.bmQuality])
+    for (const fn of [LINKS.adsManager, LINKS.billing, LINKS.bmSettings, LINKS.page, LINKS.pageSuite])
       assert.equal(fn(bad), null, `${fn.name || "link"}(${JSON.stringify(bad)})`);
 });
 test("every link is https on a facebook.com host", () => {
@@ -44,4 +44,8 @@ test("imageUrl: anything else gives null (http, other hosts, look-alikes, creden
     "https://scontent.xx.fbcdn.net/a.jpg\n", " https://scontent.xx.fbcdn.net/a.jpg", "", "   ", null, undefined, 5, {}, ["https://fbcdn.net/a.png"],
     `https://scontent.xx.fbcdn.net/${"a".repeat(2001)}`,
   ]) assert.equal(imageUrl(bad), null, JSON.stringify(bad));
+});
+
+test("no link nobody opens: every LINKS entry is used by the extension (accountSettings and bmQuality were not)", () => {
+  assert.ok(!("accountSettings" in LINKS) && !("bmQuality" in LINKS));
 });
