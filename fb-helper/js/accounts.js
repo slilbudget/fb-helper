@@ -8,7 +8,7 @@
 // and the ads. What a row says about an account is nextsteps.js accountState (pure, tested).
 
 import { t, tn, tnPlus, getLang } from "./i18n.js";
-import { AD_PROBLEMS, adRank, reviewLines, spendFloor, insightRow, cleanText, digitsId, humanEnum } from "./pure.js";
+import { AD_PROBLEMS, adRank, reviewLines, insightRow, cleanText, digitsId, humanEnum } from "./pure.js";
 import { $, $$, el, fill, toast, copy, keepFocus, scrollFade } from "./dom.js";
 import { numFmt, ago, sameDay, tzLabel, major, fullDate } from "./format.js";
 import { state, Stale, saveSession, claimSlot, slotLeft, onLoad, isDead, deadCode } from "./state.js";
@@ -21,41 +21,15 @@ import { on, emit } from "./bus.js";
 import { accountState, adSteps } from "./nextsteps.js";
 import { LINKS } from "./links.js";
 import { row, groupHeader, fixLink, kv, whatToDo, linksRow } from "./row.js";
-import { fmtMoney, rowAmount, toUsd, rates, cachedRates } from "./money.js";
-import { PERIODS, statsOf as spendStats, periodRange as rangeOf, addUp, mergeUp, groupByBusiness, inBusiness, compareSpend } from "./spend.js";
+import { fmtMoney, rowAmount, rates, cachedRates } from "./money.js";
+import { PERIODS, statsOf as spendStats, periodRange as rangeOf, addUp } from "./spend.js";
+import { BASE_FIELDS, PERIOD_INSIGHTS, OPTIONAL_FIELDS, AD_ALL, AD_ALL_INSIGHTS, AD_ALIASES, AD_STATUS, slimWith, word, underBmFilter as underFilter, visibleAccounts, chipCounts, chipsInOrder, isLive, liveIds, groupAccounts, valueOf } from "./accounts-model.js";
 import { bindPeriods, fillTotal, refreshTip, isShown } from "./period.js";
 import "./strings/actions.js";
 import { registerTab, registerRender, registerInit, registerStart } from "./registry.js";
 
 const MIN_REFRESH_MS = 60 * 1000;            // accounts: one attempt per minute (failed attempts count too)
 const ADS_LOCK_MS = 30 * 1000;               // ads: one read per account per 30 s
-const BASE_FIELDS = ["name", "account_id", "account_status", "disable_reason", "currency", "timezone_name",
-  "amount_spent", "balance", "spend_cap", "created_time", "business{id,name}",
-  "business_country_code"];
-// All periods in one request via field aliases (live-checked 2026-09-27). Used by the accounts read and by the
-// per-ad numbers, so switching the period never needs a request.
-const insightsOf = (preset, alias) => `insights.date_preset(${preset}).as(${alias}){spend,impressions,inline_link_clicks}`;
-const PERIOD_INSIGHTS = PERIODS.filter((p) => p.alias).map((p) => insightsOf(p.preset, p.alias)).join(",");
-// Per ad only: "All time" = Graph's date_preset=maximum (Meta keeps at most 37 months; documented, replaced "lifetime" in v10).
-// Accounts use their amount_spent field for it, which has no per-ad twin. Kept apart because it is the heaviest read.
-const AD_ALL = "p_all";
-const AD_ALL_INSIGHTS = insightsOf("maximum", AD_ALL);
-const AD_ALIASES = [...PERIODS.filter((p) => p.alias).map((p) => p.alias), AD_ALL];
-// Extras that some tokens can't read. On a field error only the named one is dropped and the page retried.
-// Today's spend rides on the same call (date_preset=today = each account's own timezone).
-const OPTIONAL_FIELDS = {
-  funding_source_details: "funding_source_details",
-  adtrust_dsl: "adtrust_dsl",
-  adspaymentcycle: "adspaymentcycle{threshold_amount}",
-  adspixels: "adspixels{id,name}",
-  insights: PERIOD_INSIGHTS,
-};
-// Tone per Meta status code of an AD; the label is t("ad.<status>").
-const AD_STATUS = {
-  ACTIVE: "ok", PAUSED: "", PENDING_REVIEW: "warn", IN_PROCESS: "warn", DISAPPROVED: "bad", WITH_ISSUES: "bad",
-  CAMPAIGN_PAUSED: "", ADSET_PAUSED: "", PREAPPROVED: "warn", PENDING_BILLING_INFO: "warn", DELETED: "", ARCHIVED: "",
-};
-
 Object.assign(state, {
   accounts: [], fetchedAt: 0, truncated: false, failedBms: [], filter: "", statusFilter: null, accLoading: false,   // failedBms: ids of the businesses whose accounts could not be read
   autoPage: null,                                    // the FB page load the list was last loaded for (the automatic refresh on a new page load)
@@ -93,19 +67,7 @@ on("period", () => renderAccounts());
 on("locks", () => syncAdsButtons());
 
 // ---------- accounts ----------
-// Mark rows fetched without an optional field (spend = unknown, not 0; pixels = unknown, not none)
-// and keep only the display string of the funding source.
-// _floor: what the insights already prove was spent (today + last 30 days), kept for the "All time" figure.
-const spendOfRow = (x) => Number(x?.data?.[0]?.spend);
-// Every text Graph sends is cleaned (pure.js cleanText: control and bidi characters): names go to the screen, to storage and into search.
-const slimWith = (skip) => (a) => ({ ...a, _noInsights: skip.has("insights") || undefined,
-  name: cleanText(a.name), business_country_code: cleanText(a.business_country_code, 8) || undefined,
-  currency: cleanText(a.currency, 8) || undefined, timezone_name: cleanText(a.timezone_name, 64) || undefined,   // both are printed raw when Intl does not know them
-  business: a.business && typeof a.business === "object" ? { id: a.business.id, name: cleanText(a.business.name) } : undefined,
-  _floor: skip.has("insights") ? undefined : spendFloor(spendOfRow(a.p_today), spendOfRow(a.p_month)),
-  _noPixels: skip.has("adspixels") || undefined,
-  adspixels: Array.isArray(a.adspixels?.data) ? { data: a.adspixels.data.map((p) => ({ id: p?.id, name: cleanText(p?.name) })) } : a.adspixels,
-  funding_source_details: a.funding_source_details ? { display_string: cleanText(a.funding_source_details.display_string) } : undefined });
+// What a row keeps from Graph's answer (accounts-model.js slimWith: names cleaned, markers for a field Graph refused).
 const slim = (a) => slimWith(state.skip)(a);
 
 // me/adaccounts lists only the accounts assigned to the person. A BM admin also reads every account of the BM
@@ -199,28 +161,12 @@ const periodRange = () => rangeOf(state.accounts, state.period, state.fetchedAt)
 // accountState is pure over the account object, which is never changed after a load: one answer per object.
 const memo = new WeakMap();
 const stateOf = (a) => { let s = memo.get(a); if (!s) memo.set(a, s = accountState(a)); return s; };
-const word = (w) => t(w.key, w.vars);
-// The status chips filter by status, not by reason: "Disabled 2", not one chip per reason.
-const CHIP_ORDER = ["active", "2", "3", "restricted", "noaccess", "7", "8", "9", "100", "101"];
-const chipRank = (id) => { const i = CHIP_ORDER.indexOf(id); return i < 0 ? CHIP_ORDER.length : i; };
-
-// The accounts of the business the Businesses tab sent us to (spend.js: owner OR read-through business, the member rule its count used).
-const underBmFilter = () => (state.bmFilter ? state.accounts.filter((a) => inBusiness(a, state.bmFilter.id)) : state.accounts);
-// Rows matching the search + status filter + BM filter. The total, the count and "Active IDs" all follow it.
-function visibleRows() {
-  const q = state.filter.trim().toLowerCase();
-  return underBmFilter().filter((a) => {
-    const s = stateOf(a);
-    if (state.statusFilter && s.chip.id !== state.statusFilter) return false;
-    return !q || `${a.name} ${a.account_id} ${word(s.word)} ${word(s.chip)} ${a.business?.name || ""}`.toLowerCase().includes(q);
-  });
-}
+// Which rows the search + status chip + business filter leave, the chips, "Active IDs" and the groups are accounts-model.js (pure, tested in Node).
+const underBmFilter = () => underFilter(state.accounts, state.bmFilter?.id ?? null);
+const visibleRows = () => visibleAccounts(state.accounts, { filter: state.filter, statusFilter: state.statusFilter, bmId: state.bmFilter?.id ?? null }, stateOf);
 const isFiltered = () => !!(state.filter.trim() || state.statusFilter || state.bmFilter);
-// "Active IDs" = the active accounts the person works with: assigned to them. An account only read through a business (_viaBm: "No access")
-// is not one of them, whatever its status; it would put an id into the list that this person cannot use.
-const isLive = (a) => a.account_status === 1 && !a._viaBm;
 function copyLiveIds() {
-  const ids = visibleRows().filter(isLive).map((a) => a.account_id);
+  const ids = liveIds(visibleRows());
   if (!ids.length) return toast(t("acc.noLive"), true);
   copy(ids.join("\n"), t("acc.idsCopied", { n: ids.length }) + (state.truncated ? t("acc.partial") : ""));
 }
@@ -256,8 +202,7 @@ function drawAccounts() {
   renderHint();
   $("#copyLiveIds").disabled = !state.accounts.some(isLive);
   // The chips count the rows the business filter leaves (not the search or the chip itself: the other chips must stay to switch to).
-  const counts = new Map();
-  for (const a of underBmFilter()) { const c = stateOf(a).chip; const e = counts.get(c.id); if (e) e.n++; else counts.set(c.id, { chip: c, n: 1 }); }
+  const counts = chipCounts(state.accounts, state.bmFilter?.id ?? null, stateOf);
   if (state.statusFilter && !counts.has(state.statusFilter)) state.statusFilter = null;
   // A status filter is only useful when statuses differ; with one status it just repeats the count.
   if (counts.size < 2) { state.statusFilter = null; counts.clear(); }
@@ -266,7 +211,7 @@ function drawAccounts() {
   // A chip's accessible name is "Active: 12" (the text alone would read "Active 12"); the business chip names what pressing it does.
   fill($("#statusChips"), bm ? el("button", { type: "button", class: "pill chip on", "aria-pressed": "true", "data-focus": "chip:bm", title: t("acc.bmFilterClear"),
       "aria-label": `${bm.name || bm.id}: ${t("acc.bmFilterClear")}`, onclick: () => { state.bmFilter = null; renderAccounts(); } }, el("i", { class: "i i-bm", "aria-hidden": "true" }), `${bm.name || bm.id} ✕`) : null,
-  ...[...counts.values()].sort((x, y) => chipRank(x.chip.id) - chipRank(y.chip.id)).map(({ chip, n }) => {
+  ...chipsInOrder(counts).map(({ chip, n }) => {
     const on = state.statusFilter === chip.id;
     return el("button", { type: "button", class: `pill chip ${chip.tone}${on ? " on" : ""}`, "aria-pressed": String(on), "data-focus": `chip:${chip.id}`, "aria-label": `${word(chip)}: ${n}`,
       onclick: () => { state.statusFilter = on ? null : chip.id; renderAccounts(); } }, `${word(chip)} ${n}`);
@@ -276,21 +221,12 @@ function drawAccounts() {
   if (!any) return fill(list, emptyView({ tab: "accounts", loaded: !!state.fetchedAt, loading: state.accLoading, none: t("acc.none"), loadingText: t("acc.loading"), retry: () => loader.retry() }));
   if (!rows.length) return fill(list, listNote("accounts"), el("div", { class: "empty" }, t("acc.noMatch")));
 
-  // Groups by business, the biggest spender first (USD equivalent; without rates only comparable amounts are compared: spend.js compareSpend);
-  // inside a group active accounts by spend, then the ones with a problem, then the dead ones. Stats once per row: the comparators would
-  // otherwise recompute them O(n log n) times.
+  // Groups by business, the biggest spender first, the accounts inside a group by state and spend (accounts-model.js groupAccounts). Stats once
+  // per row: the comparators would otherwise recompute them O(n log n) times.
   const r = cachedRates();
   usedRates = r?.rates ?? null;
   const stats = new Map(rows.map((a) => [a, statsOf(a)]));
-  const part = new Map(rows.map((a) => [a, addUp([{ spend: stats.get(a)?.spend ?? null, currency: a.currency }])]));
-  const RANK = { active: 0, problem: 1, dead: 2 };
-  const byName = (x, y) => String(x || "").localeCompare(String(y || ""), getLang());
-  const groups = groupByBusiness(rows);
-  for (const g of groups) {
-    g.accounts.sort((a, b) => RANK[stateOf(a).group] - RANK[stateOf(b).group] || compareSpend(part.get(a), part.get(b), r) || byName(a.name, b.name));
-    g.sum = mergeUp(g.accounts.map((a) => part.get(a)));
-  }
-  groups.sort((a, b) => (a.id === null) - (b.id === null) || compareSpend(a.sum, b.sum, r) || byName(a.name, b.name));   // the personal group (no business) is last
+  const groups = groupAccounts(rows, stats, r, getLang(), stateOf);
   // No header while one business is filtered (it would repeat the chip), nor above a list that is all personal (it would repeat the total).
   const headers = !state.bmFilter && !(groups.length === 1 && groups[0].id === null);
   // A business that could not be read: its accounts may be missing. One muted line, only when it concerns what is on screen (the business filter
@@ -314,16 +250,6 @@ function groupEl(g, r) {
     count: g.accounts.length, value, valueTitle: title });
   if (personal) h.querySelector(".lav .i")?.classList.replace("i-flag", "i-user");
   return h;
-}
-
-// The amount on line 1: the account's own currency, exact; zero or unknown is muted. A non-USD amount says its USD value in the tooltip
-// when the rates are known (never on screen: "≈" belongs to the grand total only).
-function valueOf(a, st, r) {
-  if (!st) return { text: "—", muted: true, title: t("acc.noPeriod") };
-  const usd = st.spend && (a.currency || "USD") !== "USD" ? toUsd(st.spend, a.currency, r) : null;
-  // A million or more of an ISO-code currency is written short ("28,9 млн VND"); the exact amount is the tooltip's.
-  const text = fmtMoney(st.spend, a.currency, { compact: true }), exact = fmtMoney(st.spend, a.currency);
-  return { text, muted: !st.spend, title: [text !== exact ? exact : "", usd !== null ? `≈ ${fmtMoney(usd, "USD")}` : ""].filter(Boolean).join("\n") || null };
 }
 
 function renderAccount(a, st, r) {
