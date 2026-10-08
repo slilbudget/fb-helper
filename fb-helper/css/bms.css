@@ -10,6 +10,3 @@
    (actions.css .act-inline), reset to look like text. */
 .lbm-accs { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--spacing-4); min-width: 0; }
 .lbm-go { appearance: none; border: 0; background: none; font: inherit; padding: 4px 0; cursor: pointer; --act-fg: var(--color-accent); }
-
-/* A refused refresh above an old list. */
-.bm-note { padding: var(--spacing-3) var(--spacing-4) 0; }
