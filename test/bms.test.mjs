@@ -39,8 +39,8 @@ test("slimBm keeps only the whitelisted keys; strings are cut, wrong shapes drop
   assert.deepEqual(slimBm({ id: "9", name: "N", verification_status: 5, profile_picture_uri: { url: "x" } }), { id: "9", name: "N" });
 });
 
-test("slimBm: a logo URL is kept only as https on facebook.com / fbcdn.net; anything else leaves the row without one", () => {
-  for (const bad of ["http://scontent.xx.fbcdn.net/a.jpg", "https://evil.example.com/a.png", "https://fbcdn.net.evil.com/a.png", "javascript:alert(1)", "data:image/png;base64,AA", "", "  ", 5, null, {}])
+test("slimBm: a logo URL is kept only as https on fbcdn.net / fbsbx.com; anything else (facebook.com too) leaves the row without one", () => {
+  for (const bad of ["http://scontent.xx.fbcdn.net/a.jpg", "https://www.facebook.com/a.png", "https://evil.example.com/a.png", "https://fbcdn.net.evil.com/a.png", "javascript:alert(1)", "data:image/png;base64,AA", "", "  ", 5, null, {}])
     assert.equal("profile_picture_uri" in slimBm({ id: "1", name: "A", profile_picture_uri: bad }), false, JSON.stringify(bad));
   assert.equal(slimBm({ id: "1", profile_picture_uri: "https://scontent-fra5-2.xx.fbcdn.net/v/a.png?x=1&y=2" }).profile_picture_uri, "https://scontent-fra5-2.xx.fbcdn.net/v/a.png?x=1&y=2");
 });

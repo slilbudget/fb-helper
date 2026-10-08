@@ -66,11 +66,11 @@ test("slimPage: values of the wrong type are dropped, text is cleaned, a row wit
   assert.deepEqual(slimPage({ id: "1", instagram_business_account: { id: "5" } }).instagram_business_account, { id: "5" }, "no username is fine");
 });
 
-test("slimPage: a picture is kept only as an https URL on facebook.com / fbcdn.net; anything else leaves the row without one", () => {
+test("slimPage: a picture is kept only as an https URL on fbcdn.net / fbsbx.com; anything else (facebook.com too) leaves the row without one", () => {
   const url = (picture) => slimPage({ id: "1", name: "A", picture }).picture;
   assert.equal(url({ data: { url: "https://scontent.xx.fbcdn.net/a.jpg" } }), "https://scontent.xx.fbcdn.net/a.jpg");
-  assert.equal(url({ url: "https://www.facebook.com/a.jpg" }), "https://www.facebook.com/a.jpg", "also without the data wrapper");
-  for (const bad of [{ data: { url: "http://scontent.xx.fbcdn.net/a.jpg" } }, { data: { url: "https://evil.example.com/a.png" } }, { data: { url: "https://fbcdn.net.evil.com/a.png" } },
+  assert.equal(url({ url: "https://platform-lookaside.fbsbx.com/platform/profilepic/?asid=1" }), "https://platform-lookaside.fbsbx.com/platform/profilepic/?asid=1", "also without the data wrapper, on the page picture's own host");
+  for (const bad of [{ data: { url: "https://www.facebook.com/a.jpg" } }, { data: { url: "http://scontent.xx.fbcdn.net/a.jpg" } }, { data: { url: "https://evil.example.com/a.png" } }, { data: { url: "https://fbcdn.net.evil.com/a.png" } },
     { data: { url: "javascript:alert(1)" } }, { data: { url: "data:image/png;base64,AAAA" } }, { data: { url: 5 } }, { data: {} }, { data: null }, "https://scontent.xx.fbcdn.net/a.jpg", [], null, 7])
     assert.equal("picture" in slimPage({ id: "1", name: "A", picture: bad }), false, JSON.stringify(bad));
   assert.ok(!("picture" in slimPage({ id: "1" })), "no field, no key");

@@ -47,9 +47,11 @@ export const LINKS = {
 
 // ---------- pictures ----------
 // A picture URL from Graph (a page's picture, a business's logo) goes into an <img>, so it is checked like an id is: https only,
-// no credentials or port, and a facebook.com / fbcdn.net host (where Meta serves its pictures from). Anything else gives null and
-// the caller draws the placeholder. Returns the normalised URL.
-const IMAGE_HOSTS = ["facebook.com", "fbcdn.net"];
+// no credentials or port, and a host Meta serves its pictures from: fbcdn.net (profile and logo pictures) or fbsbx.com (platform-lookaside,
+// the page picture's own host). Not facebook.com: that host serves pages and scripts, never a picture an <img> should fetch from an
+// answer we did not write. These are the same two hosts as the manifest's img-src (the CSP is the second lock). Anything else gives null
+// and the caller draws the placeholder. Returns the normalised URL.
+const IMAGE_HOSTS = ["fbcdn.net", "fbsbx.com"];
 export function imageUrl(v) {
   if (typeof v !== "string" || v.length > 2000 || /[\u0000-\u0020\u007f]/.test(v)) return null;
   let u;

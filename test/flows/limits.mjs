@@ -67,4 +67,34 @@ async function namesFlow() {
   await b.ctx.close();
 }
 
-export const flows = { limitsMethod: methodFlow, limitsUsage: usageFlow, limitsNames: namesFlow };
+// ---------- the CSP is enforced by the real browser ----------
+async function cspFlow() {
+  console.log("\n# limits: CSP");
+  const b = await boot({ fb: adsFb(TOK), graph: () => ({ body: accountsJson }) });
+  const pop = await popup(b);
+  // Try what a page of this extension must never be able to do; Chrome reports each refusal as a securitypolicyviolation.
+  const r = await pop.evaluate(async () => {
+    const seen = [];
+    document.addEventListener("securitypolicyviolation", (e) => seen.push(`${e.effectiveDirective}:${e.blockedURI}`));
+    const img = (src) => new Promise((res) => { const i = new Image(); i.onload = () => res("loaded"); i.onerror = () => res("blocked"); i.src = src; });
+    const out = {};
+    out.evilImg = await img("https://evil.example.com/p.png");
+    out.facebookImg = await img("https://www.facebook.com/p.png");
+    out.cdnImg = await img("https://scontent.xx.fbcdn.net/v/t39/ok.png");
+    out.fbsbxImg = await img("https://platform-lookaside.fbsbx.com/platform/profilepic/ok.png");
+    out.evilFetch = await fetch("https://evil.example.com/x").then(() => "sent", () => "blocked");
+    out.otherJsdelivr = await fetch("https://cdn.jsdelivr.net/npm/lodash/lodash.js").then(() => "sent", () => "blocked");
+    const base = document.createElement("base"); base.href = "https://evil.example.com/"; document.head.append(base);
+    await new Promise((res) => setTimeout(res, 100));
+    out.baseHref = document.baseURI;
+    out.violations = seen;
+    return out;
+  });
+  ok("a picture from another host or from facebook.com is blocked by img-src", r.evilImg === "blocked" && r.facebookImg === "blocked", JSON.stringify(r));
+  ok("…a picture from fbcdn.net loads (the mock answers it) and neither Meta picture host is refused by the CSP", r.cdnImg === "loaded" && !r.violations.some((v) => v.includes("fbcdn") || v.includes("fbsbx")), JSON.stringify(r));
+  ok("…a request to another host, or to another file on an allowed one, is blocked by connect-src", r.evilFetch === "blocked" && r.otherJsdelivr === "blocked" && r.violations.some((v) => v.startsWith("connect-src:https://evil.example.com")) && r.violations.some((v) => v.startsWith("connect-src:https://cdn.jsdelivr.net/npm/lodash")), JSON.stringify(r.violations));
+  ok("…a <base> cannot redirect relative URLs (base-uri 'none')", !r.baseHref.startsWith("https://evil.example.com") && r.violations.some((v) => v.startsWith("base-uri")), `${r.baseHref} ${JSON.stringify(r.violations)}`);
+  await b.ctx.close();
+}
+
+export const flows = { limitsMethod: methodFlow, limitsUsage: usageFlow, limitsNames: namesFlow, limitsCsp: cspFlow };
