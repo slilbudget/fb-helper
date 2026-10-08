@@ -84,11 +84,18 @@ export function trx(key, vars = {}, { exact = false } = {}) {
 }
 
 // ---------- browsers ----------
+// A small SVG picture whose colour follows its path (what the fbcdn.net mock answers).
+const svg = (pathname) => ({ contentType: "image/svg+xml", body: `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="hsl(${[...pathname].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 360, 7)} 55% 55%)"/></svg>` });
 const live = new Set();                                        // booted and not yet closed: a flow that throws must not leak its Chromium
 // One browser context = one profile. fb(url) → html of a Facebook page; graph(url) → { status?, headers?, body }.
-export async function boot({ user = "1001", fb, graph, rates } = {}) {
+// Pictures (js/pictures.js) have two more handlers, and neither is a "hit": pics(url, n) answers the batch read GET /<version>/?ids=…&fields=… with
+// { status?, headers?, body, delay? } (default: {}, no picture found; b.picHits lists the query strings), picture(url) answers the Graph picture
+// redirect <Graph>/<version>/<id>/picture of a page without a URL with { redirect: "<picture URL>" } or { status } (default: 404, no picture;
+// b.pictureHits lists the paths). So a test that counts b.hits counts the list reads only, as it always did. Playwright does not route the second leg
+// of a redirect, so { redirect } answers with the picture itself and notes the target's path in b.images, as the fbcdn.net route would have.
+export async function boot({ user = "1001", fb, graph, rates, pics, picture } = {}) {
   await trLang("en");
-  const page$ = { hits: [], fb: fb || (() => ""), graph: graph || (() => ({ body: { data: [] } })), user };
+  const page$ = { hits: [], fb: fb || (() => ""), graph: graph || (() => ({ body: { data: [] } })), user, picHits: [], pictureHits: [], pics: pics || (() => ({})), picture: picture || (() => ({ status: 404 })) };
   const ctx = await playwright().chromium.launchPersistentContext("", { channel: "chromium", headless: true,
     args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`] });
   if (user) await ctx.addCookies([["c_user", user], ["xs", "47%3Aabc%3A2"], ["datr", "d1"]]
@@ -97,6 +104,19 @@ export async function boot({ user = "1001", fb, graph, rates } = {}) {
   await ctx.route("https://*.facebook.com/**", (r) => r.fulfill({ contentType: "text/html", body: page$.fb(new URL(r.request().url())) }));
   await ctx.route(`${GRAPH}/**`, async (r) => {
     const u = new URL(r.request().url());
+    if (/^\/v[\d.]+\/\d+\/picture$/.test(u.pathname)) {                     // an <img> of a page without a picture URL: the redirect to the picture, or none
+      page$.pictureHits.push(u.pathname.replace(/^\/v[\d.]+\//, "/") + u.search);
+      const pic = page$.picture(u, page$.pictureHits.length) || {};
+      if (!pic.redirect) return r.fulfill({ status: pic.status || 404, body: "" });
+      page$.images.push(new URL(pic.redirect).pathname);
+      return r.fulfill(svg(new URL(pic.redirect).pathname));
+    }
+    if (/^\/v[\d.]+\/?$/.test(u.pathname) && u.searchParams.has("ids")) {      // the batch read of pictures
+      page$.picHits.push(u.search);
+      const out = page$.pics(u, page$.picHits.length) || {};
+      if (out.delay) await new Promise((res) => setTimeout(res, out.delay));
+      return r.fulfill({ status: out.status || 200, contentType: "application/json", headers: { "access-control-allow-origin": "*", ...(out.headers || {}) }, body: JSON.stringify(out.body ?? out) });
+    }
     page$.hits.push(u.pathname.replace(/^\/v[\d.]+\//, "/") + u.search);
     const out = page$.graph(u, page$.hits.length) || {};
     if (out.delay) await new Promise((res) => setTimeout(res, out.delay));
@@ -111,8 +131,7 @@ export async function boot({ user = "1001", fb, graph, rates } = {}) {
     const u = new URL(r.request().url());
     page$.images.push(u.pathname);
     if (/broken/.test(u.pathname)) return r.fulfill({ status: 404, body: "" });
-    const hue = [...u.pathname].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 360, 7);
-    r.fulfill({ contentType: "image/svg+xml", body: `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="hsl(${hue} 55% 55%)"/></svg>` });
+    r.fulfill(svg(u.pathname));
   });
   // Exchange rates (money.js): both origins are answered here, never by the network. rates(url, n) → { status?, body, delay? } | { abort: true }.
   // The default answers 503 for both, so a total of several currencies stays the per-currency sum ("$117.00 + €50.00") unless a test

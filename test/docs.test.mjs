@@ -19,7 +19,7 @@ const directive = (name) => (csp.split(";").map((d) => d.trim().split(/\s+/)).fi
 const hostOf = (src) => new URL(src.replace("*.", "")).hostname;
 const GRAPH = hostOf(directive("connect-src")[0]);                                   // the Graph host: the first origin of connect-src (test/harness.mjs reads it from there too)
 const OTHER_CONNECT = directive("connect-src").slice(1).map(hostOf);                 // the exchange-rate sources
-const PICTURE_HOSTS = directive("img-src").filter((s) => s.startsWith("https:")).map(hostOf);
+const PICTURE_HOSTS = directive("img-src").filter((s) => s.startsWith("https:")).map(hostOf).filter((h) => h !== GRAPH);   // the Graph origin is in img-src too (the picture redirect of a page); it is GRAPH already
 const strict = process.env.DOCS_STRICT === "1";
 const pending = (name, fn) => test(name, { todo: strict ? false : "docs pass of the 2.5.0 release is pending (DOCS_STRICT=1 makes it count)" }, fn);
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -30,6 +30,7 @@ test("the origins are what the tests below assume (a Graph host, two rate source
   assert.match(GRAPH, /^graph\./);
   assert.equal(OTHER_CONNECT.length, 2);
   assert.deepEqual(PICTURE_HOSTS.length, 2);
+  assert.ok(directive("img-src").includes(directive("connect-src")[0]), "img-src names the Graph origin too (the picture redirect of a Page): the policy's Graph paragraph covers it");
   assert.ok(directive("connect-src").every((s) => !s.includes("*")));
 });
 

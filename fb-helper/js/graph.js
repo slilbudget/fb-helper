@@ -3,7 +3,8 @@
 // token.js. The host itself is handed in by the entry (config.js).
 //
 // What can go out, and when: GET only (graph() sends no body and no other method), to a path made of word segments only (an id from
-// Graph never gets to add "/", "?" or ".."), never while the token is dead, never during the API pause (30 min after a throttle answer, or
+// Graph never gets to add "/", "?" or ".."; the one exception is the empty path of a batch read, `?ids=` with 1-50 digit-only ids: pictures.js),
+// never while the token is dead, never during the API pause (30 min after a throttle answer, or
 // once the usage header says 95 %) and never past the soft budget of 600 requests per hour (counted here, kept in storage.session so a
 // reopened popup and a second window share it). The three "stop" cases answer with an error that has `local = true`: nothing was sent.
 
@@ -20,6 +21,7 @@ const THROTTLE_CODES = new Set([4, 17, 32, 613]);
 const USAGE_PAUSE_PCT = 95;                  // Meta's own usage figure this high: the next call would be throttled, so stop for the same 30 min
 const BUDGET_PER_HOUR = 600, BUCKET_MS = 10 * 60 * 1000, WINDOW_MS = 60 * 60 * 1000;
 const PATH_OK = /^\w+(\/\w+)*$/;             // "me", "me/adaccounts", "act_123/ads": nothing else may be asked for
+const IDS_OK = /^\d{1,25}(,\d{1,25}){0,49}$/;  // the empty path is allowed ONLY with params.ids = "1,2,3" (1-50 digit-only ids): GET /<version>/?ids=…
 
 // Switch to a newer API version named in Graph's text (upgrade warning, #2635, or our own storage).
 // Only forward, and only a few majors ahead: a garbled message must not send us to v999.
@@ -107,7 +109,7 @@ export async function graph(path, params = {}, retried = false) {
   if (!token) throw local(new Error(t("err.noToken")));
   const dead = deadOf(token);
   if (dead) throw local(sessionError(dead.code));
-  if (!PATH_OK.test(String(path))) throw local(new Error(t("err.path")));
+  if (!(PATH_OK.test(String(path)) || (path === "" && IDS_OK.test(String(params.ids ?? ""))))) throw local(new Error(t("err.path")));
   const pause = pauseNote();
   if (pause) throw local(Object.assign(new Error(pause), { pause: true }));
   budgetTake();

@@ -14,6 +14,7 @@ import { state, Stale, saveSession } from "./state.js";
 import { readPaged } from "./graph.js";
 import { listLoader } from "./list-loader.js";
 import { emptyView, listNote } from "./list-state.js";
+import { readPictures, picturelessBusinesses, picturesOf } from "./pictures.js";
 import { LINKS } from "./links.js";
 import { on, emit } from "./bus.js";
 import { registerTab, registerRender, registerInit, registerStart } from "./registry.js";
@@ -50,6 +51,7 @@ on("cache-dropped", () => { openRows.clear(); renderBms(); });
 // Accounts tab, which share it).
 on("accounts", () => { if (active()) renderBms(); });
 on("period", () => { if (active()) renderBms(); });
+on("pictures", () => { if (active()) renderBms(); });   // pictures were read (pictures.js); a hidden tab is redrawn when it is shown
 
 // ---------- loading ----------
 // The businesses of the profile: one paged read of me/businesses. A token that cannot read one of the extra fields may be refused the whole
@@ -80,10 +82,11 @@ const loader = listLoader({
   // The tab loads the list by itself when nothing is cached for this FB user (bmsAt: another window may have filled it meanwhile).
   empty: () => !state.bmsAt, due: () => !state.bmsAt,
   read: readBms,
-  commit: async ({ rows, truncated }, { auto, owner }) => {
+  commit: async ({ rows, truncated }, { gen, auto, owner }) => {
     const bms = rows.filter(Boolean);                // a row without a usable id is not a business
     Object.assign(state, { bms, bmsAt: Date.now(), bmsTruncated: truncated, owner });
     await saveSession({ bms, bmsAt: state.bmsAt, bmsTruncated: truncated, owner });
+    readPictures("business", picturelessBusinesses(bms), gen);   // the logos the list read did not bring (pictures.js): not awaited, silent
     return !auto || truncated ? t("bms.loaded", { n: bms.length }) + (truncated ? t("bms.truncated") : "") : null;   // the list itself is the answer to an automatic load
   },
 });
@@ -180,7 +183,7 @@ function renderRow(r, rt) {
   const fix = worst?.line && worst.fix ? { label: worst.fix.label, url: worst.fix.url, tip: t(worst.fix.tip) } : null;
   const sp = spendOf(r, { loaded: !!state.fetchedAt, rates: rt });
   return row({
-    key: `bm-${r.id}`, avatar: { kind: "business", url: r.picture }, name, ...valueOf(sp),
+    key: `bm-${r.id}`, avatar: { kind: "business", url: picturesOf("business", r.id, r.picture) }, name, ...valueOf(sp),
     status, context: contextOf(r), fix, more: Math.max(0, r.issues.length - 1), id: { value: r.id },
     open: openRows.has(r.id), onToggle: (open) => openRows[open ? "add" : "delete"](r.id),
     body: () => bodyOf(r, name, sp),

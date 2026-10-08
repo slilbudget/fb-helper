@@ -16,8 +16,9 @@ test("CSP: scripts only from the extension, no plugins, no <base>, no form posts
   assert.ok(!/unsafe-|\*\s|data:|blob:/.test(manifest.content_security_policy.extension_pages.replace(/https:\/\/\*\.(fbcdn\.net|fbsbx\.com)/g, "")), "no unsafe-inline / unsafe-eval / data: / blob: / bare wildcard");
 });
 
-test("CSP: pictures only from the extension itself and Meta's two picture hosts (the same two imageUrl accepts)", () => {
-  assert.deepEqual(csp["img-src"], ["'self'", "https://*.fbcdn.net", "https://*.fbsbx.com"]);
+test("CSP: pictures only from the extension itself, Meta's two picture hosts (the same two imageUrl accepts) and the Graph origin (the picture redirect of a page, links.js graphPicture)", () => {
+  assert.deepEqual(csp["img-src"], ["'self'", csp["connect-src"][0], "https://*.fbcdn.net", "https://*.fbsbx.com"]);
+  assert.ok(!csp["img-src"][1].includes("*") && new URL(csp["img-src"][1]).pathname === "/", "an origin: no path, no wildcard");
 });
 
 test("CSP connect-src: the Graph origin FIRST (test/harness.mjs reads it from there), then the two exact rate-table URLs of money.js and nothing else", () => {

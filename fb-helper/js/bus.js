@@ -14,6 +14,7 @@
 //   "filter-bm"      show the ad accounts of one business [{ id, name } or null]  -> accounts.js filters its list
 //   "accounts"       the Ad accounts list is loading / loaded / changed          -> the Businesses tab redraws (spend, counts, status come from it)
 //   "period"         the spend period was switched [key]                         -> the Ad accounts and Businesses tabs redraw (period.js)
+//   "pictures"       pictures were read (or another window's were taken over)    -> the three list tabs redraw (pictures.js)
 
 const handlers = new Map();
 

@@ -641,7 +641,7 @@ async function bmsRowsFlow() {
   await until(pop, () => [...document.querySelectorAll("#bmsList .lrow")].some((r) => r.querySelector(".lrow-name").textContent === "Alpha Media" && r.querySelector(".lav.ok")));
   const alpha = await av("Alpha Media");
   ok("Alpha: the logo URL on fbcdn.net renders an <img> in a 24 px rounded square (5 px)", !!alpha.img && alpha.img.src === PIC && alpha.w === 24 && alpha.h === 24 && /lav-square/.test(alpha.cls) && alpha.radius === "5px", JSON.stringify(alpha));
-  ok("…decorative (alt empty, aria-hidden), no referrer, lazy, async, width and height set", alpha.img.alt === "" && alpha.ariaHidden === "true" && alpha.img.rp === "no-referrer" && alpha.img.loading === "lazy" && alpha.img.decoding === "async" && alpha.img.w === "24" && alpha.img.h === "24", JSON.stringify(alpha.img));
+  ok("…decorative (alt empty, aria-hidden), no referrer, not lazy, async, width and height set", alpha.img.alt === "" && alpha.ariaHidden === "true" && alpha.img.rp === "no-referrer" && alpha.img.loading === null && alpha.img.decoding === "async" && alpha.img.w === "24" && alpha.img.h === "24", JSON.stringify(alpha.img));
   ok("…it loaded (the placeholder icon is hidden behind it) and the request carried no Referer", alpha.img.natural > 0 && alpha.icon.visible === "hidden" && asked.find((r) => r.url === PIC)?.referer === undefined, JSON.stringify(asked.find((r) => r.url === PIC)));
   const beta = await av("Beta Ads");
   ok("Beta: a logo URL on another host is never kept: the Lucide building on a muted 24 px square in the secondary text colour, no <img>, no request to that host",

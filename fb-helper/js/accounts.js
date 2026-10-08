@@ -16,6 +16,7 @@ import { graph, readPaged, pauseNote } from "./graph.js";
 import { readBusinessEdges } from "./biz-edges.js";
 import { listLoader } from "./list-loader.js";
 import { emptyView, listNote } from "./list-state.js";
+import { readPictures, groupLogoIds, picturesOf } from "./pictures.js";
 import { settledGrab, grabToken } from "./token.js";
 import { on, emit } from "./bus.js";
 import { accountState, adSteps } from "./nextsteps.js";
@@ -63,6 +64,8 @@ on("cache-dropped", () => { state.bmFilter = null; renderAccounts(); });
 on("filter-bm", (bm) => { state.bmFilter = bm?.id ? { id: String(bm.id), name: bm.name || "" } : null; renderAccounts(); });
 // The spend period changed (on this tab or the Businesses tab): numbers, total and ads follow.
 on("period", () => renderAccounts());
+// Pictures were read (pictures.js): the logos of the group headers follow.
+on("pictures", () => renderAccounts());
 // Rate slots changed (this window or another): the ads buttons follow.
 on("locks", () => syncAdsButtons());
 
@@ -130,15 +133,17 @@ const loader = listLoader({
     const viaBm = await readBmAccounts(gen, new Set(mine.rows.map((a) => a.account_id)));
     // "Not all of it" for everybody: a limit was hit (`cut`: a cap, a page limit) or the business list itself was not readable (`listFailed`: no
     // business can be named). A business whose edge could not be read is NOT that: it is named in failedBms and only its own verdict is withheld.
-    return { rows: [...mine.rows, ...viaBm.rows], cut: mine.truncated || viaBm.truncated, listFailed: viaBm.listFailed, failedBms: viaBm.failedBms };
+    return { rows: [...mine.rows, ...viaBm.rows], cut: mine.truncated || viaBm.truncated, listFailed: viaBm.listFailed, failedBms: viaBm.failedBms, bmIds: viaBm.bmIds };
   },
-  commit: async ({ rows, cut, listFailed, failedBms }, { auto, owner }) => {
+  commit: async ({ rows, cut, listFailed, failedBms, bmIds }, { gen, auto, owner }) => {
     // Another user's list: their ads and open rows don't belong to this one.
     if (owner !== state.owner) Object.assign(state, { open: new Set(), ads: {}, adsHidden: new Set() });
     const truncated = cut || listFailed;
     Object.assign(state, { accounts: rows, fetchedAt: Date.now(), truncated, failedBms, owner });
     await saveSession({ accounts: rows, fetchedAt: state.fetchedAt, truncated, failedBms, owner, ads: adsToSave() });
     await saveView();
+    // The logos of the group headers: the businesses of the profile that the Businesses tab has not listed (it asks for its own). Not awaited, silent.
+    readPictures("business", groupLogoIds(rows, bmIds), gen);
     // The list itself is the answer to an automatic load; it only speaks up for a cut-off one (a failed read has its own message - a dead session, a
     // refused edge - and is said by a click, and always by the "not all" on the count line / the muted line under the list / the business's row).
     return !auto || cut
@@ -244,8 +249,8 @@ function groupEl(g, r) {
   const unknown = g.sum.unknown;
   const value = line.text || (unknown ? "—" : fmtMoney(0, g.accounts[0].currency));            // text: the same "+N" cut as a business row, never a line wider than the header
   const title = [line.title || (line.text !== line.full ? line.full : ""), unknown ? t(line.main ? "acc.notAllTitle" : "acc.noPeriod") : ""].filter(Boolean).join("\n") || null;
-  // The business's own picture when the Businesses tab has read it (state.bms is that tab's list: its logo is only a URL imageUrl() accepted).
-  const logo = personal ? null : state.bms?.find((b) => b?.id === g.id)?.profile_picture_uri ?? null;
+  // The business's own picture, wherever it is known: the Businesses list (state.bms: its logo is only a URL imageUrl() accepted) or the pictures read (pictures.js).
+  const logo = personal ? null : picturesOf("business", g.id, state.bms?.find((b) => b?.id === g.id)?.profile_picture_uri);
   const h = groupHeader({ avatar: { kind: personal ? "page" : "business", url: logo }, name: personal ? t("acc.personal") : g.name || g.id,
     count: g.accounts.length, value, valueTitle: title });
   if (personal) h.querySelector(".lav .i")?.classList.replace("i-flag", "i-user");

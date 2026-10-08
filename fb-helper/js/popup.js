@@ -21,6 +21,7 @@
 //   row.js        THE shared list row of the three list tabs: row(), groupHeader(), fixLink(), kv(), whatToDo(), linksRow() (css/rows.css)
 //   list-loader.js THE shared loader of the three list tabs (token wait, pause / budget pre-check before the rate slot, slot, generation and
 //                 owner checks, busy button, other windows followed); biz-edges.js the one capped walk over the edges of the profile's businesses
+//   pictures.js   the pictures of businesses and Pages, read apart from the lists (one light `?ids=` read per 50 rows, silent), kept in state.pics
 //   money-core.js money.js   amounts (fmtMoney), USD conversion, the lines of totals and rows (pure, tested in Node) + the daily exchange
 //                 rates (rates(): chrome.storage.local, 24 h, the one network read besides Graph; the CSP lists its two origins)
 //   accounts.js   Ad accounts tab, with the ads of each account

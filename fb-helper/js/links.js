@@ -3,6 +3,7 @@
 // Pure (no DOM, no chrome.*): test/links.test.mjs runs it in Node.
 //
 import { digitsId } from "./pure.js";
+import { getGraphUrl } from "./config.js";
 
 // Ids come from Graph, so they are checked before they go into a URL: only digits pass (an ad account id without
 // "act_"), anything else gives null and the caller shows no link. Every link opens in a new tab
@@ -47,16 +48,29 @@ export const LINKS = {
 
 // ---------- pictures ----------
 // A picture URL from Graph (a page's picture, a business's logo) goes into an <img>, so it is checked like an id is: https only,
-// no credentials or port, and a host Meta serves its pictures from: fbcdn.net (profile and logo pictures) or fbsbx.com (platform-lookaside,
-// the page picture's own host). Not facebook.com: that host serves pages and scripts, never a picture an <img> should fetch from an
-// answer we did not write. These are the same two hosts as the manifest's img-src (the CSP is the second lock). Anything else gives null
-// and the caller draws the placeholder. Returns the normalised URL.
+// no credentials or port, and a host Meta serves its pictures from: fbcdn.net (profile and logo pictures, any subdomain: scontent-xxx.xx,
+// static.xx, …) or fbsbx.com (platform-lookaside, the page picture's own host). Not facebook.com: that host serves pages and scripts, never a
+// picture an <img> should fetch from an answer we did not write. These are the same two hosts as the manifest's img-src (the CSP is the second
+// lock). Anything else gives null and the caller draws the placeholder. Returns the normalised URL.
+// One more address is let through, and only in its exact shape: the Graph picture redirect <Graph origin>/vNN.N/<digits>/picture (the one
+// the CSP names in img-src too), which answers with a redirect to the picture itself (graphPicture below builds it).
 const IMAGE_HOSTS = ["fbcdn.net", "fbsbx.com"];
+const GRAPH_PICTURE_PATH = /^\/v\d+\.\d+\/\d{1,25}\/picture$/, GRAPH_PICTURE_QUERY = /^(\?type=(small|normal|square|large))?$/;
+const graphOrigin = () => { try { return new URL(getGraphUrl()).origin; } catch { return ""; } };
 export function imageUrl(v) {
   if (typeof v !== "string" || v.length > 2000 || /[\u0000-\u0020\u007f]/.test(v)) return null;
   let u;
   try { u = new URL(v); } catch { return null; }
   if (u.protocol !== "https:" || u.username || u.password || u.port) return null;
   const host = u.hostname.toLowerCase();
-  return IMAGE_HOSTS.some((d) => host === d || host.endsWith(`.${d}`)) ? u.href : null;
+  if (IMAGE_HOSTS.some((d) => host === d || host.endsWith(`.${d}`))) return u.href;
+  const g = graphOrigin();
+  return g && u.origin === g && GRAPH_PICTURE_PATH.test(u.pathname) && GRAPH_PICTURE_QUERY.test(u.search) && !u.hash ? u.href : null;
+}
+// A public page's picture without any Graph read: <Graph origin>/<version>/<id>/picture?type=small answers with a redirect to the image (no
+// token in it; the page has to be public). Pages only: the Business node has no picture edge (its docs list the `profile_picture_uri` field and
+// no edge of that name, checked 2026-10-08). null for an id that is not digits or a version that is not "vNN.N".
+export function graphPicture(id, version) {
+  const i = digitsId(id), g = graphOrigin();
+  return i && g && /^v\d+\.\d+$/.test(version) ? `${g}/${version}/${i}/picture?type=small` : null;
 }
