@@ -8,7 +8,7 @@
 // unknown value is never guessed.
 
 import { LINKS, imageUrl } from "./links.js";
-import { addUp, mergeUp, groupByBusiness, sortKey } from "./spend.js";
+import { addUp, mergeUp, groupByBusiness, compareSpend } from "./spend.js";
 import { rowAmount } from "./money-core.js";
 import { cleanText } from "./pure.js";
 
@@ -145,9 +145,8 @@ export function spendOf(row, { loaded, rates = null } = {}) {
   if (!loaded) return { kind: "unloaded", text: "", title: "", full: "", notAll: false };
   const s = row.spend, line = rowAmount(s.totals, rates);
   if (line.main) {
-    const extra = line.parts.length - 2;
-    const text = !line.approx && extra > 0 ? `${line.parts[0].text} + ${line.parts[1].text} +${extra}` : line.main;   // no rates, 3+ currencies: never a line wider than the row
-    return { kind: line.approx ? "approx" : "exact", text, title: line.approx ? line.title : extra > 0 ? line.full : "", full: line.full, notAll: s.unknown };
+    // line.text is the row's one line (money-core.js: no rates and three or more currencies → the two biggest and "+N"); the whole is the tooltip then.
+    return { kind: line.approx ? "approx" : "exact", text: line.text, title: line.approx ? line.title : line.text !== line.full ? line.full : "", full: line.full, notAll: s.unknown };
   }
   if (s.unknown) return { kind: "unknown", text: "", title: "", full: "", notAll: true };
   const cur = row.accounts[0]?.currency;
@@ -161,11 +160,10 @@ export const matchRow = (r, q) => {
   return !s || `${r.name || ""} ${r.id || ""}`.toLowerCase().includes(s);
 };
 export const filterRows = (rows, q = "") => rows.filter((r) => matchRow(r, q));
-// Most spend first by its USD equivalent when every currency has a rate (rates = money.js table), else by the plain sum (right whenever
-// the compared amounts share a currency; spend.js sortKey); an unknown spend last; then more active ad accounts, then name, then id.
+// Most spend first (spend.js compareSpend: by USD value when every currency has a rate, else only what is comparable without one); an unknown
+// spend last; then more active ad accounts, then name, then id.
 export function sortRows(rows, rates = null) {
-  const key = new Map(rows.map((r) => [r, sortKey(r.spend, rates)]));
-  return [...rows].sort((a, b) => key.get(b) - key.get(a) || b.counts.active - a.counts.active
+  return [...rows].sort((a, b) => compareSpend(a.spend, b.spend, rates) || b.counts.active - a.counts.active
     || String(a.name || "").localeCompare(String(b.name || "")) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 // The total over these rows: the same shape as spend.js addUp (the sum of the rows).

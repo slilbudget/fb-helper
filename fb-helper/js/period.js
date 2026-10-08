@@ -4,11 +4,11 @@
 
 import { t } from "./i18n.js";
 import { el, fill, keepFocus } from "./dom.js";
-import { fmt, ago } from "./format.js";
+import { ago } from "./format.js";
 import { state } from "./state.js";
 import { on, emit } from "./bus.js";
 import { registerRender, registerInit } from "./registry.js";
-import { PERIODS, isPeriod, totalsText } from "./spend.js";
+import { PERIODS, isPeriod } from "./spend.js";
 import { fmtMoney, totalLine, cachedRates, loadCachedRates, rates } from "./money.js";
 
 Object.assign(state, { period: "today" });
@@ -75,13 +75,4 @@ function paintTotal(box, { label = t("acc.spend"), metaText, range = "", sum = n
 // "updated 3 min ago" lives in the refresh button's tooltip, not on the screen: "Refresh · updated 3 min ago".
 export function refreshTip(btn, base, updatedAt) {
   if (btn) btn.title = updatedAt ? `${base} · ${t("acc.updated", { t: ago(updatedAt) })}` : base;
-}
-
-// One row's spend, in the font of an account row's spend (.acc-spend). missing = the tooltip of a "—". Rows keep the old per-currency
-// text for now (fmt via totalsText); the new list rows use money.js rowAmount.
-export function spendCell(sum, zeroCur, missing) {
-  const sumText = sum ? totalsText(sum.totals) : "";
-  if (!sum || (sum.unknown && !sumText) || (!sumText && !zeroCur)) return el("div", { class: "acc-spend muted", title: missing }, "—");
-  return el("div", { class: "acc-spend" }, sumText || fmt(0, zeroCur),
-    sum.unknown ? el("small", { class: "acc-spend-note", title: t("acc.notAllTitle") }, t("acc.notAllShort")) : null);
 }

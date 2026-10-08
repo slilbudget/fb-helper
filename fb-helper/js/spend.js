@@ -2,7 +2,7 @@
 // both read the same numbers the same way. No DOM, no chrome.*, no state: the caller hands in what the numbers were fetched
 // at (test/spend.test.mjs runs this file in plain Node).
 
-import { major, sameDay, shortDate, fmt } from "./format.js";
+import { major, sameDay, shortDate } from "./format.js";
 import { lifetimeSpend, insightRow } from "./pure.js";
 import { usdEquivalent } from "./money-core.js";
 
@@ -47,7 +47,7 @@ export function periodRange(accounts, key, fetchedAt) {
 // → { totals: { USD: 12.4 }, unknown, sort }
 //   totals   per currency; a zero adds no currency (the caller prints a zero of its own currency)
 //   unknown  some item had no number
-//   sort     the plain sum across currencies, only to order rows (accounts are ordered the same way); -1 when nothing is known
+//   sort     the plain sum across currencies: only a "something is known" flag for compareSpend (-1 = nothing known), never an order by itself
 export function addUp(items) {
   const totals = {};
   let unknown = false, sum = null;
@@ -69,9 +69,6 @@ export function mergeUp(parts) {
   }
   return { totals, unknown, sort: sum ?? -1 };
 }
-// "$12.40 + €5.00" ("" when every spend was zero).
-export const totalsText = (totals) => Object.entries(totals).map(([cur, v]) => fmt(v, cur)).join(" + ");
-
 // ---------- grouping and ordering (one way for every tab) ----------
 // Accounts by the business that owns them (a.business.id): [{ id, name, accounts }], in first-seen order. Accounts without a
 // business form the group with id null. The Ad accounts tab draws these as its group headers; the Businesses tab builds its
@@ -88,9 +85,21 @@ export function groupByBusiness(accounts) {
   }
   return [...groups.values()];
 }
-// Order key of an addUp / mergeUp result across currencies: its USD value when every currency has a rate (r = rates() table),
-// else the plain sum (right whenever the compared amounts share a currency). -1 = nothing known, sorts last.
-export function sortKey(part, r) {
-  if (!part || part.sort < 0) return -1;
-  return usdEquivalent(part.totals, r) ?? part.sort;
+// Order of two addUp / mergeUp results, the bigger spend first (a Array.sort comparator; r = the rates() table or null).
+// Only what can honestly be compared is compared:
+//   - nothing known (sort < 0) goes last;
+//   - both convertible to USD (every currency has a rate, USD always does; a zero spend is 0) → by USD value;
+//   - a positive spend before a zero one, whatever the currency (zero is zero everywhere);
+//   - the same single currency on both sides → by amount;
+//   - otherwise (different currencies, a rate missing) 0: 25 000 000 VND is not "more" than 100 USD, so the raw numbers are never set against
+//     each other, and the caller's next key (the name) decides. With three or more rows that mix currencies this can be a non-transitive
+//     order; Array.sort never throws on that, it just keeps a stable arbitrary one, and the order is right again as soon as rates arrive.
+export function compareSpend(a, b, r) {
+  const unknownA = a.sort < 0, unknownB = b.sort < 0;
+  if (unknownA || unknownB) return unknownA - unknownB;
+  const ua = usdEquivalent(a.totals, r), ub = usdEquivalent(b.totals, r);
+  if (ua !== null && ub !== null) return ub - ua;
+  const ca = Object.keys(a.totals), cb = Object.keys(b.totals);
+  if (!ca.length || !cb.length) return !ca.length - !cb.length;
+  return ca.length === 1 && cb.length === 1 && ca[0] === cb[0] ? b.totals[cb[0]] - a.totals[ca[0]] : 0;
 }

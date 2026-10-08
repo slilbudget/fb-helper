@@ -37,7 +37,8 @@ export function fmtMoney(amount, cur) {
   const n = Number(amount);
   if (!Number.isFinite(n)) return "—";
   const c = String(cur || "USD").toUpperCase();
-  const v = n === 0 ? 0 : n;                           // −0 prints as "0"
+  // What would print as zero IS zero: −0, −0.001 and 0.004 are "0", never "-0.00" / "-$0.00" (Intl keeps the sign of a rounded zero).
+  const v = Math.round(Math.abs(n) * (ZERO_DECIMAL.has(c) ? 1 : 100)) === 0 ? 0 : n;
   const digits = ZERO_DECIMAL.has(c) || v === 0 || Math.abs(Math.round(v * 100) / 100) >= 1000 ? 0 : 2;
   const f = formatter(c, digits);
   return f ? f.format(v) : `${new Intl.NumberFormat(locale(), { maximumFractionDigits: digits }).format(v)} ${cur}`;
@@ -138,6 +139,8 @@ export function usdEquivalent(totals, r) {
 // ---------- one line from several currencies ----------
 // totals = { USD: 1695.7, EUR: 20 } (spend.js addUp: a currency that spent nothing is not in it). Returns
 //   main        the line: "$1,696" · "$75 + €20.00" · "≈ $1,770"
+//   text        what a ROW prints on one line (rowAmount): main, except three or more currencies without rates, which would be a line wider than
+//               the row: the two biggest and "+N" ("$1,696 + VND 1,234,567 +1"). A total (totalLine) keeps every currency: text = main
 //   approx      main is a USD conversion (starts with "≈")
 //   breakdown   what it is made of, at most two currencies, biggest first: "$1,696 + VND 1,234,567" ("" when main already says it)
 //   more        how many currencies breakdown leaves out (the caller prints "+N")
@@ -148,16 +151,22 @@ export function usdEquivalent(totals, r) {
 function build(totals, r, approxFrom) {
   const parts = Object.entries(totals || {}).filter(([, v]) => Number.isFinite(v) && v !== 0)
     .map(([cur, amount]) => ({ cur, amount, text: fmtMoney(amount, cur), usd: toUsd(amount, cur, r) }));
-  const out = { main: "", approx: false, breakdown: "", more: 0, full: "", title: "", note: "", date: null, source: null, attribution: null, parts };
+  const out = { main: "", text: "", approx: false, breakdown: "", more: 0, full: "", title: "", note: "", date: null, source: null, attribution: null, parts };
   if (!parts.length) return out;
   const convertible = !!r && parts.every((p) => p.usd !== null);
   if (convertible) parts.sort((a, b) => b.usd - a.usd || (a.cur < b.cur ? -1 : 1));
   out.full = parts.map((p) => p.text).join(" + ");
-  if (parts.length < approxFrom || !convertible) { out.main = out.full; return out; }
+  if (parts.length < approxFrom || !convertible) {
+    out.main = out.full;
+    // A row (approxFrom 3) with three or more currencies and no rates: the two biggest + "+N", never a line wider than the row.
+    out.text = approxFrom === 3 && parts.length > 2 ? `${parts[0].text} + ${parts[1].text} +${parts.length - 2}` : out.full;
+    return out;
+  }
   const shown = parts.slice(0, 2);
   const attribution = r.source === SRC_ER ? ATTRIBUTION : null;
+  const main = `≈ ${fmtMoney(parts.reduce((s, p) => s + p.usd, 0), "USD")}`;
   Object.assign(out, {
-    main: `≈ ${fmtMoney(parts.reduce((s, p) => s + p.usd, 0), "USD")}`, approx: true,
+    main, text: main, approx: true,
     breakdown: shown.map((p) => p.text).join(" + "), more: parts.length - shown.length,
     date: r.date, source: r.source, attribution, note: t("money.rates", { d: shortDate(r.date) }),
     title: `${out.full}\n${t("money.approx", { d: longDate(r.date) })}${attribution ? ` ${attribution.full}` : ""}`,

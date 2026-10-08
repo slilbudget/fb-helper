@@ -2,7 +2,7 @@
 // Businesses tab. Plain Node: `node --test test/*.test.mjs`
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PERIODS, isPeriod, statsOf, periodRange, addUp, mergeUp, totalsText } from "../fb-helper/js/spend.js";
+import { PERIODS, isPeriod, statsOf, periodRange, addUp, mergeUp } from "../fb-helper/js/spend.js";
 import { setLang } from "../fb-helper/js/i18n.js";
 
 await setLang("en");
@@ -54,22 +54,48 @@ test("addUp: per currency, zeros add no currency, unknown is flagged, sort is th
   assert.deepEqual(addUp([]), { totals: {}, unknown: false, sort: -1 });
 });
 
-test("mergeUp: the total of several sums; totalsText joins currencies with ' + '", () => {
+test("mergeUp: the total of several sums", () => {
   const a = addUp([{ spend: 10, currency: "USD" }]), b = addUp([{ spend: 4, currency: "EUR" }, { spend: null, currency: "EUR" }]), c = addUp([{ spend: 6, currency: "USD" }]);
   assert.deepEqual(mergeUp([a, b, c]), { totals: { USD: 16, EUR: 4 }, unknown: true, sort: 20 });
   assert.deepEqual(mergeUp([]), { totals: {}, unknown: false, sort: -1 });
-  assert.equal(totalsText(mergeUp([a, b, c]).totals), "$16.00 + €4.00");
-  assert.equal(totalsText({}), "");
 });
 
-import { groupByBusiness, sortKey } from "../fb-helper/js/spend.js";
+import { groupByBusiness, compareSpend } from "../fb-helper/js/spend.js";
 test("groupByBusiness: by owner id, first-seen order, no-business group has id null", () => {
   const g = groupByBusiness([{ account_id: "1", business: { id: 9, name: "B" } }, { account_id: "2" }, { account_id: "3", business: { id: "9", name: "" } }, { account_id: "4", business: { id: "", name: "x" } }]);
   assert.deepEqual(g.map((x) => [x.id, x.name, x.accounts.map((a) => a.account_id)]), [["9", "B", ["1", "3"]], [null, "", ["2", "4"]]]);
 });
-test("sortKey: USD value with rates, plain sum without, -1 when unknown", () => {
+
+// ---------- the order of spends ----------
+const up = (...items) => addUp(items.map(([currency, spend]) => ({ currency, spend })));
+const sorted = (parts, r) => [...parts].sort((a, b) => compareSpend(a, b, r));
+test("compareSpend with rates: by USD value, whatever the currency (250 000 dong are $10, not more than $50)", () => {
   const r = { rates: { EUR: 0.5, VND: 25000 } };
-  assert.equal(sortKey({ totals: { EUR: 10, VND: 250000 }, sort: 250010 }, r), 30);
-  assert.equal(sortKey({ totals: { EUR: 10 }, sort: 10 }, null), 10);
-  assert.equal(sortKey({ totals: {}, sort: -1 }, r), -1);
+  const vnd = up(["VND", 250000]), usd = up(["USD", 50]), eur = up(["EUR", 10]), mixed = up(["EUR", 10], ["VND", 250000]);
+  assert.deepEqual(sorted([vnd, usd, eur, mixed], r), [usd, mixed, eur, vnd], "50, 30, 20, 10");
+  assert.equal(compareSpend(usd, usd, r), 0);
+});
+test("compareSpend without rates: nothing is set against nothing it cannot be compared with (C10)", () => {
+  const vnd = up(["VND", 25000000]), usd = up(["USD", 100]), usd2 = up(["USD", 40]), zero = up(["USD", 0]), unknown = up(["USD", null]), eur = up(["EUR", 5]);
+  assert.equal(compareSpend(vnd, usd, null), 0, "25 000 000 dong is not 'more' than 100 dollars: a tie, the name decides");
+  assert.equal(compareSpend(usd, eur, null), 0);
+  assert.ok(compareSpend(usd, usd2, null) < 0, "the same currency: by amount, bigger first");
+  assert.ok(compareSpend(usd2, usd, null) > 0);
+  assert.ok(compareSpend(vnd, zero, null) < 0 && compareSpend(zero, vnd, null) > 0, "a positive spend before a zero one in any currency");
+  assert.equal(compareSpend(zero, up(["EUR", 0]), null), 0, "two zeros tie");
+  assert.ok(compareSpend(zero, unknown, null) < 0 && compareSpend(unknown, zero, null) > 0, "nothing known goes last");
+  assert.equal(compareSpend(unknown, up(["EUR", null]), null), 0);
+  // a rate table that lacks a currency is as good as no table for that comparison
+  const partial = { rates: { EUR: 0.5 } };
+  assert.equal(compareSpend(vnd, usd, partial), 0, "VND has no rate: not compared by raw number");
+  assert.ok(compareSpend(usd, eur, partial) < 0, "USD and EUR have: $100 vs $10");
+  // three mixed rows still sort without throwing, and the result does not depend on the input order for comparable pairs
+  const rows = [vnd, usd, usd2, eur, zero, unknown];
+  const a = sorted(rows, null), b = sorted([...rows].reverse(), null);
+  assert.ok(a.indexOf(usd) < a.indexOf(usd2) && b.indexOf(usd) < b.indexOf(usd2));
+  assert.equal(a[a.length - 1], unknown); assert.equal(b[b.length - 1], unknown);
+});
+test("compareSpend: a USD-only sum converts without any table", () => {
+  assert.ok(compareSpend(up(["USD", 9]), up(["USD", 3]), null) < 0);
+  assert.ok(compareSpend(up(["USD", 9], ["USD", 2]), up(["USD", 3]), null) < 0, "11 vs 3");
 });

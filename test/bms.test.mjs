@@ -220,7 +220,10 @@ test("spendOf: dashes and zeros — unloaded, no ad account, no number for the p
 test("sortRows: most spend first by USD equivalent (rates) — a currency with huge numbers does not outrank a bigger dollar spend; an unknown spend last; then more active accounts, name, id; the input is not changed", () => {
   const rows = [rowWith([["VND", 250000]]), rowWith([["USD", 50]])].map((r, i) => ({ ...r, id: String(i + 1), name: `R${i + 1}` }));
   assert.deepEqual(sortRows(rows, RATES).map((r) => r.id), ["2", "1"], "$50 outranks 250 000 dong ($10)");
-  assert.deepEqual(sortRows(rows, null).map((r) => r.id), ["1", "2"], "without rates: the plain sum (documented, right only within one currency)");
+  assert.deepEqual(sortRows(rows, null).map((r) => r.id), ["1", "2"], "without rates: dong and dollars are not set against each other, the name decides (R1 < R2)");
+  const named = [rowWith([["VND", 250000]]), rowWith([["USD", 50]]), rowWith([["USD", 80]]), rowWith([])].map((r, i) => ({ ...r, id: String(i + 1), name: ["Zeta", "Alpha", "Mid", "Nothing"][i] }));
+  assert.deepEqual(sortRows(named.filter((r) => r.name !== "Zeta"), null).map((r) => r.name), ["Mid", "Alpha", "Nothing"], "the same currency by amount ($80 before $50), nothing known last");
+  assert.deepEqual(sortRows(named.filter((r) => r.name === "Zeta" || r.name === "Nothing"), null).map((r) => r.name), ["Zeta", "Nothing"], "nothing known (no ad accounts) after any spend");
   const all = build();
   const before = all.map((r) => r.id).join();
   assert.deepEqual(sortRows(all).map((r) => r.id), ["1001", "1002", "9999", "1004", "1003"], "150, 10, 7; then Delta (1 active) before Gamma (0)");
@@ -229,7 +232,7 @@ test("sortRows: most spend first by USD equivalent (rates) — a currency with h
   assert.deepEqual(sortRows([same("2", "b", 1), same("1", "b", 1), same("3", "a", 1), same("4", "z", 2)]).map((r) => r.id), ["4", "3", "1", "2"]);
   // a different period gives a different order from the same accounts
   const other = buildRows({ bms: BMS, accounts: ACCOUNTS, loaded: true, stats: (a) => ({ spend: { 4: 900 }[a.account_id] ?? 1 }) });
-  assert.equal(sortRows(other)[0].id, "1002");
+  assert.equal(sortRows(other, RATES)[0].id, "1002");
 });
 
 test("search: name or id, case-insensitive, trimmed", () => {

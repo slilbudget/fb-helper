@@ -741,13 +741,13 @@ async function listFlow() {
   ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
   await b.ctx.close();
 
-  // without rates the groups are ordered by the plain sum: VND's big numbers win
+  // without rates dong are not set against dollars and euros by their raw numbers (they used to win): groups of different currencies are ordered by name
   b = await boot({ fb: adsFb(TOK), graph: listGraph() });
   await adsPage(b);
   pop = await popup(b, "accounts");
   await rowsAre(pop, ROW, 14); await pop.waitForTimeout(500);
   d = await dump(pop);
-  ok("rates unavailable: groups by the plain sum, no crash, no '≈' anywhere on the rows", JSON.stringify(d.filter((x) => x.g).map((x) => x.g)) === JSON.stringify(["Fabrikam Media", "Tailspin Toys", "Contoso Ads", "Personal ad accounts"]) && d.every((x) => !/≈/.test(x.value || "") && !x.valueTitle), JSON.stringify(d.filter((x) => x.g).map((x) => x.g)));
+  ok("rates unavailable: groups of different currencies by name (not by raw numbers), no crash, no '≈' anywhere on the rows", JSON.stringify(d.filter((x) => x.g).map((x) => x.g)) === JSON.stringify(["Contoso Ads", "Fabrikam Media", "Tailspin Toys", "Personal ad accounts"]) && d.every((x) => !/≈/.test(x.value || "") && !x.valueTitle), JSON.stringify(d.filter((x) => x.g).map((x) => x.g)));
   ok("no console errors (rates down)", b.errs.length === 0, b.errs.join(" | "));
   await b.ctx.close();
 
@@ -896,5 +896,42 @@ async function listLayoutFlow() {
   await b.ctx.close();
 }
 
-export const flows = { version: versionFlows, cache: cacheFlows, session: sessionFlows, ads: adsFlows, auto: autoFlows, alltime: allTimeFlows, layout: layoutFlows, stale: staleFlows, fields: fieldsFlows, paging: pagingFlows, slots: slotFlows, bm: bmFlows,
+// ---------- the order of groups and rows without exchange rates ----------
+async function sortFlow() {
+  console.log("\n# accounts: order without rates, the '+N' cut of a group header");
+  const today = new Date().toISOString().slice(0, 10);
+  const spend = (v) => ({ data: [{ spend: String(v), impressions: "10", inline_link_clicks: "1", date_start: today, date_stop: today }] });
+  const a = (id, name, cur, v, biz) => ({ account_id: id, name, account_status: 1, currency: cur, timezone_name: "UTC", amount_spent: "0", p_today: spend(v), p_yesterday: spend(0), p_week: spend(0), p_month: spend(0), business: { id: biz[0], name: biz[1] } });
+  const ZETA = ["9101", "Zeta Co"], ALPHA = ["9102", "Alpha Co"], MIX = ["9103", "Mixed Inc"];
+  const accounts = { data: [
+    a("1", "Zeta VN", "VND", 25000000, ZETA), a("2", "Alpha US", "USD", 100, ALPHA), a("3", "Alpha US 2", "USD", 300, ALPHA),
+    a("4", "Mix 1", "USD", 5, MIX), a("5", "Mix 2", "EUR", 20, MIX), a("6", "Mix 3", "VND", 1000, MIX),
+  ] };
+  const groupNames = (p) => p.$$eval("#accountsList .lgroup .lgroup-text", (n) => n.map((x) => x.textContent));
+  const groupValue = (p, name) => p.evaluate((n) => { const g = [...document.querySelectorAll("#accountsList .lgroup")].find((x) => x.querySelector(".lgroup-text").textContent === n); return { text: g.querySelector(".lgroup-value").textContent.replace(/\s+/g, " ").trim(), title: g.querySelector(".lgroup-value").title }; }, name);
+
+  // no rates (both sources answer 503): dong are not set against dollars by their raw numbers; the name decides, same currency by amount
+  let b = await boot({ fb: adsFb(TOK), graph: (u) => ({ body: u.pathname.endsWith("/me/adaccounts") ? accounts : { data: [] } }) });
+  await adsPage(b);
+  let pop = await popup(b, "accounts");
+  ok("six accounts in three groups", await rowsAre(pop, ROW, 6));
+  ok("no rates: the groups are not ordered by raw numbers (25 000 000 dong is not more than 400 dollars): by name", (await groupNames(pop)).join() === "Alpha Co,Mixed Inc,Zeta Co", (await groupNames(pop)).join());
+  const alpha = await pop.$$eval(`${ROW} .lrow-name`, (n) => n.map((x) => x.textContent));
+  ok("…inside a group the same currency is ordered by amount ($300 before $100)", alpha.indexOf("Alpha US 2") < alpha.indexOf("Alpha US"), alpha.join());
+  const mix = await groupValue(pop, "Mixed Inc");
+  ok("a group header with three currencies and no rates is cut to the two biggest and '+1' (the whole is its tooltip)", /^\$5\.00 \+ €20\.00 \+1$/.test(mix.text) && /VND\s1,000/.test(mix.title), JSON.stringify(mix));
+  await b.ctx.close();
+
+  // with rates the same list is ordered by USD value: Zeta ($1 000) first
+  b = await boot({ fb: adsFb(TOK), graph: (u) => ({ body: u.pathname.endsWith("/me/adaccounts") ? accounts : { data: [] } }), rates: ratesOk });
+  await adsPage(b);
+  pop = await popup(b, "accounts");
+  ok("rates: the groups follow the USD value (Alpha $400, Zeta $1 000, Mixed ≈ $31)", await until(pop, () => [...document.querySelectorAll("#accountsList .lgroup .lgroup-text")].map((x) => x.textContent).join() === "Zeta Co,Alpha Co,Mixed Inc"), (await groupNames(pop)).join());
+  const mix2 = await groupValue(pop, "Mixed Inc");
+  ok("…the three-currency header is '≈ $…' now (not cut)", /^≈ \$\d+(\.\d+)?$/.test(mix2.text), JSON.stringify(mix2));
+  ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
+  await b.ctx.close();
+}
+
+export const flows = { sort: sortFlow, version: versionFlows, cache: cacheFlows, session: sessionFlows, ads: adsFlows, auto: autoFlows, alltime: allTimeFlows, layout: layoutFlows, stale: staleFlows, fields: fieldsFlows, paging: pagingFlows, slots: slotFlows, bm: bmFlows,
   accList: listFlow, accRu: listRuFlow, accBody: bodyFlow, accLayout: listLayoutFlow };

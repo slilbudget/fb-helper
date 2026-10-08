@@ -19,7 +19,7 @@ import { accountState, adSteps } from "./nextsteps.js";
 import { LINKS } from "./links.js";
 import { row, groupHeader, fixLink, kv, whatToDo, linksRow } from "./row.js";
 import { fmtMoney, rowAmount, toUsd, rates, cachedRates } from "./money.js";
-import { PERIODS, statsOf as spendStats, periodRange as rangeOf, addUp, mergeUp, groupByBusiness, sortKey } from "./spend.js";
+import { PERIODS, statsOf as spendStats, periodRange as rangeOf, addUp, mergeUp, groupByBusiness, compareSpend } from "./spend.js";
 import { bindPeriods, fillTotal, refreshTip, isShown } from "./period.js";
 import "./strings/actions.js";
 import { registerTab, registerRender, registerInit, registerStart } from "./registry.js";
@@ -286,22 +286,21 @@ function drawAccounts() {
   if (!state.accounts.length) return fill(list, el("div", { class: "empty" }, state.accLoading ? t("acc.loading") : t("acc.empty")));
   if (!rows.length) return fill(list, el("div", { class: "empty" }, t("acc.noMatch")));
 
-  // Groups by business, the biggest spender first (USD equivalent); inside a group active accounts by spend, then the ones with a
-  // problem, then the dead ones. Stats once per row: the comparators would otherwise recompute them O(n log n) times.
+  // Groups by business, the biggest spender first (USD equivalent; without rates only comparable amounts are compared: spend.js compareSpend);
+  // inside a group active accounts by spend, then the ones with a problem, then the dead ones. Stats once per row: the comparators would
+  // otherwise recompute them O(n log n) times.
   const r = cachedRates();
   usedRates = r?.rates ?? null;
   const stats = new Map(rows.map((a) => [a, statsOf(a)]));
   const part = new Map(rows.map((a) => [a, addUp([{ spend: stats.get(a)?.spend ?? null, currency: a.currency }])]));
-  const key = new Map(rows.map((a) => [a, sortKey(part.get(a), r)]));
   const RANK = { active: 0, problem: 1, dead: 2 };
   const byName = (x, y) => String(x || "").localeCompare(String(y || ""), getLang());
   const groups = groupByBusiness(rows);
   for (const g of groups) {
-    g.accounts.sort((a, b) => RANK[stateOf(a).group] - RANK[stateOf(b).group] || key.get(b) - key.get(a) || byName(a.name, b.name));
+    g.accounts.sort((a, b) => RANK[stateOf(a).group] - RANK[stateOf(b).group] || compareSpend(part.get(a), part.get(b), r) || byName(a.name, b.name));
     g.sum = mergeUp(g.accounts.map((a) => part.get(a)));
-    g.key = sortKey(g.sum, r);
   }
-  groups.sort((a, b) => (a.id === null) - (b.id === null) || b.key - a.key || byName(a.name, b.name));   // the personal group (no business) is last
+  groups.sort((a, b) => (a.id === null) - (b.id === null) || compareSpend(a.sum, b.sum, r) || byName(a.name, b.name));   // the personal group (no business) is last
   // No header while one business is filtered (it would repeat the chip), nor above a list that is all personal (it would repeat the total).
   const headers = !state.bmFilter && !(groups.length === 1 && groups[0].id === null);
   fill(list, ...groups.flatMap((g) => [headers ? groupEl(g, r) : null, ...g.accounts.map((a) => renderAccount(a, stats.get(a), r))]));
@@ -313,8 +312,8 @@ function groupEl(g, r) {
   const personal = g.id === null;
   const line = rowAmount(g.sum.totals, r);
   const unknown = g.sum.unknown;
-  const value = line.main || (unknown ? "—" : fmtMoney(0, g.accounts[0].currency));
-  const title = [line.title, unknown ? t(line.main ? "acc.notAllTitle" : "acc.noPeriod") : ""].filter(Boolean).join("\n") || null;
+  const value = line.text || (unknown ? "—" : fmtMoney(0, g.accounts[0].currency));            // text: the same "+N" cut as a business row, never a line wider than the header
+  const title = [line.title || (line.text !== line.full ? line.full : ""), unknown ? t(line.main ? "acc.notAllTitle" : "acc.noPeriod") : ""].filter(Boolean).join("\n") || null;
   const h = groupHeader({ avatar: { kind: personal ? "page" : "business", url: null }, name: personal ? t("acc.personal") : g.name || g.id,
     count: g.accounts.length, value, valueTitle: title });
   if (personal) h.querySelector(".lav .i")?.classList.replace("i-flag", "i-user");

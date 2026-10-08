@@ -16,6 +16,18 @@ const RATES = { USD: 1, EUR: 0.8, GBP: 0.75, VND: 25000, UAH: 40, RUB: 90, PLN: 
 const TABLE = { rates: RATES, date: "2026-10-08", source: SRC_ER };
 
 // ---------- writing an amount ----------
+test("fmtMoney: whatever prints as zero is plain zero — never '-0.00' (C17)", () => {
+  for (const [v, cur] of [[-0.001, "USD"], [-0.004, "EUR"], [0.004, "USD"], [-0, "USD"], [-0.4, "VND"], [-0.4, "JPY"], [-1e-9, "RUB"]]) {
+    const s = flat(fmtMoney(v, cur));
+    assert.ok(!s.includes("-") && !s.includes("−"), `${v} ${cur}: ${s}`);
+    assert.equal(s, flat(fmtMoney(0, cur)), `${v} ${cur} is the plain zero`);
+  }
+  assert.equal(flat(fmtMoney(0, "USD")), "$0");
+  assert.equal(flat(fmtMoney(-0.005, "USD")), "-$0.01", "half a cent rounds away from zero: that is a real amount");
+  assert.equal(flat(fmtMoney(-12.5, "USD")), "-$12.50");
+  assert.equal(flat(fmtMoney(0.5, "VND")), "VND 1", "half a dong rounds up, as before");
+});
+
 test("fmtMoney: the familiar currencies keep their symbol, every other one is written with its ISO code", () => {
   assert.equal(fmtMoney(20, "EUR"), "€20.00");
   assert.equal(fmtMoney(20.5, "GBP"), "£20.50");
@@ -222,6 +234,20 @@ test("totalLine in Russian: the date is '08.10', the line is '≈ 1 770 $'", asy
     assert.equal(flat(l.breakdown), "1 696 $ + 1 234 567 VND");
     assert.ok(l.title.includes("Примерно") && l.title.includes("Rates By Exchange Rate API"), l.title);
   } finally { await setLang("en"); }
+});
+
+test("rowAmount.text: the row's one line; three or more currencies without rates: the two biggest and '+N'; a total (totalLine) keeps every currency", () => {
+  const t3 = { USD: 5, EUR: 20, VND: 1000 };
+  const noRates = rowAmount(t3, null);
+  assert.equal(flat(noRates.text), "$5.00 + €20.00 +1", "in the order of the amounts as they came (no rates to rank them)");
+  assert.equal(flat(noRates.full), "$5.00 + €20.00 + VND 1,000");
+  assert.equal(flat(noRates.main), flat(noRates.full), "main stays the whole");
+  assert.equal(rowAmount({ USD: 5 }, null).text, "$5.00");
+  assert.equal(flat(rowAmount({ USD: 5, EUR: 2 }, null).text), "$5.00 + €2.00");
+  const withRates = rowAmount({ USD: 1695.7, EUR: 20, VND: 1234567 }, TABLE);
+  assert.equal(withRates.text, withRates.main, "with rates the line is the '≈' one");
+  assert.equal(rowAmount({}, TABLE).text, "");
+  assert.equal(flat(totalLine(t3, null).text), flat(totalLine(t3, null).full), "the grand total is never cut");
 });
 
 test("rowAmount: one or two currencies are exact, three or more are '≈ USD'", () => {
