@@ -1,25 +1,27 @@
-// The Businesses tab: what do I have, and how much does each business spend? One row per business: picture, name, one status pill
-// (active / no active ad accounts / no ad accounts), ID, the spend of the selected period, how many ad accounts it has and, only
-// when something is wrong, the problem with its fix. The business list is one paged read of me/businesses; spend, counts and
-// status come from the Ad accounts list (each account names its owner business), which this tab asks for too (accounts.js).
+// The Businesses tab: what do I have, and how much does each business spend? One shared list row (row.js) per business: picture, name |
+// the spend of the selected period; line 2 = how many ad accounts it has ("3 ad accounts · 1 disabled"), silent while all is well, a
+// problem word + its fix when not; the ID on the right. Click a row: the counts with the jump to the Ad accounts tab, the
+// verification, what to do, Business settings. The business list is one paged read of me/businesses; spend, counts and state come
+// from the Ad accounts list (each account names its owner business), which this tab asks for too (accounts.js).
 // Same shape as the other tabs (auto-load on first show, cache per FB user, rate slot, dead token, other windows); what a row
 // keeps and how the rows are built is bms-model.js (plain Node, tested), the strings are strings/bms.js.
 // Read-only like the rest: GET only, no token of a page or BM is ever asked for.
 
-import { t, tn, applyStatic } from "./i18n.js";
+import { t, tn, has, applyStatic } from "./i18n.js";
 import "./strings/bms.js";
-import { $, el, fill, pill, toast, copy, keepFocus } from "./dom.js";
+import { $, el, fill, toast, keepFocus } from "./dom.js";
 import { state, Stale, saveSession, fbUser, claimSlot, registerCache, isDead, deadCode } from "./state.js";
 import { readPaged } from "./graph.js";
 import { settledGrab, grabToken, tokenReady } from "./token.js";
 import { LINKS } from "./links.js";
 import { on, emit } from "./bus.js";
 import { registerTab, registerRender, registerInit, registerStart } from "./registry.js";
-import { avatar, problems } from "./rows.js";
-import { bindPeriods, fillTotal, spendCell, refreshTip } from "./period.js";
+import { row, kv, whatToDo, linksRow } from "./row.js";
+import { bindPeriods, fillTotal, refreshTip } from "./period.js";
+import { fmtMoney, cachedRates, rates as fetchRates } from "./money.js";
 import { statsOf, periodRange } from "./spend.js";
 import { ensureAccounts, reloadAccounts } from "./accounts.js";
-import { BM_BASE, BM_OPTIONAL, BM_LIMIT, BM_MAX_PAGES, BM_SLOT_MS, slimBm, buildRows, filterRows, sortRows, totalOf, idsOf, isPermError } from "./bms-model.js";
+import { BM_BASE, BM_OPTIONAL, BM_LIMIT, BM_MAX_PAGES, BM_SLOT_MS, slimBm, buildRows, filterRows, sortRows, totalOf, spendOf, isPermError } from "./bms-model.js";
 
 // bmQuery is this tab's search (not saved). Not to be confused with accounts.js's state.bmFilter, the business the Accounts tab
 // is filtered by. state.accounts / fetchedAt / truncated / accLoading below are the Accounts tab's: the spend, counts and
@@ -30,6 +32,7 @@ Object.assign(state, {
   bmQuery: "",
 });
 let bmSkip = new Set();                              // optional fields Graph refused for this token; own set, so no other tab's refusals mix in
+const openRows = new Set();                          // ids of the rows that are open: a redraw (a new period, the accounts arriving) keeps them open
 let ready = false;                                   // the controls are built (init): nothing is drawn before
 const active = () => ready && $("#tab-bms").classList.contains("active");   // a hidden tab is redrawn when it is shown
 
@@ -45,7 +48,7 @@ registerCache(["bms", "bmsAt", "bmsTruncated"],
 // Token changed: Graph's refusals and the "can't read" note belonged to the old one (the list itself stays).
 on("generation", () => { bmSkip = new Set(); state.bmPerm = false; renderBms(); });
 // The cached lists belonged to another FB user and are gone: draw the empty list.
-on("cache-dropped", () => renderBms());
+on("cache-dropped", () => { openRows.clear(); renderBms(); });
 // The Ad accounts list (spend, counts, status) is loading, loaded or changed; the spend period was switched (here or on the
 // Accounts tab, which share it).
 on("accounts", () => { if (active()) renderBms(); });
@@ -127,18 +130,14 @@ async function autoLoadBms() {
 }
 
 // ---------- drawing ----------
-// Every business of the profile + every business an account names: see bms-model.js buildRows. The Ad
-// accounts list is "loaded" once it has been read (state.fetchedAt); until then the rows have no status and no spend.
+// One row per business: the profile's businesses and every business an account names, built from the Ad accounts list the way the Ad
+// accounts tab groups it (bms-model.js buildRows). The list is "loaded" once it has been read (state.fetchedAt); until then the rows have no
+// status and no spend ("—"), and a row never claims "No ad accounts" about a list that is not there.
 const allRows = () => buildRows({
   bms: state.bms, accounts: state.accounts, loaded: !!state.fetchedAt, truncated: state.truncated,
   stats: (a) => statsOf(a, state.period, state.fetchedAt),
 });
 const isFiltered = () => !!state.bmQuery.trim();
-function copyIds() {
-  const rows = sortRows(filterRows(allRows(), state.bmQuery));
-  if (!rows.length) return;
-  copy(idsOf(rows), t("bms.idsCopied", { n: rows.length }) + (state.bmsTruncated || state.truncated ? t("bms.partial") : ""));
-}
 // The controls are built once (a redraw would take the caret out of the search field); their texts carry data-i18n*
 // attributes, which the language switch re-applies for the whole document.
 function buildControls() {
@@ -147,8 +146,6 @@ function buildControls() {
     el("div", { class: "search" },
       el("i", { class: "i i-search" }),
       el("input", { id: "bmFilter", class: "field", type: "search", "data-i18n-placeholder": "search", "data-i18n-aria": "bms.search.aria", autocomplete: "off" }),
-      el("button", { id: "copyBmIds", type: "button", class: "btn ghost", "data-i18n-title": "bms.copyIds.title", disabled: true },
-        el("i", { class: "i i-copy" }), el("span", { "data-i18n": "bms.copyIds" })),
       el("button", { id: "loadBms", type: "button", class: "icon-btn", "data-i18n-title": "bms.refresh", "data-i18n-aria": "bms.refresh" },
         el("i", { class: "i i-refresh" }))),
     el("div", { class: "seg", id: "bmsPeriod", role: "group", "data-i18n-aria": "period.aria" }),
@@ -158,13 +155,13 @@ function buildControls() {
 }
 // "Spend · Aug 29" and the sum of the rows shown, so the rows add up to it (ad accounts without a business are not in it; the Ad accounts
 // tab totals everything). A search shows "3 of 12 found" on the right; an incomplete list says so. "—" until the Ad accounts list is
-// loaded. "updated 3 min ago" is the refresh button's tooltip.
-function renderTotal() {
+// loaded. "updated 3 min ago" is the refresh button's tooltip. The grand total is the one place that says "≈" (period.js fillTotal).
+function renderTotal(all = allRows()) {
   const total = $("#bmsTotal");
   if (!total) return;
   refreshTip($("#loadBms"), t("bms.refresh"), state.fetchedAt || state.bmsAt);
   if (!state.bmsAt) return fill(total);
-  const all = allRows(), rows = filterRows(all, state.bmQuery);
+  const rows = filterRows(all, state.bmQuery);
   const metaText = `${isFiltered() ? t("bms.found", { n: rows.length, all: all.length }) : ""}${state.bmsTruncated || state.truncated ? t("bms.notAll") : ""}`.trim();
   fillTotal(total, {
     metaText, range: state.period === "all" || !state.fetchedAt ? "" : periodRange(state.accounts, state.period, state.fetchedAt),
@@ -174,56 +171,83 @@ function renderTotal() {
 function renderBms() { if (ready) keepFocus(drawBms); }
 function drawBms() {
   const list = $("#bmsList");
-  renderTotal();
-  const all = allRows(), rows = sortRows(filterRows(all, state.bmQuery));
-  $("#copyBmIds").disabled = !rows.length;
+  const all = allRows();
+  renderTotal(all);
   if (!state.bmsAt) return fill(list, el("div", { class: "empty" }, state.bmPerm ? t("bms.noPerm") : state.bmsLoading ? t("bms.loading") : t("bms.empty")));
   const note = state.bmPerm ? el("div", { class: "hint bm-note" }, t("bms.noPerm")) : null;   // a refresh was refused: the old list stays, the note says why it is old
   if (!all.length) return fill(list, note, el("div", { class: "empty" }, state.bmsLoading ? t("bms.loading") : t("bms.none")));
+  const used = cachedRates();                         // the order and the "≈" of a row follow the rates known right now…
+  const rows = sortRows(filterRows(all, state.bmQuery), used);
   if (!rows.length) return fill(list, note, el("div", { class: "empty" }, t("bms.noMatch")));
-  fill(list, note, ...rows.map(renderRow));
+  fill(list, note, ...rows.map((r) => renderRow(r, used)));
+  // …and when the table arrives later (a total of two or more currencies asks for it, period.js) the rows are drawn once more.
+  if (Object.keys(totalOf(rows).totals).length >= 2) fetchRates().then((r) => { if (r && r.rates !== used?.rates && active()) renderBms(); });
 }
 
-// "3 ad accounts · 2 active · 1 disabled ›": a button that opens the Accounts tab filtered to this business. Without a loaded list
-// the same click is "Show ad accounts ›" (the Accounts tab loads by itself); while the list is loading there is nothing to say yet.
-function summaryLine(r, name) {
-  const go = () => { emit("filter-bm", { id: r.id, name }); emit("show-tab", "accounts"); };
-  const arrow = el("i", { class: "i i-chevron", "aria-hidden": "true" });
-  const focus = `bm-accs:${r.key}`;
-  if (!state.fetchedAt) {
-    if (state.accLoading) return null;
-    return el("div", { class: "row-line" }, el("button", { type: "button", class: "bm-accs", "data-focus": focus, title: t("bms.accsShowTitle"), onclick: go }, el("span", {}, t("bms.accsShow")), arrow));
-  }
+// The exact verification state, in words ("Rejected"); a state Meta adds later is shown as it came.
+const verLabel = (s) => (has(`bms.ver.${s}`) ? t(`bms.ver.${s}`) : String(s).replace(/_/g, " "));
+// Line 2, after the status: "3 ad accounts · 1 disabled" (the disabled count in red), one item so a narrow line cuts it with a single
+// ellipsis (bms.css gives it the room the problem word and its fix must keep). Nothing before the Ad accounts list is read, nothing for a
+// business that has none (its status says so). "3+" when that list stopped at its page limit.
+function contextOf(r) {
   const c = r.counts;
-  if (!c.total) return null;                         // "No ad accounts" is the pill and the problem line
-  const partial = state.truncated;                   // the Accounts list stopped at its page limit: there may be more
-  return el("div", { class: "row-line" },
-    el("button", { type: "button", class: "bm-accs", "data-focus": focus, title: partial ? `${t("bms.accsTitle")}. ${t("bms.accsPartial")}` : t("bms.accsTitle"), onclick: go },
-      el("span", {}, `${c.total}${partial ? "+" : ""} ${tn(c.total, "bms.accCount")}`,
-        c.active ? el("span", { class: "bm-ok" }, t("bms.accActive", { n: c.active })) : null,
-        c.disabled ? el("span", { class: "err-text" }, t("bms.accDisabled", { n: c.disabled })) : null),
-      arrow));
+  if (!state.fetchedAt || !c.total) return [];
+  return [el("span", { class: "lrow-ctx", title: r.partial ? t("bms.accsPartial") : null }, `${c.total}${r.partial ? "+" : ""} ${tn(c.total, "bms.accCount")}`,
+    c.disabled ? [el("span", { class: "lbm-sep" }, " · "), el("span", { class: "lbm-dis" }, `${c.disabled} ${tn(c.disabled, "bms.disabledWord")}`)] : null)];
 }
-function renderRow(r) {
+// The right-hand amount: exact for one or two currencies, "≈ $" from three (the breakdown is its tooltip and the expanded row); a dash
+// (muted) when there is nothing to add up, with the reason as its tooltip.
+function valueOf(sp) {
+  const dash = (title) => ({ value: "—", valueTitle: title, valueMuted: true });
+  switch (sp.kind) {
+    case "unloaded": return dash(t("bms.noSpend"));
+    case "none": return dash(t("bms.st.none.title"));
+    case "unknown": return dash(t("acc.noPeriod"));
+    case "zero": return { value: fmtMoney(0, sp.cur), valueMuted: true };
+    default: return { value: sp.text, valueTitle: [sp.title, sp.notAll ? t("acc.notAllTitle") : ""].filter(Boolean).join("\n") || null };
+  }
+}
+function renderRow(r, rt) {
   const name = r.name || t("bms.noName");
-  const settings = r.known ? LINKS.bmSettings(r.id) : null;      // only a business of this profile has settings it can open
-  const status = r.status && pill(t(`bms.st.${r.status.key}`), r.status.tone);
-  if (status) status.title = t(`bms.st.${r.status.key}.title`);
-  const spend = state.fetchedAt && r.accounts.length ? spendCell(r.spend, r.accounts[0].currency, t("acc.noPeriod"))
-    : spendCell(null, null, state.fetchedAt ? t("bms.st.none.title") : t("bms.noSpend"));
-  return el("div", { class: "row bm", "data-bm": r.key },
-    el("div", { class: "row-top" },
-      el("span", { class: "row-name", title: name }, avatar({ url: r.picture, shape: "square", icon: "building" }), el("span", { class: "row-name-text" }, name)),
-      status),
-    el("div", { class: "row-line" },
-      el("div", { class: "acc-ids" },
-        el("button", { type: "button", class: "acc-id", title: t("acc.copyId"), "data-focus": `bm-id:${r.id}`, onclick: () => copy(r.id, t("acc.idCopied")) }, r.id, el("i", { class: "i i-copy" })),
-        settings ? el("a", { class: "acc-link", href: settings, target: "_blank", rel: "noopener noreferrer", title: t("bms.openSettings"), "aria-label": `${t("bms.openSettings")} · ${name}`,
-          "data-focus": `bm-set:${r.id}`, onclick: (ev) => ev.stopPropagation() }, el("i", { class: "i i-external", "aria-hidden": "true" })) : null),
-      spend),
-    summaryLine(r, name),
-    problems(r.issues.map((i) => ({ id: i.id, tone: i.tone, text: t(i.label), tip: t(i.tip), fix: i.fix && { label: i.fix.label, tip: t(i.fix.tip), url: i.fix.url } })),
-      { focus: `bm-fix:${r.key}`, owner: name }));
+  const [worst] = r.issues;
+  // The worst problem IS the status word; its fix (when it has one on the line) sits right after it, the others are "+N" (all of them are in the body).
+  const status = worst
+    ? { tone: worst.tone, text: t(worst.label), title: worst.id === "verification" ? `${t(worst.tip)}: ${verLabel(r.verificationState)}` : t(worst.tip) }
+    : r.state === "active" ? { tone: "ok", text: t("bms.st.active") } : undefined;           // a healthy row is silent (row.js: a word for screen readers only)
+  const fix = worst?.line && worst.fix ? { label: worst.fix.label, url: worst.fix.url, tip: t(worst.fix.tip) } : null;
+  const sp = spendOf(r, { loaded: !!state.fetchedAt, rates: rt });
+  return row({
+    key: `bm-${r.id}`, avatar: { kind: "business", url: r.picture }, name, ...valueOf(sp),
+    status, context: contextOf(r), fix, more: Math.max(0, r.issues.length - 1), id: { value: r.id },
+    open: openRows.has(r.id), onToggle: (open) => openRows[open ? "add" : "delete"](r.id),
+    body: () => bodyOf(r, name, sp, fix),
+  });
+}
+// The expanded row: the ad accounts (counts + the jump to the Ad accounts tab, filtered), the exact verification, the spend of three or more
+// currencies in full; then what to do (the help + every fix not already on line 2); then the one link out, Business settings.
+function bodyOf(r, name, sp, lineFix) {
+  const c = r.counts, loaded = !!state.fetchedAt;
+  const go = () => { emit("filter-bm", { id: r.id, name }); emit("show-tab", "accounts"); };
+  const counts = loaded && c.total
+    ? [`${c.total}${r.partial ? "+" : ""}`, c.active ? `${c.active} ${tn(c.active, "bms.activeWord")}` : "", c.disabled ? `${c.disabled} ${tn(c.disabled, "bms.disabledWord")}` : ""].filter(Boolean).join(" · ")
+    : "";
+  // A business with no ad accounts at all has nothing to show on that tab; before the list is read the Ad accounts tab loads it by itself.
+  const accounts = loaded && !c.total && !r.partial ? null : [t("bms.kv.accounts"),
+    el("span", { class: "lbm-accs" }, counts ? el("span", { title: r.partial ? t("bms.accsPartial") : null }, counts) : null,
+      el("button", { type: "button", class: "act-inline lbm-go", "data-focus": `bm-go:${r.id}`, title: t("bms.showTitle"), onclick: go }, el("span", { class: "act-label" }, t("bms.show")))),
+    { wide: true }];
+  const todo = r.issues.length ? whatToDo({
+    help: r.issues.map((i) => t(i.help)).join(" "),
+    actions: r.issues.filter((i) => i.fix).map((i, n) => ({ id: i.id, label: i.fix.label, url: i.fix.url, tip: t(i.fix.tip), primary: n === 0 })),
+    skip: lineFix, tone: r.issues[0].tone, owner: name, focus: `bm-todo:${r.id}`,
+  }) : null;
+  return [
+    kv([accounts,
+      r.verificationState ? [t("bms.kv.verification"), verLabel(r.verificationState)] : null,
+      sp.kind === "approx" ? [t("acc.spend"), sp.full, { wide: true, title: sp.title }] : null]),
+    todo,
+    r.known ? linksRow([{ id: "settings", label: "bms.settings", url: LINKS.bmSettings(r.id), tip: t("bms.openSettings") }], { owner: name, focus: `bm-link:${r.id}` }) : null,
+  ];
 }
 
 // ---------- wiring ----------
@@ -236,7 +260,6 @@ registerInit(() => {
   buildControls();
   // The spend and counts come from the Ad accounts list: its refresh is part of this one (silent where its own button would complain).
   $("#loadBms").addEventListener("click", () => { fetchBms(); reloadAccounts(); });
-  $("#copyBmIds").addEventListener("click", copyIds);
   $("#bmFilter").addEventListener("input", (e) => { state.bmQuery = e.target.value; renderBms(); });
   ready = true;
 });

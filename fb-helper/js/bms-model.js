@@ -1,14 +1,15 @@
-// The Businesses tab's logic without any DOM, chrome.* or i18n: what a business row keeps from Graph, how the rows are built
-// from the business list AND the Ad accounts list (each account names its owner business, so spend, counts and the status of
-// a business come from there), the problems with their fixes, search, order, the IDs to copy. The only import besides the
-// spend helpers is links.js (pure). test/bms.test.mjs runs this file in plain Node; bms.js only draws it.
+// The Businesses tab's logic without any DOM or chrome.*: what a business row keeps from Graph, how the rows are built from the
+// business list AND the Ad accounts list (groupByBusiness, the very grouping the Ad accounts tab uses, so a business shows the same
+// accounts and the same subtotal on both tabs), the problems with their fixes, the spend line of a row, search and order.
+// test/bms.test.mjs runs this file in plain Node; bms.js only draws it.
 //
 // The tab answers one question: what do I have, and how much does each business spend? Docs for the business edge are thin
 // and nothing here is live-verified (.notes/index.md, "In progress"): every field except id and name is optional, an
 // unknown value is never guessed.
 
 import { LINKS, imageUrl } from "./links.js";
-import { addUp, mergeUp } from "./spend.js";
+import { addUp, mergeUp, groupByBusiness, sortKey } from "./spend.js";
+import { rowAmount } from "./money-core.js";
 
 // One paged read of me/businesses (graph.js readPaged). A token that cannot read an extra field just loses that field.
 // Only what the tab uses: the verification state (a failed one is a problem) and the logo.
@@ -45,19 +46,24 @@ export function slimBm(raw, skip = new Set()) {
 }
 
 // ---------- verification ----------
-// Only a business verification that went wrong is shown (a pending or missing one is not something to act on).
+// Only a business verification that went wrong is a problem (a pending or missing one is not something to act on); every state
+// Graph names is still told in the expanded row (the kv "Verification").
 export const VERIFY_BAD = ["failed", "rejected", "revoked", "expired"];
+// The states Meta documents for Business.verification_status; anything else is shown as Graph sent it.
+export const VERIFY_KNOWN = ["verified", "not_verified", "pending", "pending_need_more_info", "pending_submission", "ineligible", ...VERIFY_BAD];
+const verState = (b) => (b && !b._noVerificationStatus && typeof b.verification_status === "string" ? b.verification_status.trim().toLowerCase() : "");
+// → the exact state ("verified", "pending", …) or null when it is not known (field refused or not sent)
+export const verificationOf = (b) => verState(b) || null;
 // → "failed" | "rejected" | "revoked" | "expired" | null
 export function badVerification(b) {
-  if (!b || b._noVerificationStatus) return null;
-  const s = typeof b.verification_status === "string" ? b.verification_status.trim().toLowerCase() : "";
+  const s = verState(b);
   return VERIFY_BAD.includes(s) ? s : null;
 }
 
-// ---------- status of a business ----------
-// From the Ad accounts list: account_status 1 = active, 2 = disabled ("disabled" is exactly the Accounts tab's "Disabled" chip, so
-// the number matches what that tab shows after the click); closed (101), pending closure (100) and the unsettled / review
-// statuses count in the total only.
+// ---------- counts and state ----------
+// From the Ad accounts list: account_status 1 = active, 2 = disabled ("disabled" is exactly the Ad accounts tab's "Disabled", so the
+// number matches what that tab shows after the click); closed (101), pending closure (100) and the unsettled / review statuses count
+// in the total only.
 export function countAccounts(accounts) {
   const c = { total: 0, active: 0, disabled: 0 };
   for (const a of accounts) {
@@ -67,43 +73,36 @@ export function countAccounts(accounts) {
   }
   return c;
 }
-// key → tone of the pill. active: at least one active ad account. noActive: it has ad accounts, none of them active.
-// none: the loaded list has no ad account of this business.
-export const STATUS = { active: "ok", noActive: "bad", none: "warn" };
-// → { key, tone } or null: no verdict while the Ad accounts list is not loaded, and none when that list stopped at its page limit
-// (the business may own more than was read).
-export function statusOf(counts, { loaded, truncated = false }) {
+// "active": at least one active ad account. "noActive": it has ad accounts, none of them active. "none": the loaded list has no ad
+// account of this business. null = no verdict: the Ad accounts list is not loaded, or it stopped at its page limit (then only
+// "active" is still a fact: there may be more accounts than were read, so "none" and "noActive" could be false).
+export function stateOf(counts, { loaded, truncated = false }) {
   if (!loaded) return null;
-  if (!counts.total) return truncated ? null : { key: "none", tone: STATUS.none };
-  return counts.active ? { key: "active", tone: STATUS.active } : { key: "noActive", tone: STATUS.noActive };
+  if (counts.active) return "active";
+  return truncated ? null : counts.total ? "noActive" : "none";
 }
 
 // ---------- the rows of the list ----------
 // bms = the slimmed me/businesses rows; accounts = the Ad accounts list (each with business { id, name } or none);
 // loaded = the accounts list has been read; stats(account) → { spend } | null for the selected period (null = unknown).
-// A row for every business in `bms`, and one for every other business an account names (client accounts of a business the profile
-// does not manage; named from the account, no logo). Accounts that have no business belong to no row: this tab is about
-// businesses, the Ad accounts tab has the rest.
-// → [{ key, id, name, known, bm, picture, counts, status, verification, spend, accounts, issues }]
-//   known = the business is in me/businesses: only those get problem lines with fixes (the links are to ITS settings).
+// One row per business, from groupByBusiness(accounts) joined with `bms`: every business of the profile (even one with no ad
+// account) and every other business an account names (client accounts of a business the profile does not manage: named from the
+// account, no logo, `known` false). Accounts that have no business belong to no row: this tab is about businesses, the Ad
+// accounts tab has the rest.
+// → [{ key, id, name, known, picture, accounts, counts, partial, state, verification, verificationState, spend, issues }]
+//   partial = the accounts list is incomplete (counts are "at least")
 export function buildRows({ bms = [], accounts = [], loaded = false, truncated = false, stats = () => null } = {}) {
-  const groups = new Map();
-  for (const b of bms) groups.set(b.id, { id: b.id, name: b.name || "", bm: b, accounts: [] });
-  for (const a of accounts) {
-    const raw = a?.business?.id;
-    if (raw === undefined || raw === null || raw === "") continue;
-    const id = String(raw);
-    let g = groups.get(id);
-    if (!g) groups.set(id, g = { id, name: text(a.business.name) || "", bm: null, accounts: [] });
-    else if (!g.name && a.business.name) g.name = text(a.business.name);
-    g.accounts.push(a);
-  }
-  return [...groups.values()].map(({ id, name, bm, accounts: list }) => {
+  const byBiz = new Map(groupByBusiness(accounts).filter((g) => g.id !== null).map((g) => [g.id, g]));
+  const ids = new Map();
+  for (const b of bms) if (b && !ids.has(b.id)) ids.set(b.id, b);
+  for (const id of byBiz.keys()) if (!ids.has(id)) ids.set(id, null);
+  return [...ids].map(([id, bm]) => {
+    const g = byBiz.get(id), list = g?.accounts ?? [];
     const counts = countAccounts(list);
     const row = {
-      key: id, id, name, known: !!bm, bm: bm || null,
-      picture: bm?.profile_picture_uri, counts, status: statusOf(counts, { loaded, truncated }),
-      verification: badVerification(bm), accounts: list,
+      key: id, id, name: bm?.name || g?.name || "", known: !!bm, picture: bm?.profile_picture_uri,
+      accounts: list, counts, partial: loaded && truncated, state: stateOf(counts, { loaded, truncated }),
+      verification: badVerification(bm), verificationState: verificationOf(bm),
       spend: addUp(list.map((a) => ({ spend: stats(a)?.spend ?? null, currency: a.currency }))),
     };
     row.issues = issuesOf(row);
@@ -112,24 +111,46 @@ export function buildRows({ bms = [], accounts = [], loaded = false, truncated =
 }
 
 // ---------- problems and their fixes ----------
-// Data, so a test can walk every one. label (i18n key; may depend on the row), tip (i18n key), fix = where it is fixed: label /
-// tip (i18n keys) and url(row) → https URL or null (a null drops the link). One link per problem, always a page that links.js
-// built; the extension changes nothing by opening it. Order = severity.
+// Data, so a test can walk every one. label / tip / help = i18n keys; fix = where it is fixed: label / tip (i18n keys) and url(row) →
+// https URL or null (a null drops the link). One fix per problem, always a page that links.js built; the extension changes nothing
+// by opening it. Order = severity. line = the fix goes on line 2 of the collapsed row (only when it is the worst problem);
+// "None active" has no fix there: the way in is the "Show ad accounts" button, the Business Settings link waits in the body.
 export const PROBLEMS = [
-  { id: "verification", tone: "bad", has: (r) => !!r.verification, label: (r) => `bms.p.ver.${r.verification}`, tip: "bms.verTitle",
+  { id: "verification", tone: "bad", has: (r) => !!r.verification, label: "bms.st.unverified", tip: "bms.verTitle", help: "bms.help.verification", line: true,
     fix: { label: "bms.fix.verify", tip: "bms.fix.verifyTitle", url: (r) => LINKS.bmSecurity(r.id) } },
-  { id: "noActive", tone: "bad", has: (r) => r.status?.key === "noActive", label: () => "bms.st.noActive", tip: "bms.st.noActive.title",
+  { id: "noActive", tone: "bad", has: (r) => r.state === "noActive", label: "bms.st.noActive", tip: "bms.st.noActive.title", help: "bms.help.noActive", line: false,
     fix: { label: "bms.fix.accounts", tip: "bms.fix.accountsTitle", url: (r) => LINKS.bmAdAccounts(r.id) } },
-  { id: "none", tone: "warn", has: (r) => r.status?.key === "none", label: () => "bms.st.none", tip: "bms.st.none.title",
+  { id: "none", tone: "warn", has: (r) => r.state === "none", label: "bms.st.none", tip: "bms.st.none.title", help: "bms.help.none", line: true,
     fix: { label: "bms.fix.create", tip: "bms.fix.createTitle", url: (r) => LINKS.bmAdAccounts(r.id) } },
 ];
-// [{ id, tone, label, tip, fix: { label, tip, url } | null }] for one row. Only a business of the profile (known) has any.
+// [{ id, tone, label, tip, help, line, fix: { label, tip, url } | null }] for one row, worst first. The fixes are links into the settings
+// of THAT business, so a business the profile does not manage (only named by a client account) has the problems but no fix.
 export function issuesOf(row) {
-  if (!row.known) return [];
   return PROBLEMS.filter((p) => p.has(row)).map((p) => {
-    const url = p.fix.url(row);
-    return { id: p.id, tone: p.tone, label: p.label(row), tip: p.tip, fix: url ? { label: p.fix.label, tip: p.fix.tip, url } : null };
+    const url = row.known ? p.fix.url(row) : null;
+    return { id: p.id, tone: p.tone, label: p.label, tip: p.tip, help: p.help, line: p.line, fix: url ? { label: p.fix.label, tip: p.fix.tip, url } : null };
   });
+}
+
+// ---------- the spend of a row ----------
+// What the right-hand amount of a row says, for the selected period. Exact for one currency ("$100.00") and for two ("$100.00 + €50.00"),
+// "≈ $1,770" from three on (rates needed; without them the first two and "+N"). A row never says "≈" for fewer than three currencies;
+// the grand total is the one place that does (period.js fillTotal → totalLine).
+//   kind  "unloaded" (the Ad accounts list is not read yet) · "none" (no ad account) · "unknown" (no number for this period) ·
+//         "zero" (every spend was 0; cur = the currency) · "exact" · "approx"
+//   text  the amount ("" for the kinds that print a dash)   title  tooltip text of the amount, every currency  full  every currency, exact
+//   notAll  some of its accounts have no number for this period (the amount is a part of the truth)
+export function spendOf(row, { loaded, rates = null } = {}) {
+  if (!loaded) return { kind: "unloaded", text: "", title: "", full: "", notAll: false };
+  const s = row.spend, line = rowAmount(s.totals, rates);
+  if (line.main) {
+    const extra = line.parts.length - 2;
+    const text = !line.approx && extra > 0 ? `${line.parts[0].text} + ${line.parts[1].text} +${extra}` : line.main;   // no rates, 3+ currencies: never a line wider than the row
+    return { kind: line.approx ? "approx" : "exact", text, title: line.approx ? line.title : extra > 0 ? line.full : "", full: line.full, notAll: s.unknown };
+  }
+  if (s.unknown) return { kind: "unknown", text: "", title: "", full: "", notAll: true };
+  const cur = row.accounts[0]?.currency;
+  return cur ? { kind: "zero", text: "", title: "", full: "", cur, notAll: false } : { kind: "none", text: "", title: "", full: "", notAll: false };
 }
 
 // ---------- the list ----------
@@ -139,13 +160,15 @@ export const matchRow = (r, q) => {
   return !s || `${r.name || ""} ${r.id || ""}`.toLowerCase().includes(s);
 };
 export const filterRows = (rows, q = "") => rows.filter((r) => matchRow(r, q));
-// Most spend first (an unknown spend sorts last), then more active ad accounts, then name, then id.
-export const sortRows = (rows) => [...rows].sort((a, b) => b.spend.sort - a.spend.sort || b.counts.active - a.counts.active
-  || String(a.name || "").localeCompare(String(b.name || "")) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+// Most spend first by its USD equivalent when every currency has a rate (rates = money.js table), else by the plain sum (right whenever
+// the compared amounts share a currency; spend.js sortKey); an unknown spend last; then more active ad accounts, then name, then id.
+export function sortRows(rows, rates = null) {
+  const key = new Map(rows.map((r) => [r, sortKey(r.spend, rates)]));
+  return [...rows].sort((a, b) => key.get(b) - key.get(a) || b.counts.active - a.counts.active
+    || String(a.name || "").localeCompare(String(b.name || "")) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
 // The total over these rows: the same shape as spend.js addUp (the sum of the rows).
 export const totalOf = (rows) => mergeUp(rows.map((r) => r.spend));
-// One id per line, in the order given.
-export const idsOf = (rows) => rows.map((r) => r.id).join("\n");
 
 // ---------- errors ----------
 // The token cannot read the business edge at all: (#10) permission, (#200–299) permission family, or (#100) that is not about

@@ -1,18 +1,18 @@
-/* bms: styles of js/bms.js. The row itself (lines, picture, problems, dividers) is the shared .row grammar in popup.css; only what is
-   specific to a business goes here. */
+/* bms: styles of js/bms.js. The row itself (lines, picture, dividers, expanded body) is the shared .lrow grammar in rows.css; only what
+   is specific to a business goes here. */
 
-/* "3 ad accounts · 2 active · 1 disabled ›" (or "Show ad accounts ›"): a button into the Ad accounts tab, filtered to this business. */
-.bm-accs {
-  appearance: none; border: 0; background: none; padding: 0; cursor: pointer; text-align: left;
-  display: inline-flex; align-items: center; gap: var(--spacing-1); font: inherit; color: var(--color-text-secondary);
-  transition: color .15s ease;
-}
-.bm-accs:hover, .bm-accs:focus-visible { color: var(--color-text-primary); }
-.bm-accs .i { --size-icon: 14px; transform: rotate(-90deg); }   /* the chevron points right: "go there" */
-.bm-ok { color: var(--color-success); }
+/* Line 2: "3 ad accounts · 1 disabled": the disabled count is red, the rest muted. When the line is too narrow the context gives way first
+   (rows.css lets every item shrink alike; here the context takes the shrinking, so the problem word and its fix keep their room: the weight
+   is so large that the problem word loses not even a sub-pixel, which would turn its last letter into an ellipsis). A context that has
+   shrunk to nothing hides its "·" too. */
+.lbm-dis { color: var(--color-error); }
+.lbm-sep { padding: 0 3px; }
+#bmsList .lrow-it:has(> .lrow-ctx) { flex-shrink: 100000; overflow: hidden; }
+
+/* Expanded row, Ad accounts: "3 · 2 active · 1 disabled   Show ad accounts →". The button is the same underlined accent link as a fix
+   (actions.css .act-inline), reset to look like text. */
+.lbm-accs { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--spacing-4); min-width: 0; }
+.lbm-go { appearance: none; border: 0; background: none; font: inherit; padding: 4px 0; cursor: pointer; --act-fg: var(--color-accent); }
+
 /* A refused refresh above an old list. */
 .bm-note { padding: var(--spacing-3) var(--spacing-4) 0; }
-
-@media (max-width: 460px) {
-  #copyBmIds span { display: none; }
-}

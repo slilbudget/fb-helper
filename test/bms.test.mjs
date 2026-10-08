@@ -1,13 +1,18 @@
-// js/bms-model.js: the Businesses tab's logic without a DOM (what a business row keeps, how rows are built from the business list
-// and the Ad accounts list, spend / status / problems per business, search, order, copied IDs, which errors are "this token can't
-// read businesses"). Plain Node: `node --test test/*.test.mjs`
+// js/bms-model.js: the Businesses tab's logic without a DOM (what a business row keeps, how rows are built from the business list and the
+// Ad accounts list through groupByBusiness, state / spend / problems per business, the amount of a row, search, order by USD equivalent,
+// which errors are "this token can't read businesses"). Plain Node: `node --test test/*.test.mjs`
 import test from "node:test";
 import assert from "node:assert/strict";
+import { setLang } from "../fb-helper/js/i18n.js";
 import {
-  BM_BASE, BM_OPTIONAL, VERIFY_BAD, STATUS, PROBLEMS, markerOf, slimBm, badVerification, countAccounts, statusOf, buildRows, issuesOf,
-  matchRow, filterRows, sortRows, totalOf, idsOf, isPermError,
+  BM_BASE, BM_OPTIONAL, VERIFY_BAD, VERIFY_KNOWN, PROBLEMS, markerOf, slimBm, badVerification, verificationOf, countAccounts, stateOf, buildRows, issuesOf, spendOf,
+  matchRow, filterRows, sortRows, totalOf, isPermError,
 } from "../fb-helper/js/bms-model.js";
+import { groupByBusiness } from "../fb-helper/js/spend.js";
 import { LINKS } from "../fb-helper/js/links.js";
+
+await setLang("en");
+const flat = (s) => String(s).replace(/\s/g, " ");                 // Intl uses no-break and narrow spaces
 
 // ---------- request shape ----------
 test("the read asks for id + name always and two extras as optional fields (the key is what Graph's complaint is matched against)", () => {
@@ -49,6 +54,7 @@ test("slimBm: a refused field gets its marker (and no value) so the UI never rea
   const row = slimBm({ id: "1", name: "A", verification_status: "revoked", profile_picture_uri: "https://fbcdn.net/a.png" }, new Set(["verification_status", "profile_picture_uri"]));
   assert.deepEqual(row, { id: "1", name: "A", _noVerificationStatus: true, _noProfilePictureUri: true });
   assert.equal(badVerification(row), null, "refused: no verdict, so no problem");
+  assert.equal(verificationOf(row), null, "refused: the exact state is not known either");
   assert.deepEqual(slimBm({ id: "1", name: "A" }, new Set()), { id: "1", name: "A" }, "nothing refused: no markers");
   assert.deepEqual(JSON.parse(JSON.stringify(row)), row, "the marker survives a JSON round trip (storage.session)");
 });
@@ -62,23 +68,31 @@ test("only a verification that went wrong is a problem: failed / rejected / revo
   assert.equal(badVerification(null), null);
 });
 
-// ---------- counts and status ----------
+test("verificationOf: the exact state (lower case) when known, null when not sent or refused; the expanded row tells it, the line 2 does not", () => {
+  assert.equal(verificationOf({ verification_status: " Pending_Need_More_Info " }), "pending_need_more_info");
+  assert.equal(verificationOf({ verification_status: "verified" }), "verified");
+  for (const b of [null, {}, { verification_status: "" }, { verification_status: 5 }, { verification_status: "failed", _noVerificationStatus: true }]) assert.equal(verificationOf(b), null);
+  for (const s of VERIFY_BAD) assert.ok(VERIFY_KNOWN.includes(s));
+});
+
+// ---------- counts and state ----------
 test("countAccounts: total / active (1) / disabled (2); other statuses only in the total", () => {
   const acc = (st) => ({ account_status: st });
   assert.deepEqual(countAccounts([acc(1), acc(1), acc(2), acc(101), acc(3), acc(100), acc(7)]), { total: 7, active: 2, disabled: 1 });
   assert.deepEqual(countAccounts([]), { total: 0, active: 0, disabled: 0 });
 });
 
-test("statusOf: active (ok) / no active ad accounts (bad) / no ad accounts (warn); no verdict before the Ad accounts list is loaded; none is no verdict when that list is partial", () => {
+test("stateOf: active / noActive / none; no verdict before the Ad accounts list is loaded; when that list is partial only 'active' is still a fact", () => {
   const loaded = { loaded: true };
-  assert.deepEqual(statusOf({ total: 3, active: 1, disabled: 2 }, loaded), { key: "active", tone: "ok" });
-  assert.deepEqual(statusOf({ total: 2, active: 0, disabled: 2 }, loaded), { key: "noActive", tone: "bad" });
-  assert.deepEqual(statusOf({ total: 1, active: 0, disabled: 0 }, loaded), { key: "noActive", tone: "bad" }, "closed or unsettled is not active either");
-  assert.deepEqual(statusOf({ total: 0, active: 0, disabled: 0 }, loaded), { key: "none", tone: "warn" });
-  for (const c of [{ total: 3, active: 1, disabled: 0 }, { total: 0, active: 0, disabled: 0 }]) assert.equal(statusOf(c, { loaded: false }), null);
-  assert.equal(statusOf({ total: 0, active: 0, disabled: 0 }, { loaded: true, truncated: true }), null, "it may own accounts that were not read");
-  assert.equal(statusOf({ total: 2, active: 0, disabled: 2 }, { loaded: true, truncated: true }).key, "noActive", "what WAS read is still a fact");
-  assert.deepEqual(STATUS, { active: "ok", noActive: "bad", none: "warn" });
+  assert.equal(stateOf({ total: 3, active: 1, disabled: 2 }, loaded), "active");
+  assert.equal(stateOf({ total: 2, active: 0, disabled: 2 }, loaded), "noActive");
+  assert.equal(stateOf({ total: 1, active: 0, disabled: 0 }, loaded), "noActive", "closed or unsettled is not active either");
+  assert.equal(stateOf({ total: 0, active: 0, disabled: 0 }, loaded), "none");
+  for (const c of [{ total: 3, active: 1, disabled: 0 }, { total: 0, active: 0, disabled: 0 }]) assert.equal(stateOf(c, { loaded: false }), null);
+  const partial = { loaded: true, truncated: true };
+  assert.equal(stateOf({ total: 0, active: 0, disabled: 0 }, partial), null, "it may own accounts that were not read");
+  assert.equal(stateOf({ total: 2, active: 0, disabled: 2 }, partial), null, "…and one of them may be active");
+  assert.equal(stateOf({ total: 2, active: 1, disabled: 1 }, partial), "active", "what WAS read is still a fact");
 });
 
 // ---------- the rows ----------
@@ -101,36 +115,56 @@ const stats = (a) => (SPEND[a.account_id] === null ? null : { spend: SPEND[a.acc
 const build = (over = {}) => buildRows({ bms: BMS, accounts: ACCOUNTS, loaded: true, stats, ...over });
 const byId = (rows) => Object.fromEntries(rows.map((r) => [r.id, r]));
 
-test("buildRows: a row per business of the profile and per business an account names; accounts without a business belong to no row", () => {
+test("buildRows: one row per business of groupByBusiness(accounts) joined with the profile's businesses; accounts without a business belong to no row (no personal row)", () => {
   const rows = build();
   assert.deepEqual(rows.map((r) => r.id).sort(), ["1001", "1002", "1003", "1004", "9999"]);
-  assert.ok(rows.every((r) => r.id && r.key === r.id), "every row is a business: no personal row");
+  assert.ok(rows.every((r) => r.id && r.key === r.id), "every row is a business");
   assert.equal(rows.flatMap((r) => r.accounts).length, 6, "7 and 8 (no business) are in no row");
+  // the very same grouping the Ad accounts tab uses: a business shows the same accounts on both tabs
+  const groups = Object.fromEntries(groupByBusiness(ACCOUNTS).filter((g) => g.id).map((g) => [g.id, g.accounts.map((a) => a.account_id)]));
   const r = byId(rows);
+  for (const [id, ids] of Object.entries(groups)) assert.deepEqual(r[id].accounts.map((a) => a.account_id), ids, id);
   assert.equal(r["1001"].name, "Alpha Media"); assert.equal(r["1001"].known, true); assert.equal(r["1001"].picture, "https://scontent.xx.fbcdn.net/a.jpg");
   assert.equal(r["9999"].name, "Name of 9999", "named from its account"); assert.equal(r["9999"].known, false); assert.equal(r["9999"].picture, undefined);
-  assert.equal(r["9999"].bm, null);
+  assert.deepEqual(rows.map((x) => x.id).slice(0, 4), ["1001", "1002", "1003", "1004"], "the profile's businesses first, in their order, then the ones only accounts name");
 });
 
-test("buildRows: counts, status, spend per business (per currency), unknown spend flagged", () => {
+test("buildRows: a name from the business list wins; an account supplies it when the list has none; duplicates collapse", () => {
+  const rows = buildRows({ bms: [slimBm({ id: "5", name: "" }), slimBm({ id: "5", name: "Again" }), slimBm({ id: "6", name: "Six" })], accounts: [A("1", "5", 1), A("2", "6", 1)], loaded: true, stats });
+  assert.deepEqual(rows.map((r) => [r.id, r.name]), [["5", "Name of 5"], ["6", "Six"]]);
+});
+
+test("buildRows: counts, state, spend per business (per currency), unknown spend flagged", () => {
   const r = byId(build());
   assert.deepEqual(r["1001"].counts, { total: 3, active: 2, disabled: 1 });
-  assert.deepEqual(r["1001"].status, { key: "active", tone: "ok" });
+  assert.equal(r["1001"].state, "active");
   assert.deepEqual(r["1001"].spend, { totals: { USD: 100, EUR: 50 }, unknown: false, sort: 150 });
-  assert.deepEqual(r["1002"].status, { key: "noActive", tone: "bad" });
+  assert.equal(r["1002"].state, "noActive");
   assert.deepEqual(r["1002"].spend, { totals: { USD: 10 }, unknown: false, sort: 10 });
   assert.deepEqual(r["1003"].counts, { total: 0, active: 0, disabled: 0 });
-  assert.deepEqual(r["1003"].status, { key: "none", tone: "warn" });
+  assert.equal(r["1003"].state, "none");
   assert.deepEqual(r["1003"].spend, { totals: {}, unknown: false, sort: -1 });
   assert.deepEqual(r["1004"].spend, { totals: {}, unknown: true, sort: -1 }, "its one account has no number for the period");
   assert.deepEqual(r["9999"].spend.totals, { USD: 7 });
+  assert.equal(r["1001"].verificationState, "verified"); assert.equal(r["1002"].verification, "failed"); assert.equal(r["9999"].verificationState, null);
 });
 
-test("buildRows: before the Ad accounts list is loaded there is no status and no problem about accounts (only a failed verification shows)", () => {
+test("buildRows: before the Ad accounts list is loaded there is no state and no problem about accounts (only a failed verification shows)", () => {
   const rows = buildRows({ bms: BMS, accounts: [], loaded: false, stats });
   assert.deepEqual(rows.map((r) => r.id), ["1001", "1002", "1003", "1004"]);
-  assert.ok(rows.every((r) => r.status === null && r.counts.total === 0));
+  assert.ok(rows.every((r) => r.state === null && r.counts.total === 0));
   assert.deepEqual(rows.map((r) => r.issues.map((i) => i.id)), [[], ["verification"], [], []]);
+  assert.ok(rows.every((r) => spendOf(r, { loaded: false }).kind === "unloaded"), "no spend either: a dash, never a $0");
+});
+
+test("buildRows: a partial Ad accounts list (page limit) says 'at least' and never claims 'no ad accounts' or 'none active'", () => {
+  const rows = byId(build({ truncated: true }));
+  assert.equal(rows["1001"].partial, true);
+  assert.equal(rows["1001"].state, "active");
+  assert.equal(rows["1003"].state, null); assert.deepEqual(rows["1003"].issues, []);
+  assert.equal(rows["1002"].state, null, "its disabled account is not proof: another one may not have been read");
+  assert.deepEqual(rows["1002"].issues.map((i) => i.id), ["verification"], "only what does not depend on the accounts");
+  assert.equal(byId(build())["1001"].partial, false);
 });
 
 test("totalOf: the sum of the rows shown (businesses only: the accounts of no business are not in it); a search narrows it", () => {
@@ -142,19 +176,63 @@ test("totalOf: the sum of the rows shown (businesses only: the accounts of no bu
   assert.deepEqual(totalOf([]), { totals: {}, unknown: false, sort: -1 });
 });
 
-test("sortRows: most spend first, an unknown or missing spend last, then more active accounts, then name, then id; the input is not changed", () => {
-  const rows = build();
-  const before = rows.map((r) => r.id).join();
-  assert.deepEqual(sortRows(rows).map((r) => r.id), ["1001", "1002", "9999", "1004", "1003"], "150, 10, 7; then Delta (1 active) before Gamma (0)");
-  assert.equal(rows.map((r) => r.id).join(), before);
-  const same = (id, name, active) => ({ id, name, spend: { sort: 5 }, counts: { active } });
+// ---------- the amount of a row ----------
+const RATES = { rates: { USD: 1, EUR: 0.8, VND: 25000 }, date: "2026-10-08", source: "exchangerate-api" };
+const rowWith = (items) => buildRows({ bms: [slimBm({ id: "1", name: "X" })], accounts: items.map(([cur, spend], i) => A(String(i + 1), "1", 1, cur)), loaded: true, stats: (a) => ({ spend: items[Number(a.account_id) - 1][1] }) })[0];
+
+test("spendOf: one currency exact, two 'a + b' exact, three or more '≈ USD' (rates) with the breakdown in the tooltip; '≈' never on fewer than three", () => {
+  const one = spendOf(rowWith([["USD", 1695.7]]), { loaded: true, rates: RATES });
+  assert.deepEqual([one.kind, one.text, one.title], ["exact", "$1,696", ""]);
+  const two = spendOf(rowWith([["USD", 55.2], ["EUR", 20]]), { loaded: true, rates: RATES });
+  assert.deepEqual([two.kind, flat(two.text), two.title], ["exact", "$55.20 + €20.00", ""]);
+  assert.ok(!two.text.includes("≈") && !spendOf(rowWith([["USD", 55.2], ["EUR", 20]]), { loaded: true, rates: null }).text.includes("≈"));
+  const three = spendOf(rowWith([["USD", 25], ["EUR", 10], ["VND", 250000]]), { loaded: true, rates: RATES });
+  assert.deepEqual([three.kind, three.text], ["approx", "≈ $47.50"], "25 + 10 / 0.8 + 250 000 / 25 000");
+  assert.equal(flat(three.full), "$25.00 + €10.00 + VND 250,000");
+  assert.match(three.title.replace(/[\u00a0\u202f]/g, " "), /^\$25\.00 \+ €10\.00 \+ VND 250,000\nApproximate: converted at the daily rate of /);
+});
+
+test("spendOf: three currencies without rates stay exact and short (the first two + '+N'), never a '≈' and never a line as wide as three amounts", () => {
+  for (const rates of [null, { rates: { USD: 1, EUR: 0.8 }, date: "2026-10-08", source: "exchangerate-api" }]) {   // no table at all, or no rate for VND
+    const s = spendOf(rowWith([["USD", 25], ["EUR", 10], ["VND", 250000]]), { loaded: true, rates });
+    assert.equal(s.kind, "exact");
+    assert.equal(flat(s.text), "$25.00 + €10.00 +1");
+    assert.equal(flat(s.title), "$25.00 + €10.00 + VND 250,000", "the whole truth is the tooltip");
+    assert.ok(!s.text.includes("≈"));
+  }
+});
+
+test("spendOf: dashes and zeros — unloaded, no ad account, no number for the period, every spend 0 (a zero of its own currency), partial", () => {
+  const empty = buildRows({ bms: [slimBm({ id: "1", name: "X" })], accounts: [], loaded: true, stats })[0];
+  assert.equal(spendOf(empty, { loaded: true }).kind, "none");
+  assert.equal(spendOf(empty, { loaded: false }).kind, "unloaded");
+  assert.equal(spendOf(rowWith([["EUR", 0], ["EUR", 0]]), { loaded: true }).kind, "zero");
+  assert.equal(spendOf(rowWith([["EUR", 0]]), { loaded: true }).cur, "EUR");
+  assert.equal(spendOf(build().find((r) => r.id === "1004"), { loaded: true }).kind, "unknown", "its only account has no number");
+  const part = spendOf(build().find((r) => r.id === "1001"), { loaded: true });
+  assert.equal(part.notAll, false);
+  const some = buildRows({ bms: BMS, accounts: [A("1", "1001", 1), A("2", "1001", 1)], loaded: true, stats: (a) => (a.account_id === "1" ? { spend: 5 } : null) })[0];
+  const sp = spendOf(some, { loaded: true });
+  assert.deepEqual([sp.kind, sp.notAll, flat(sp.text)], ["exact", true, "$5.00"], "some accounts have no number: the amount is a part, and says so");
+});
+
+// ---------- the order ----------
+test("sortRows: most spend first by USD equivalent (rates) — a currency with huge numbers does not outrank a bigger dollar spend; an unknown spend last; then more active accounts, name, id; the input is not changed", () => {
+  const rows = [rowWith([["VND", 250000]]), rowWith([["USD", 50]])].map((r, i) => ({ ...r, id: String(i + 1), name: `R${i + 1}` }));
+  assert.deepEqual(sortRows(rows, RATES).map((r) => r.id), ["2", "1"], "$50 outranks 250 000 dong ($10)");
+  assert.deepEqual(sortRows(rows, null).map((r) => r.id), ["1", "2"], "without rates: the plain sum (documented, right only within one currency)");
+  const all = build();
+  const before = all.map((r) => r.id).join();
+  assert.deepEqual(sortRows(all).map((r) => r.id), ["1001", "1002", "9999", "1004", "1003"], "150, 10, 7; then Delta (1 active) before Gamma (0)");
+  assert.equal(all.map((r) => r.id).join(), before);
+  const same = (id, name, active) => ({ id, name, spend: { totals: {}, unknown: false, sort: 5 }, counts: { active } });
   assert.deepEqual(sortRows([same("2", "b", 1), same("1", "b", 1), same("3", "a", 1), same("4", "z", 2)]).map((r) => r.id), ["4", "3", "1", "2"]);
   // a different period gives a different order from the same accounts
   const other = buildRows({ bms: BMS, accounts: ACCOUNTS, loaded: true, stats: (a) => ({ spend: { 4: 900 }[a.account_id] ?? 1 }) });
   assert.equal(sortRows(other)[0].id, "1002");
 });
 
-test("search: name or id, case-insensitive, trimmed; copied IDs: one per line in the order shown", () => {
+test("search: name or id, case-insensitive, trimmed", () => {
   const rows = build();
   assert.deepEqual(filterRows(rows, " ALPHA ").map((r) => r.id), ["1001"]);
   assert.deepEqual(filterRows(rows, "1002").map((r) => r.id), ["1002"]);
@@ -162,34 +240,31 @@ test("search: name or id, case-insensitive, trimmed; copied IDs: one per line in
   assert.deepEqual(filterRows(rows, "zzz"), []);
   assert.equal(filterRows(rows, "   ").length, 5);
   assert.equal(matchRow({ id: "5", name: undefined }, "5"), true, "a nameless business is found by id");
-  assert.equal(idsOf(sortRows(rows)), "1001\n1002\n9999\n1004\n1003");
-  assert.equal(idsOf(filterRows(rows, "beta")), "1002");
-  assert.equal(idsOf([]), "");
 });
 
 // ---------- problems and their fixes ----------
 const ROWS = (bm, accounts, over = {}) => buildRows({ bms: [slimBm({ id: "1001", name: "X", ...bm })], accounts, loaded: true, stats, ...over })[0];
 const ACTIVE = [A("1", "1001", 1)];
-const FIX = {
-  verification: LINKS.bmSecurity("1001"), noActive: LINKS.bmAdAccounts("1001"), none: LINKS.bmAdAccounts("1001"),
-};
+const FIX = { verification: LINKS.bmSecurity("1001"), noActive: LINKS.bmAdAccounts("1001"), none: LINKS.bmAdAccounts("1001") };
 
 test("every problem has exactly one fix link, to the right page of Business Settings", () => {
   assert.deepEqual(PROBLEMS.map((p) => p.id), ["verification", "noActive", "none"], "worst first");
   for (const status of VERIFY_BAD) {
     const issues = ROWS({ verification_status: status }, ACTIVE).issues;
     assert.deepEqual(issues.map((i) => i.id), ["verification"], status);
-    assert.equal(issues[0].label, `bms.p.ver.${status}`);
+    assert.equal(issues[0].label, "bms.st.unverified");
     assert.equal(issues[0].tone, "bad");
     assert.equal(issues[0].fix.url, FIX.verification);
+    assert.equal(issues[0].fix.label, "bms.fix.verify");
+    assert.equal(issues[0].line, true, "its fix is on line 2");
   }
   const noActive = ROWS({ verification_status: "verified" }, [A("1", "1001", 2)]).issues;
-  assert.deepEqual(noActive.map((i) => [i.id, i.label, i.tone, i.fix.url, i.fix.label]), [["noActive", "bms.st.noActive", "bad", FIX.noActive, "bms.fix.accounts"]]);
+  assert.deepEqual(noActive.map((i) => [i.id, i.label, i.tone, i.fix.url, i.fix.label, i.line]), [["noActive", "bms.st.noActive", "bad", FIX.noActive, "bms.fix.accounts", false]], "no fix on line 2: it waits in the body");
   const none = ROWS({ verification_status: "verified" }, []).issues;
-  assert.deepEqual(none.map((i) => [i.id, i.label, i.tone, i.fix.url, i.fix.label]), [["none", "bms.st.none", "warn", FIX.none, "bms.fix.create"]]);
+  assert.deepEqual(none.map((i) => [i.id, i.label, i.tone, i.fix.url, i.fix.label, i.line]), [["none", "bms.st.none", "warn", FIX.none, "bms.fix.create", true]]);
   assert.equal(FIX.verification, "https://business.facebook.com/settings/security?business_id=1001");
   assert.equal(FIX.none, "https://business.facebook.com/settings/ad-accounts?business_id=1001");
-  for (const i of [...noActive, ...none]) assert.ok(i.fix && Object.keys(i).filter((k) => k === "fix").length === 1);
+  for (const p of PROBLEMS) assert.ok(p.help && p.tip && p.fix.tip, p.id);
 });
 
 test("problems come in order of severity; a failed verification and no active accounts are both listed, each with its own fix", () => {
@@ -205,15 +280,15 @@ test("a healthy business has no problem and no fix; neither has a pending, unver
   assert.deepEqual(ROWS({}, ACTIVE).issues, [], "no verification field at all");
 });
 
-test("a business of someone else (only named by an account) has no problem line: its settings are not the profile's to open", () => {
+test("a business of someone else (only named by an account) has its state but no fix: its settings are not the profile's to open", () => {
   const rows = buildRows({ bms: [], accounts: [A("1", "777", 2)], loaded: true, stats });
-  assert.equal(rows[0].status.key, "noActive");
-  assert.deepEqual(rows[0].issues, []);
-  assert.deepEqual(issuesOf({ known: false, verification: "failed", status: { key: "none" }, id: "5" }), []);
+  assert.equal(rows[0].state, "noActive");
+  assert.deepEqual(rows[0].issues.map((i) => [i.id, i.fix]), [["noActive", null]]);
+  assert.deepEqual(issuesOf({ known: false, verification: "failed", state: "none", id: "5" }).map((i) => i.fix), [null, null]);
 });
 
 test("a link links.js rejects is dropped, never half-built", () => {
-  const [i] = issuesOf({ known: true, verification: "failed", status: null, id: "not-digits" });
+  const [i] = issuesOf({ known: true, verification: "failed", state: null, id: "not-digits" });
   assert.equal(i.id, "verification"); assert.equal(i.fix, null);
 });
 
@@ -234,18 +309,34 @@ test("isPermError: #10, #200-299 and a #100 that names no field; field errors, t
 });
 
 // ---------- strings ----------
-test("every key the tab can draw exists in both languages (the dynamic ones: status, verification problems, fixes); no slang, no product name", async () => {
+test("every key the tab can draw exists in both languages (the dynamic ones: problems, verification states, fixes); no slang, no product name, no Copy IDs", async () => {
   const { STRINGS } = await import("../fb-helper/js/strings/bms.js");
   const keys = new Set([
-    ...Object.keys(STATUS).flatMap((k) => [`bms.st.${k}`, `bms.st.${k}.title`]),
-    ...VERIFY_BAD.map((s) => `bms.p.ver.${s}`), "bms.verTitle",
-    "bms.spend", "bms.noSpend", "bms.openSettings", "bms.count", "bms.accCount", "bms.search.aria", "bms.copyIds", "bms.copyIds.title", "bms.refresh",
+    "bms.st.active", "bms.verTitle", "bms.noSpend", "bms.openSettings", "bms.settings", "bms.accCount", "bms.disabledWord", "bms.activeWord", "bms.search.aria", "bms.refresh",
+    "bms.kv.accounts", "bms.kv.verification", "bms.show", "bms.showTitle", "bms.accsPartial",
+    ...VERIFY_KNOWN.map((s) => `bms.ver.${s}`),
   ]);
-  for (const p of PROBLEMS) { keys.add(p.tip); keys.add(p.fix.label); keys.add(p.fix.tip); }
+  for (const p of PROBLEMS) { keys.add(p.label); keys.add(p.tip); keys.add(p.help); keys.add(p.fix.label); keys.add(p.fix.tip); }
   for (const l of ["ru", "en"]) assert.deepEqual([...keys].filter((k) => !STRINGS[l][k]), [], `missing in ${l}`);
   assert.deepEqual(Object.keys(STRINGS.ru).sort(), Object.keys(STRINGS.en).sort());
-  assert.equal(STRINGS.ru["bms.count"].length, 3); assert.equal(STRINGS.en["bms.count"].length, 2);
-  assert.equal(STRINGS.ru["bms.accCount"].length, 3); assert.equal(STRINGS.en["bms.accCount"].length, 2);
+  for (const k of ["bms.accCount", "bms.disabledWord", "bms.activeWord"]) { assert.equal(STRINGS.ru[k].length, 3, k); assert.equal(STRINGS.en[k].length, 2, k); }
   for (const l of ["ru", "en"]) for (const v of Object.values(STRINGS[l]).flat()) assert.ok(!/fb helper|(^|[^\p{L}])(BM|БМ)(?![\p{L}])/iu.test(v), v);
   for (const l of ["ru", "en"]) for (const p of PROBLEMS) assert.ok(STRINGS[l][p.fix.label].length <= 32, `${l} ${p.fix.label}`);
+  for (const l of ["ru", "en"]) assert.ok(!Object.keys(STRINGS[l]).some((k) => /copyIds|idsCopied/.test(k)), "Copy IDs is gone");
+  // the words of design.md §8
+  assert.deepEqual([STRINGS.en["bms.st.noActive"], STRINGS.en["bms.st.none"], STRINGS.en["bms.st.unverified"], STRINGS.en["bms.fix.create"], STRINGS.en["bms.fix.verify"]], ["None active", "No ad accounts", "Unverified", "Create account", "Verify"]);
+  assert.deepEqual([STRINGS.ru["bms.st.noActive"], STRINGS.ru["bms.st.none"], STRINGS.ru["bms.st.unverified"], STRINGS.ru["bms.fix.create"], STRINGS.ru["bms.fix.verify"]], ["Нет активных", "Нет кабинетов", "Не верифицирован", "Создать кабинет", "Верификация"]);
+});
+
+test("the plural words: 3 кабинета · 1 заблокирован / 3 ad accounts · 1 disabled", async () => {
+  const { tn, setLang: set } = await import("../fb-helper/js/i18n.js");
+  await import("../fb-helper/js/strings/bms.js");
+  try {
+    await set("ru");
+    assert.deepEqual([1, 2, 3, 5, 11, 21].map((n) => `${n} ${tn(n, "bms.accCount")}`), ["1 кабинет", "2 кабинета", "3 кабинета", "5 кабинетов", "11 кабинетов", "21 кабинет"]);
+    assert.deepEqual([1, 2, 5, 21].map((n) => tn(n, "bms.disabledWord")), ["заблокирован", "заблокированы", "заблокированы", "заблокирован"]);
+    await set("en");
+    assert.deepEqual([1, 3].map((n) => `${n} ${tn(n, "bms.accCount")}`), ["1 ad account", "3 ad accounts"]);
+    assert.deepEqual([1, 3].map((n) => tn(n, "bms.disabledWord")), ["disabled", "disabled"]);
+  } finally { await set("en"); }
 });
