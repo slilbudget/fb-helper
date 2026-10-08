@@ -75,13 +75,13 @@ async function rowLabFlow() {
   await pop.setViewportSize({ width: 560, height: 900 }); await settle(pop);
   ok("…widen the window and it comes back (the line is measured again)", await q(pop, () => !document.querySelector('#lab .lrow[data-row="tight"] .lrow-it.ctx').hidden));
 
-  // ---- an open row shows its whole name ----
+  // ---- opening a row moves nothing in its head ----
   const nm = async () => q(pop, () => { const r = document.querySelector('#lab .lrow[data-row="longname"]'), n = r.querySelector(".lrow-name"); return { open: r.classList.contains("open"), cut: n.scrollWidth > n.clientWidth, ws: getComputedStyle(n).whiteSpace, h: Math.round(r.querySelector(".lrow-head").getBoundingClientRect().height),
     valueTop: Math.round(r.querySelector(".lrow-value").getBoundingClientRect().top - r.querySelector(".lrow-head").getBoundingClientRect().top) }; });
   const closed = await nm();
   await pop.click(`${R("longname")} .lrow-title`);
   const opened = await nm();
-  ok("collapsed: one line with an ellipsis; open: the name wraps (all of it is readable), the row grows, the amount stays on the first line", closed.cut && closed.ws === "nowrap" && opened.open && !opened.cut && opened.ws === "normal" && opened.h > closed.h && opened.valueTop < 20, JSON.stringify([closed, opened]));
+  ok("collapsed and open alike: one line with an ellipsis, the head keeps its height and the amount its place (opening moves nothing)", closed.cut && closed.ws === "nowrap" && opened.open && opened.cut && opened.ws === "nowrap" && opened.h === closed.h && opened.valueTop === closed.valueTop, JSON.stringify([closed, opened]));
   await pop.click(`${R("longname")} .lrow-title`);
 
   // ---- no motion anywhere (user decision): opening a row is instant, nothing has a transition or an animation ----
@@ -117,7 +117,7 @@ async function rowLabFlow() {
     return { isFix: a.classList.contains("lrow-fix"), style: cs.outlineStyle, width: cs.outlineWidth, offset: cs.outlineOffset, insideClip: r.top >= s.top - 4.5 && r.bottom <= s.bottom + 4.5 }; });
   ok("the fix link's ring is drawn INSIDE its padding (2 px, offset -2 px): line 2 clips what is more than 4 px outside the text", fr.isFix && fr.style === "solid" && fr.width === "2px" && fr.offset === "-2px" && fr.insideClip, JSON.stringify(fr));
   const sp = await q(pop, () => getComputedStyle(document.documentElement).scrollPaddingTop);
-  ok("scroll-padding-top keeps a focused row clear of the sticky tabs and a group header (64 px)", sp === "64px", sp);
+  ok("scroll-padding-top keeps a focused row clear of the fixed header and a group header (120 px)", sp === "120px", sp);
 
   // ---- logical properties: the row mirrors in a right-to-left document ----
   await pop.evaluate(() => { document.documentElement.dir = "rtl"; });

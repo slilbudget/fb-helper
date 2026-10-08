@@ -12,7 +12,7 @@
 :root {
   /* Dots: Facebook's own status colours (the words keep the AA text colours of popup.css). */
   --lrow-dot-ok: #42B72A; --lrow-dot-warn: #F7B928; --lrow-dot-bad: #FA383E;
-  --bar-h: 34px;                                      /* the tab strip, which stays under the top of the window when the brand row has scrolled away */
+  --bar-h: 82px;                                      /* the whole header (brand row 40 + tabs 34 + 8 under them): it never scrolls away (popup.css .bar) */
 }
 .i-tick { --icon: url(../images/icons/check.svg); }
 
@@ -58,12 +58,8 @@ span.lrow-title { cursor: default; }
 .lrow-title .i-chevron { --size-icon: 16px; color: var(--color-icon); flex: none; }
 .lrow.open .lrow-title .i-chevron { transform: rotate(180deg); color: var(--color-text-secondary); }
 .lrow-name { min-width: 0; font-size: var(--text-lg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* An open row shows its whole name: it wraps (anywhere: an account name is often one long unbroken token), the chevron and the picture stay on the
-   first line, and the amount stays level with it. */
-.lrow.open .lrow-title { align-items: flex-start; }
-.lrow.open .lrow-name { overflow: visible; white-space: normal; overflow-wrap: anywhere; padding-block: 2px; }
-.lrow.open .lrow-title .i-chevron { margin-block: 4px; }
-.lrow.open .lrow-value { align-self: start; padding-block: 2px; }
+/* Opening a row changes nothing in its head but the chevron (user decision 2026-10-08: nothing moves): the name keeps its one line (the
+   whole name is in the tooltip), the amount and line 2 stay where they were. */
 
 /* line 1, right: the amount (weight 500: the number is what the row is for) */
 .lrow-value {
@@ -174,19 +170,13 @@ a.lrow-todo-link.primary { font-weight: 500; }
 .lav.ok .i { visibility: hidden; }
 
 /* ---------- group header: [16 px picture] Name · 2 .................. subtotal ---------- */
-/* Sticky under the tab strip (the brand row above it scrolls away: popup.css .bar); opaque so rows scroll under it, above the rows' heads
-   (z-index 2). The name is in the primary colour, weight 500; the count and the subtotal stay secondary. While it is stuck a hairline of
-   shadow separates it from the rows passing under it (a scroll-state query: browsers without it just have no shadow). */
+/* Sticky under the header (popup.css .bar); opaque so rows scroll under it, above the rows' heads (z-index 2). No shadow, no effect: a flat
+   band. The name is in the primary colour, weight 500; the count and the subtotal stay secondary. */
 .lgroup {
   position: sticky; top: var(--bar-h); z-index: 3; display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-3); min-width: 0;
   padding: var(--spacing-2) var(--spacing-4); background: var(--color-background-surface);
-  font-size: var(--text-sm); color: var(--color-text-secondary); container-type: scroll-state;
+  font-size: var(--text-sm); color: var(--color-text-secondary);
 }
-.lgroup::after {
-  content: ""; position: absolute; inset-inline: 0; top: 100%; height: 6px; pointer-events: none; opacity: 0;
-  background: linear-gradient(rgba(28, 30, 33, .09), rgba(28, 30, 33, 0));
-}
-@container scroll-state(stuck: top) { .lgroup::after { opacity: 1; } }
 .lgroup-name { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .lgroup-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-primary); font-weight: 500; }
 .lgroup-count, .lgroup-value { flex: none; }

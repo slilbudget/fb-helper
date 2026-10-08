@@ -905,8 +905,8 @@ async function listLayoutFlow() {
   await pop.evaluate(() => window.scrollTo(0, 300));
   await settle(pop);
   const top = await pop.$$eval("#accountsList .lgroup", (g) => g.map((x) => Math.round(x.getBoundingClientRect().top)));
-  ok("scrolled, the header of the group in view sticks under the tab strip (34 px: the brand row has scrolled away)", top.some((x) => x === 34), JSON.stringify(top));
-  ok("…and the bar itself sticks 40 px above the window: only the tabs stay", await pop.evaluate(() => { const r = document.querySelector(".bar").getBoundingClientRect(), tabs = document.querySelector(".tabs").getBoundingClientRect(); return Math.round(r.top) === -40 && Math.round(tabs.top) === 0; }));
+  ok("scrolled, the header of the group in view sticks under the whole header (82 px)", top.some((x) => x === 82), JSON.stringify(top));
+  ok("…and the header itself never moves: brand row and tabs stay at the top", await pop.evaluate(() => { const r = document.querySelector(".bar").getBoundingClientRect(), tabs = document.querySelector(".tabs").getBoundingClientRect(); return scrollY > 0 && Math.round(r.top) === 0 && Math.round(tabs.top) === 40; }));
   await done(b);
 }
 

@@ -44,6 +44,11 @@ async function tabFlows() {
   ok("…and it loads the Ad accounts list by itself too (its spend and counts come from there)", await until(pop, () => document.querySelectorAll("#accountsList .lrow").length === 1) && reads(b) === 1, String(reads(b)));
   await pop.keyboard.press("ArrowRight"); await pop.keyboard.press("Enter"); s = await look(pop);
   ok("Businesses → Accounts: the list is already there, nothing more is read", s.tab === "accounts" && s.panel === "tab-accounts" && (await rowsAre(pop, ROW, 1)) && reads(b) === 1, JSON.stringify(s) + reads(b));
+  // within a tab the height only grows: a row that closes leaves the window as it was (nothing jumps); the next tab switch lets go of it
+  const r0 = await hb(); await pop.click(`${ROW} .lrow-title`); const r1 = await hb(); await pop.click(`${ROW} .lrow-title`); const r2 = await hb();
+  await pop.click('[data-tab="pages"]'); await pop.click('[data-tab="accounts"]'); const r3 = await hb();
+  ok("Accounts: a row opens → taller; it closes → the height stays; another tab and back → as tall as the content again", r1 > r0 && r2 === r1 && r3 === r0, JSON.stringify([r0, r1, r2, r3]));
+  await pop.focus('[data-tab="accounts"]');
   await pop.keyboard.press("ArrowRight"); await pop.keyboard.press("Enter"); s = await look(pop);
   ok("Accounts → Pages", s.tab === "pages" && s.panel === "tab-pages", JSON.stringify(s));
   await pop.keyboard.press("ArrowRight"); s = await look(pop);

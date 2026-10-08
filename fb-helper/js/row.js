@@ -178,6 +178,12 @@ globalThis.document?.fonts?.addEventListener?.("loadingdone", () => fitSubs([...
 //   open     start open (the caller keeps state.open); onToggle(open) is called after a click
 //   body     () => Node[]  the expanded body, called each time the row opens (never while it is closed)
 // }) → the row element. Without `body` the row is flat: no chevron, no button.
+// Closing a row keeps the height the page had: the popup window does not shrink and a list scrolled to its end does not jump (popup.js
+// showTab lets go of it on the next switch of tabs).
+function holdHeight() {
+  const b = document.body;
+  b.style.minHeight = `${Math.max(b.offsetHeight, parseFloat(b.style.minHeight) || 0)}px`;
+}
 export function row({ key, avatar, name, value, valueTitle, valueMuted = false, status, context = [], fix, more = 0, id, open = false, onToggle, body }) {
   const k = String(key), n = ++uid, label = String(name ?? "");
   const expandable = typeof body === "function";
@@ -239,7 +245,7 @@ export function row({ key, avatar, name, value, valueTitle, valueMuted = false, 
     if (next && !bodyEl) {
       bodyEl = el("div", { class: "lrow-body", id: bodyId }, (body() || []).filter(Boolean));
       card.append(bodyEl);
-    } else if (!next && bodyEl) { bodyEl.remove(); bodyEl = null; }
+    } else if (!next && bodyEl) { holdHeight(); bodyEl.remove(); bodyEl = null; }
   }
   function toggle() {
     const next = !card.classList.contains("open");

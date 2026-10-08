@@ -49,11 +49,12 @@ const GRAPH_URL = "https://graph.facebook.com/";
 setGraphUrl(GRAPH_URL);
 
 // ---------- wiring ----------
-// Visual only. Every tab has the same height (css: body min-height 600 px = Chrome's popup maximum), so neither a list arriving a moment later
-// nor a switch between tabs makes the window jump.
+// Visual only. The window is as tall as the tab on screen (no fixed height); within a tab it only grows: a closed row keeps the height it gave
+// (row.js holdHeight), so closing never shrinks the window or makes the list jump. A switch of tabs lets the height follow the new tab.
 let current = null;                                     // the tab on screen
 function showTab(name) {
   current = name;
+  document.body.style.minHeight = "";
   $$(".tab").forEach((tab) => {
     const on = tab.dataset.tab === name;
     tab.classList.toggle("active", on); tab.setAttribute("aria-selected", String(on)); tab.tabIndex = on ? 0 : -1;
