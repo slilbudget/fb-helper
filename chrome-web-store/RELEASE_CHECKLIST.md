@@ -5,7 +5,7 @@ The repo and GitHub stay **FB Helper** (`fb-helper/`). Only the store build is *
 ## 1. Build
 - [ ] `chrome-web-store/build.sh` → `chrome-web-store/release/unpacked/` (exact ZIP contents) and `chrome-web-store/release/ads-helper-2.4.1.zip`
 - [ ] `node --test test/*.test.mjs` passes
-- [ ] `DOCS_STRICT=1 node --test test/docs.test.mjs` passes (the docs say what the extension does: every CSP origin in the privacy policy, no "only to the Graph host" claim, the CSP quoted in the listing is the manifest's; in the default run these checks are only reported as TODO)
+- [ ] `DOCS_STRICT=1 node --test test/docs.test.mjs` passes (the docs say what the extension does: every CSP origin in the privacy policy, English and Russian, no "only to the Graph host" claim, the CSP quoted in the listing is the manifest's; while `pending()` is still in that file the default run reports these checks as TODO)
 - [ ] `EXT_DIR=chrome-web-store/release/unpacked node test/e2e.mjs` passes (runs the store build, not the repo)
 - [ ] `manifest.json` is at the ZIP root (`unzip -l chrome-web-store/release/ads-helper-2.4.1.zip | grep -x '.*manifest.json'`), no comments in it
 - [ ] Version is higher than any previously uploaded version (2.1.0 and 2.2.0 are already in the store; every upload needs a bump — this one is 2.4.1)
@@ -17,15 +17,15 @@ The repo and GitHub stay **FB Helper** (`fb-helper/`). Only the store build is *
 - [ ] With a Facebook tab open: token appears, type badge correct, **Check** works, **Copy token** works
 - [ ] Cookies tab: **Copy cookies + UA** copies two paragraphs (cookie string, the FB tab's UA) and refuses without a readable UA; **JSON** copies the cookies with attributes
 - [ ] **Token + cookies + UA** copies token, cookies, UA, then `Profile: <name> (<id>)` / `BM: <name> (<id>), …` (check the BM list against Business Settings on a profile that has BMs); with another account's token, or with no readable UA, it refuses
-- [ ] Ad accounts: first open after a page reload loads once; reopening the popup and switching tabs send nothing (DevTools → Network on the popup)
-- [ ] Network tab of the popup shows requests **only** to `graph.facebook.com`
+- [ ] Businesses, Accounts, Pages: the first open of each tab with nothing loaded loads once; reopening the popup and switching tabs send nothing (DevTools → Network on the popup); the refresh button works once a minute and says how long to wait otherwise
+- [ ] Network tab of the popup (DevTools of the popup) shows GET requests to Meta's Graph API, pictures from `fbcdn.net` / `fbsbx.com`, and — with a multi-currency total on screen and no fresh cached rate table — one file from `open.er-api.com` (fallback `cdn.jsdelivr.net`). No other host, no POST
 - [ ] No errors in `chrome://extensions` → Errors, no console errors in the popup
 - [ ] Language switch RU/EN persists
 
 ## 3. Store-readiness checks
 - [ ] Permissions are exactly `cookies`, `storage`, `scripting`; host `https://*.facebook.com/*`; no `<all_urls>`, no `tabs`, no background/service worker, no content scripts (none are used)
-- [ ] No `eval`, `new Function`, remote `<script>`, remote CSS/fonts (verified by grep on the build)
-- [ ] `description` ≤ 132 chars (121), `name` ≤ 75 chars (10)
+- [ ] No `eval`, `new Function`, remote `<script>`, remote CSS/fonts (verified by grep on the build); the two exchange-rate files are data (parsed as JSON), never code
+- [ ] `description` ≤ 132 chars (123), `name` ≤ 75 chars (10); the listing's summary is the manifest's text
 - [ ] `PRIVACY_POLICY.md` is pushed to `main` and the URL opens without login
 - [ ] Listing text has the "not affiliated with Meta" line; no "FB"/"Facebook" in the name or the icon
 - [ ] Screenshots and promo tiles do not show the Facebook logo or the name "FB Helper" (`chrome-web-store/art/out/*` are clean; `docs/cover.png` is not — do not reuse it)
@@ -55,7 +55,7 @@ The repo and GitHub stay **FB Helper** (`fb-helper/`). Only the store build is *
 |---|---|---|---|
 | Store icon | 128×128 PNG | yes | **Done:** `chrome-web-store/icons/icon_128.png` — 96×96 artwork inside 16 px transparent padding per side |
 | Extension icons in the package | 16, 32, 48, 128 PNG | yes | **Done** (built into the ZIP from `chrome-web-store/icons/`) |
-| Screenshots | 1280×800, JPEG or 24-bit PNG without alpha (as the Dashboard form states), 1 to 5 | at least 1 | **Done (2.4.1 UI):** English listing `chrome-web-store/art/out/screenshots/en/01-accounts … 04-cookies.png`, Russian listing `…/screenshots/ru/…`, plus the overview `chrome-web-store/art/out/store-screenshot-1280x800.png` as an optional 5th (`cover.png` is 2100×1182 and is rejected by the form) |
+| Screenshots | 1280×800, JPEG or 24-bit PNG without alpha (as the Dashboard form states), 1 to 5 | at least 1 | **Four sets exist** (regenerated 2026-10-08 against the current UI, commit 426b6e2): English `chrome-web-store/art/out/screenshots/en/01-accounts … 04-cookies.png` (accounts, ads, token, cookies), Russian `…/screenshots/ru/…`, plus the overview `chrome-web-store/art/out/store-screenshot-1280x800.png` as an optional 5th (`cover.png` is 2100×1182 and is rejected by the form). **To do for 2.5.0:** there is no Businesses and no Pages screenshot yet: `shots.mjs` has no capture for them and its mock answers `me/accounts` and the business edges with empty lists |
 | Small promo tile | 440×280, JPEG or 24-bit PNG without alpha | yes | **Done:** `chrome-web-store/art/out/promo-tile-440x280.png` |
 | Marquee promo tile | 1400×560 | optional | Not made; needed only to be featured |
 | Global promo video | YouTube URL | optional in the Dashboard form | Skip |
@@ -68,14 +68,30 @@ Rules from the Chrome docs: avoid text in promo images, fill the whole area, mak
 3. **Prominent disclosure.** The Chrome FAQ says a disclosure of sensitive data handling must be shown in the product before use and not only in the policy. The popup already shows the token and cookies openly, but has no first-run notice. Adding a one-line notice under the tabs is the cheap fix if a reviewer asks.
 4. **Brand.** The store build carries no "FB"/"Facebook" in the name or the icon. The homepage/privacy URL still points at the repo called `fb-helper` with the FB Helper name; a reviewer who clicks through sees it. Renaming the repo or hosting the policy on a neutral URL removes the mismatch.
 5. **Meta's rules.** Meta's developer brand rules forbid "FB", "Facebook" and "for Facebook" in names. The description uses "Facebook" only to say what the extension works with, which the rules allow.
+6. **More network destinations than "one API".** Besides Meta's Graph API the extension fetches pictures from Meta's image CDN and one public exchange-rate file a day. All three are in the manifest CSP, in the privacy policy (English and Russian) and in the listing, and the rate files are data, never code; a reviewer who expects a single host will still see them in the Network tab.
+7. **"antidetect" in the popup.** The tooltip of the JSON cookie button (`copyJson.title` in `fb-helper/js/i18n.js`, both languages) says the JSON is for import into an antidetect browser. The listing and the policy do not use the word; the popup does (a code change to drop it, not done).
 
-## 9. Release 2.5.0 (Businesses and Pages tabs, next-step links)
-- [ ] Version 2.5.0 set by the release step (`manifest.json`, the ZIP names); not before
-- [ ] Live click-through of every URL in `fb-helper/js/links.js` in a logged-in browser: each one lands on the intended page. Only the Ads Manager link is verified; the rest are pending. Mark each `VERIFIED` in that file after it passes
-- [ ] Live check of the Businesses (`me/businesses`) and Pages (`me/accounts`, `owned_pages`, `client_pages`) reads with a real token of each type, EAAB and EAAG: the list loads, optional fields a token cannot read drop out without losing the list, and no Page access token appears in the stored rows (`chrome.storage.session`)
-- [ ] Live check of the business edges (`owned_ad_accounts`, `client_ad_accounts`, `owned_pages`, `client_pages`) per business: merged without duplicates, accounts and Pages not assigned to the profile marked
-- [ ] Live check of the picture URLs: pictures load only from fbcdn.net / fbsbx.com, with no referrer, only for rows on screen. The manifest CSP (`img-src`) names exactly those two hosts (test/manifest.test.mjs); if a real picture comes from another Meta host it does not show, then add the host to `imageUrl` (links.js) and to `img-src` together
-- [ ] Tab order is Token · Cookies · Businesses · Ad accounts · Pages, and the Businesses label is "BM" nowhere in the UI (EN "Businesses", RU "Бизнесы")
-- [ ] Privacy policy URL in the store form points to `PRIVACY_POLICY.md` on `main` with the 2026-10-08 date (push to `main` first)
-- [ ] Store listing text (`STORE_LISTING.md`, 2.5.0) pasted into the Dashboard; the manifest `description` (summary, max 132 chars) is updated only in the manifest, so check it still matches the listing
-- [ ] New screenshots of the Businesses and Pages tabs, EN and RU, made with `chrome-web-store/art/shots.mjs` from fictional data (no Facebook logo, no "FB Helper" name, no real pictures)
+## 9. Release 2.5.0 (Businesses, Accounts and Pages as list tabs, next-step links, daily exchange rates)
+The docs pass is done: README, privacy policy, SECURITY, the listing and this checklist say what 2.5.0 does. What is left is the release step and the things only a live account can show.
+
+Release step
+- [ ] Bump 2.4.1 → 2.5.0 in one commit: `fb-helper/manifest.json`, README (heading and the two zip names), the heading of `chrome-web-store/STORE_LISTING.md`, the zip names in this file, `chrome-web-store/art/{cover,cover-1280x800,social}.html`, the placeholder of `.github/ISSUE_TEMPLATE/bug.yml`. `test/docs.test.mjs` fails until every place agrees. The manifest `description` already has the 2.5.0 text (123 chars) and the listing's summary is the same string
+- [ ] `node --test test/*.test.mjs` passes, and `DOCS_STRICT=1 node --test test/*.test.mjs` passes (the docs name every CSP origin in English and Russian, the listing quotes the manifest's CSP, no sentence says the extension talks "only" to the Graph host)
+- [ ] Take `pending()` out of `test/docs.test.mjs` (and the "known to fail" wording of the CI step) so these three checks always count
+- [ ] `node test/e2e.mjs` and `EXT_DIR=chrome-web-store/release/unpacked node test/e2e.mjs` pass
+- [ ] `chrome-web-store/build.sh`, then sections 1–3 above on the unpacked store build
+
+Live checks (a real account, nothing here is covered by the mocks)
+- [ ] Click through every URL in `fb-helper/js/links.js` in a logged-in browser: each one lands on the intended page. Only the Ads Manager link is verified; every other one is unverified. Mark each `VERIFIED` in that file after it passes, and fix or drop the ones that do not land
+- [ ] Businesses (`me/businesses` with `verification_status` and `profile_picture_uri`), Accounts (`me/adaccounts` and the business edges) and Pages (`me/accounts`, `owned_pages`, `client_pages`) with a real token of each type that can read them, EAAB and EAAG: each list loads, an optional field a token cannot read drops out without losing the list, and no Page access token appears in `chrome.storage.session` (`pages`)
+- [ ] Business edges (`owned_ad_accounts`, `client_ad_accounts`, `owned_pages`, `client_pages`) per business: rows merged without duplicates, accounts and Pages not assigned to the profile marked "No access", a business whose edge fails gets the muted note and no verdict while the others are unaffected
+- [ ] Spend per business on the Businesses tab equals the sum of its accounts on the Accounts tab for each period; counts and "Show ad accounts" list the same accounts
+- [ ] Pictures: business logos and Page pictures load from `fbcdn.net` / `fbsbx.com` only, with no referrer, and only for rows near the viewport; the CSP `img-src` names exactly those two hosts (test/manifest.test.mjs). If a real picture comes from another Meta host it shows the placeholder: then add the host to `imageUrl` (`links.js`) and to `img-src` together, and to the policy
+- [ ] Exchange rates with a profile that has two or more currencies: the first view of the total makes one request to `open.er-api.com`; a second view the same day makes none (`fx` in `chrome.storage.local`); with that host blocked the fallback `cdn.jsdelivr.net` answers; with both blocked the total stays a per-currency sum and nothing is retried for 20 minutes; the "Rates By Exchange Rate API" link shows when the first source was used; the request carries no cookies and no referrer
+- [ ] Limits: a second refresh within a minute is refused with the wait time, the pill shows a pause after a throttle answer, and the Network tab shows no request while it lasts
+- [ ] Tab order is Token · Cookies · Businesses · Accounts · Pages, and "BM" appears nowhere in the UI (EN "Businesses", RU "Бизнесы"; the copied block keeps its `BM:` line)
+
+Store
+- [ ] Regenerate the store art with the build of this version: `chrome-web-store/build.sh && node chrome-web-store/art/shots.mjs` (fictional data, no Facebook logo, no "FB Helper" name, no real pictures). Add the Businesses and Pages captures to `shots.mjs` first (see section 7); Russian and English
+- [ ] Privacy policy URL in the form points to `PRIVACY_POLICY.md` on `main` (push to `main` first); the page carries the date 2026-10-08
+- [ ] Listing text (`STORE_LISTING.md`, English and Russian), single purpose, the four justifications, the CSP quote in "Remote code" and the data-usage answers pasted into the Dashboard; the summary equals the manifest's `description`
