@@ -1,1 +1,33 @@
 /* pages: styles of js/pages.js. Shared look (rows, pills, kv, buttons) comes from popup.css; only what is specific goes here. */
+
+/* One page = one row between the same inset hairlines as the account rows. Not clickable, so no hover fill.
+   Grid: name | ID, then category · audience · owner | links, then the pills (and the reason) across the full width. */
+.pg {
+  position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center;
+  gap: var(--spacing-1) var(--spacing-3); padding: var(--spacing-3) var(--spacing-4);
+}
+.pg:not(:last-child)::after {
+  content: ""; position: absolute; left: var(--spacing-4); right: var(--spacing-4); bottom: 0; height: 1px;
+  background: var(--color-border); pointer-events: none;
+}
+.pg-name { font-size: var(--text-lg); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-meta { min-width: 0; display: flex; flex-wrap: wrap; gap: 2px var(--spacing-3); color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
+.pg-links { display: flex; align-items: center; gap: var(--spacing-3); justify-self: end; }
+/* Quiet text links: grey, darker on hover / keyboard focus, like every other control in the popup. */
+.pg-link {
+  display: inline-flex; align-items: center; gap: 3px; color: var(--color-text-secondary); text-decoration: none;
+  transition: color .15s ease;
+}
+.pg-link:hover, .pg-link:focus-visible { color: var(--color-text-primary); }
+.pg-link .i { --size-icon: 12px; }
+.pg-pills { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: var(--spacing-1-5); margin-top: 2px; }
+.pg-why { grid-column: 1 / -1; font-size: var(--text-sm); }
+/* Lines around the rows: what to do about a filtered problem, "this token can't read pages", the BM reminder. */
+.pg-note { padding: var(--spacing-3) var(--spacing-4) 0; }
+.pg-foot { padding: var(--spacing-3) var(--spacing-4) var(--spacing-4); color: var(--color-text-secondary); font-size: var(--text-sm); text-align: center; }
+
+@media (max-width: 460px) {
+  #copyPageIds span { display: none; }
+  .pg { grid-template-columns: minmax(0, 1fr); }
+  .pg-links { justify-self: start; }
+}

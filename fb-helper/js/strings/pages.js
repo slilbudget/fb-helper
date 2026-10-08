@@ -1,0 +1,67 @@
+// Strings of the Pages tab. Plain data plus one addStrings call, so the key-coverage test (test/pure.test.mjs) can load it in Node.
+// Keys are "pages.<what>". The generic ones ("search", "refresh", "copied") come from i18n.js and are not repeated here.
+import { addStrings } from "../i18n.js";
+
+export const STRINGS = {
+  ru: {
+    "pages.searchAria": "Поиск страниц",
+    "pages.copyIds": "Копировать ID", "pages.copyIdsTitle": "ID страниц из списка, по одному в строке",
+    "pages.noIds": "Нет страниц для копирования", "pages.idsCopied": "Скопировано ID: {n}", "pages.partial": " (список неполный)",
+    "pages.wait": "Обновить можно через {n} с", "pages.loaded": "Страниц: {n}", "pages.truncated": " (не все — первые {n})",
+    "pages.found": "найдено {n} из {all}", "pages.count": ["страница", "страницы", "страниц"], "pages.notAll": " (не все)",
+    "pages.updated": "обновлено {t}",
+    "pages.empty": "Страницы не загружены — нажми кнопку обновления сверху", "pages.loading": "Загрузка страниц…",
+    "pages.none": "У этого профиля страниц не нашлось", "pages.noMatch": "Ничего не найдено", "pages.noName": "Без имени",
+    "pages.bmHint": "Страницы, к которым есть доступ только через BM, здесь могут не показываться",
+    "pages.perm": "Этим токеном страницы не прочитать — открой Business Manager и обнови токен",
+
+    "pages.copyId": "Копировать ID", "pages.idCopied": "ID скопирован",
+    "pages.linkPage": "Страница", "pages.linkPageTitle": "Открыть страницу на Facebook",
+    "pages.linkSuite": "Suite", "pages.linkSuiteTitle": "Открыть в Meta Business Suite",
+    "pages.linkBm": "BM", "pages.linkBmTitle": "Страницы этого BM в настройках бизнеса",
+    "pages.followers": ["подписчик", "подписчика", "подписчиков"], "pages.likes": ["лайк", "лайка", "лайков"],
+    "pages.inBm": "Страница в BM {n} · {id}",
+
+    "pages.p.noIg": "Нет Instagram", "pages.p.unpublished": "Не опубликована", "pages.p.noAdv": "Нельзя рекламировать", "pages.p.noRights": "Нет прав на рекламу",
+    "pages.igReal": "IG @{u}", "pages.igRealNoName": "IG", "pages.igRealTitle": "К странице подключён аккаунт Instagram",
+    "pages.igPbia": "IG: страница", "pages.igPbiaTitle": "«Use Facebook Page» выбран — Instagram-плейсменты пойдут от имени страницы",
+    "pages.igNoneTitle": "У страницы нет аккаунта Instagram. Один раз выбери «Use Facebook Page» в рекламе этой страницы (Ads Manager → объявление → Identity → Instagram account), иначе автозапуски в плейсменты Instagram упадут.",
+    "pages.igFix": "Как исправить: в рекламе каждой из этих страниц один раз выбери «Use Facebook Page» (Ads Manager → объявление → Identity → Instagram account), иначе автозапуски в плейсменты Instagram упадут.",
+    "pages.igUnknown": "IG —", "pages.igUnknownTitle": "Graph не отдал Instagram-поля для этого токена — про Instagram ничего не известно",
+    "pages.unpublishedTitle": "Страница не опубликована (is_published = false)",
+    "pages.noAdvTitle": "Graph: страницу нельзя продвигать (promotion_eligible = false)",
+    "pages.noRightsTitle": "В твоём доступе к странице нет задачи ADVERTISE",
+    "pages.verified": "Подтверждена", "pages.verifiedTitle": "Верификация: {s}",
+  },
+  en: {
+    "pages.searchAria": "Search pages",
+    "pages.copyIds": "Copy IDs", "pages.copyIdsTitle": "IDs of the pages in the list, one per line",
+    "pages.noIds": "No pages to copy", "pages.idsCopied": "Copied IDs: {n}", "pages.partial": " (list incomplete)",
+    "pages.wait": "Refresh available in {n} s", "pages.loaded": "Pages: {n}", "pages.truncated": " (not all — first {n})",
+    "pages.found": "{n} of {all} found", "pages.count": ["page", "pages"], "pages.notAll": " (not all)",
+    "pages.updated": "updated {t}",
+    "pages.empty": "Pages not loaded — press the refresh button above", "pages.loading": "Loading pages…",
+    "pages.none": "No pages found for this profile", "pages.noMatch": "Nothing found", "pages.noName": "Unnamed",
+    "pages.bmHint": "Pages you manage only through a BM may not be listed",
+    "pages.perm": "This token can't read pages — open Business Manager and refresh the token",
+
+    "pages.copyId": "Copy ID", "pages.idCopied": "ID copied",
+    "pages.linkPage": "Page", "pages.linkPageTitle": "Open the page on Facebook",
+    "pages.linkSuite": "Suite", "pages.linkSuiteTitle": "Open in Meta Business Suite",
+    "pages.linkBm": "BM", "pages.linkBmTitle": "Pages of this BM in Business settings",
+    "pages.followers": ["follower", "followers"], "pages.likes": ["like", "likes"],
+    "pages.inBm": "Page in business portfolio {n} · {id}",
+
+    "pages.p.noIg": "No Instagram", "pages.p.unpublished": "Unpublished", "pages.p.noAdv": "Can't advertise", "pages.p.noRights": "No ad rights",
+    "pages.igReal": "IG @{u}", "pages.igRealNoName": "IG", "pages.igRealTitle": "An Instagram account is connected to this page",
+    "pages.igPbia": "IG: page", "pages.igPbiaTitle": "«Use Facebook Page» is set — Instagram placements will run as the page",
+    "pages.igNoneTitle": "This page has no Instagram account. Choose «Use Facebook Page» once in an ad of this page (Ads Manager → ad → Identity → Instagram account) — otherwise automated launches to Instagram placements fail.",
+    "pages.igFix": "To fix: in an ad of each of these pages choose «Use Facebook Page» once (Ads Manager → ad → Identity → Instagram account) — otherwise automated launches to Instagram placements fail.",
+    "pages.igUnknown": "IG —", "pages.igUnknownTitle": "Graph did not return the Instagram fields for this token — nothing is known about Instagram",
+    "pages.unpublishedTitle": "The page is unpublished (is_published = false)",
+    "pages.noAdvTitle": "Graph says the page cannot be promoted (promotion_eligible = false)",
+    "pages.noRightsTitle": "Your access to this page has no ADVERTISE task",
+    "pages.verified": "Verified", "pages.verifiedTitle": "Verification: {s}",
+  },
+};
+addStrings(STRINGS);
