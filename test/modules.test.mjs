@@ -6,32 +6,13 @@ import assert from "node:assert/strict";
 import { on, emit } from "../fb-helper/js/bus.js";
 import { registerTab, tabInfo, tabNames, registerRender, registerInit, registerStart, runInit, runStart, runRenders } from "../fb-helper/js/registry.js";
 import { addStrings, setLang, t, tn, has } from "../fb-helper/js/i18n.js";
-import { setGraphUrl } from "../fb-helper/js/config.js";
 import { state, Stale, loadState, onLoad, registerCache, cacheKeys, dropCache, checkOwner, claimSlot, slotLeft, newGeneration, markDead, saveSession } from "../fb-helper/js/state.js";
 import { graph, readPaged, optionalFieldIn, pauseNote, budgetLeft } from "../fb-helper/js/graph.js";
 import { toastMs } from "../fb-helper/js/dom.js";
+import { setup, fakeChrome, fakeGraph, prime } from "./fakes.mjs";
 
 // ---------- fakes ----------
-function fakeChrome({ session = {}, cookies = {} } = {}) {
-  const store = structuredClone(session), calls = { get: [], set: [], remove: [], cookie: 0 };
-  const keysOf = (k) => (typeof k === "string" ? [k] : Array.isArray(k) ? k : Object.keys(k || store));
-  globalThis.chrome = {
-    storage: {
-      session: {
-        get: async (keys) => { calls.get.push(keys); return Object.fromEntries(keysOf(keys).filter((k) => k in store).map((k) => [k, structuredClone(store[k])])); },
-        set: async (patch) => { calls.set.push(patch); Object.assign(store, structuredClone(patch)); },
-        remove: async (keys) => { calls.remove.push(keys); for (const k of keysOf(keys)) delete store[k]; },
-      },
-      local: { get: async () => ({}), set: async () => {} },
-    },
-    cookies: { get: async ({ name }) => { calls.cookie++; return name in cookies ? { value: cookies[name] } : null; } },
-  };
-  return { store, calls, cookies };
-}
-// Web Locks stand-in: runs the callback (one at a time is enough for these tests).
-Object.defineProperty(globalThis, "navigator", { value: { locks: { request: (_name, fn) => fn() } }, configurable: true, writable: true });
-setGraphUrl("https://graph.test/");
-await setLang("en");                                      // messages asserted below are English
+await setup();                                           // Web Locks, the fake Graph origin, English messages (test/fakes.mjs)
 
 // ---------- bus ----------
 test("bus: handlers run in subscription order, can unsubscribe, and one that throws does not stop the others", () => {
@@ -189,19 +170,7 @@ test("newGeneration and markDead announce themselves on the bus instead of calli
 });
 
 // ---------- graph.readPaged ----------
-// A fake Graph: handler(url) → { status, body }; every url is recorded.
-function fakeGraph(handler) {
-  const urls = [];
-  urls.opts = [];                                          // the second argument of every fetch, same order
-  globalThis.fetch = async (url, opts) => {
-    const u = new URL(url); urls.push(u); urls.opts.push(opts);
-    const out = handler(u, urls.length) || {};
-    return { ok: (out.status || 200) < 400, status: out.status || 200, headers: new Headers(out.headers || {}), json: async () => out.body };
-  };
-  return urls;
-}
 const fieldErr = (name) => ({ status: 400, body: { error: { code: 100, message: `(#100) Tried accessing nonexisting field (${name}) on node type (Page)` } } });
-const prime = () => { fakeChrome(); Object.assign(state, { token: "EAAB" + "x".repeat(70), dead: [], cooldownUntil: 0, budget: [], gen: state.gen, skip: new Set() }); };
 // key = the field name Graph complains about; value = what goes into `fields`
 const OPT = { picture: "picture{url}", about: "about", fan_count: "fan_count" };
 

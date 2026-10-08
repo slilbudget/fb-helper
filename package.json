@@ -1,0 +1,20 @@
+{
+  "name": "fb-helper-dev",
+  "private": true,
+  "type": "module",
+  "description": "Development tooling of FB Helper / Ads Helper: the tests and the CI. Not shipped: the extension (fb-helper/) has no build step and no dependencies.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "e2e": "node test/e2e.mjs",
+    "e2e:store": "EXT_DIR=chrome-web-store/release/unpacked node test/e2e.mjs",
+    "build:store": "bash chrome-web-store/build.sh",
+    "docs:strict": "DOCS_STRICT=1 node --test test/docs.test.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "1.64.0"
+  }
+}

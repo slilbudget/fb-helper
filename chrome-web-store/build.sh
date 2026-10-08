@@ -3,17 +3,21 @@
 # package is "Ads Helper" with the neutral logo (Meta's brand rules and the store's impersonation policy forbid
 # "FB"/"Facebook" in the name and the Facebook "f" in the icon).
 # Output (git-ignored): chrome-web-store/release/unpacked/ (the exact ZIP contents) and
-# chrome-web-store/release/ads-helper-<version>.zip
+# chrome-web-store/release/ads-helper-<version>.zip. RELEASE_DIR=<folder> builds somewhere else (the tests build into a temporary folder).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 SRC=fb-helper
 NAME="Ads Helper"
 VERSION=$(python3 -c 'import json;print(json.load(open("fb-helper/manifest.json"))["version"])')
-OUT=chrome-web-store/release/unpacked
-ZIP="$PWD/chrome-web-store/release/ads-helper-$VERSION.zip"
+RELEASE="${RELEASE_DIR:-chrome-web-store/release}"
+case "$RELEASE" in /*) ;; *) RELEASE="$PWD/$RELEASE" ;; esac
+OUT="$RELEASE/unpacked"
+ZIP="$RELEASE/ads-helper-$VERSION.zip"
 
-rm -rf chrome-web-store/release
+# Only an earlier build (or nothing) is replaced: RELEASE_DIR pointing at some other folder must not delete it.
+if [ -e "$RELEASE" ] && [ ! -d "$RELEASE/unpacked" ] && [ -n "$(ls -A "$RELEASE")" ]; then echo "refusing to replace $RELEASE: it is not an earlier build" >&2; exit 1; fi
+rm -rf "$RELEASE"
 mkdir -p "$OUT"
 cp -R "$SRC"/manifest.json "$SRC"/popup.html "$SRC"/css "$SRC"/js "$SRC"/fonts "$SRC"/images LICENSE "$OUT/"
 find "$OUT" -name '.DS_Store' -delete

@@ -2,30 +2,13 @@
 // chrome.storage and a fake fetch: `node --test test/*.test.mjs`
 import test from "node:test";
 import assert from "node:assert/strict";
-import { setLang } from "../fb-helper/js/i18n.js";
-import { setGraphUrl } from "../fb-helper/js/config.js";
 import { state, Stale } from "../fb-helper/js/state.js";
 import { readPaged } from "../fb-helper/js/graph.js";
 import { businessList, readBusinessEdges, MAX_BUSINESSES } from "../fb-helper/js/biz-edges.js";
+import { setup, fakeGraph, prime } from "./fakes.mjs";
 
-Object.defineProperty(globalThis, "navigator", { value: { locks: { request: (_n, fn) => fn() } }, configurable: true, writable: true });
-setGraphUrl("https://graph.test/");
-await setLang("en");
+await setup();
 
-const prime = () => {
-  globalThis.chrome = { storage: { session: { get: async () => ({}), set: async () => {}, remove: async () => {} }, local: { get: async () => ({}), set: async () => {} } } };
-  Object.assign(state, { token: "EAAB" + "x".repeat(70), dead: [], cooldownUntil: 0, budget: [], gen: state.gen, skip: new Set() });
-};
-// A fake Graph: handler(url) → { status, body }; every url is recorded.
-function fakeGraph(handler) {
-  const urls = [];
-  globalThis.fetch = async (url) => {
-    const u = new URL(url); urls.push(u);
-    const out = handler(u, urls.length) || {};
-    return { ok: (out.status || 200) < 400, status: out.status || 200, headers: new Headers(), json: async () => out.body };
-  };
-  return urls;
-}
 const isBms = (u) => u.pathname.endsWith("/me/businesses");
 const bms = (n, from = 1) => Array.from({ length: n }, (_, i) => ({ id: String(1000 + from + i), name: `Biz ${from + i}` }));
 const edgeOf = (u) => (/\/(\d+)\/(\w+)$/.exec(u.pathname) || []).slice(1);
