@@ -1,0 +1,170 @@
+/* rows: the one list row of the Businesses, Ad accounts and Pages tabs (js/row.js, design.md §1 + §8). Tokens come from popup.css.
+   Class prefix: .lrow = a row, .lgroup = a group header, .lav = a picture. (The older .row / .acc rules in popup.css belong to the tabs
+   that have not moved over yet.)
+
+   collapsed row = a 2 x 2 grid in .lrow-head:
+     [ name button ............ ]  [ value ]        line 1
+     [ line 2: status, context, fix ]  [ ID  ⧉ ]    line 2 (12 px)
+   The name <button> is the only button of the row; its ::after covers the head (stretched-button pattern), so the whole row clicks
+   like one control. Whatever must be clickable on its own (fix link, copy button) or must show a tooltip / be selectable (status,
+   value, "+N") is positioned above that cover (z-index 1). */
+
+:root {
+  /* Dots: Facebook's own status colours (the words keep the AA text colours of popup.css). */
+  --lrow-dot-ok: #42B72A; --lrow-dot-warn: #F7B928; --lrow-dot-bad: #FA383E;
+  --lrow-right: 140px;                                /* the right column is never narrower: line 1 values and line 2 IDs line up across rows */
+}
+.i-tick { --icon: url(../images/icons/check.svg); }
+
+/* Screen-reader-only text (the status word of a healthy row, the live region of "ID copied"). */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+
+/* ---------- the row ---------- */
+.lrow { position: relative; --lrow-indent: 22px; }            /* line 2 and the body start under the name: chevron 16 + gap 6 */
+.lrow.has-av { --lrow-indent: 52px; }                         /* + the 24 px picture and its gap */
+.lrow.flat { --lrow-indent: 0px; }
+.lrow.flat.has-av { --lrow-indent: 30px; }
+/* Dividers: 1px, inset 16px, never edge-to-edge; none above a group header. */
+.lrow:not(:last-child)::after {
+  content: ""; position: absolute; left: var(--spacing-4); right: var(--spacing-4); bottom: 0; height: 1px;
+  background: var(--color-border); pointer-events: none; z-index: 1;
+}
+.lrow:has(+ .lgroup)::after { display: none; }
+
+/* Hover = full-width, square off-white fill between the dividers (the shared one-step hover). The head reaches 1px up and above the
+   dividers so it covers the line above and below; text stays 16px from the edge. */
+.lrow-head {
+  position: relative; z-index: 2; cursor: pointer;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(var(--lrow-right), auto); column-gap: var(--spacing-3); row-gap: 2px; align-items: center;
+  margin: -1px 0 0; padding: calc(var(--spacing-3) + 1px) var(--spacing-4) var(--spacing-3);
+}
+.lrow.flat .lrow-head { cursor: default; }
+.lrow-head:hover { background: var(--color-hover-row); }
+/* Keyboard focus: a ring around the whole row (the name button itself has none). */
+.lrow-head:has(.lrow-title:focus-visible) { background: var(--color-hover-row); outline: 2px solid var(--color-accent); outline-offset: -2px; border-radius: var(--radius-inner); }
+
+/* line 1, left: the one real button */
+.lrow-title {
+  grid-area: 1 / 1; display: flex; align-items: center; gap: 6px; min-width: 0;
+  appearance: none; border: 0; background: none; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer;
+}
+span.lrow-title { cursor: default; }
+.lrow-title::after { content: ""; position: absolute; inset: 0; }   /* the stretched hit area: the nearest positioned ancestor is .lrow-head */
+.lrow-title .i-chevron { --size-icon: 16px; color: var(--color-text-disabled); flex: none; }
+.lrow.open .lrow-title .i-chevron { transform: rotate(180deg); color: var(--color-text-secondary); }
+.lrow-name { min-width: 0; font-size: var(--text-lg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* line 1, right: the amount */
+.lrow-value {
+  grid-area: 1 / 2; justify-self: end; position: relative; z-index: 1;
+  font-size: var(--text-lg); white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.lrow-value.muted { font-size: var(--text-md); color: var(--color-text-secondary); }
+
+/* line 2, left: never wraps. Only the status text and the context shrink (ellipsis); the fix link and "+N" keep their width. */
+.lrow-sub {
+  grid-area: 2 / 1; display: flex; align-items: center; min-width: 0; overflow: clip; overflow-clip-margin: 4px; padding-left: var(--lrow-indent);
+  font-size: var(--text-sm); line-height: 1.4; color: var(--color-text-secondary);
+}
+.lrow-it { display: flex; align-items: center; min-width: 0; flex: 0 1 auto; }
+.lrow-it:not(:last-child)::after { content: "·"; flex: none; margin: 0 6px; }
+.lrow-it.fixed { flex: none; }
+.lrow-ctx { min-width: 0; position: relative; z-index: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lrow-status { display: flex; align-items: center; gap: 5px; min-width: 0; position: relative; z-index: 1; }
+.lrow-status-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lrow-dot { flex: none; width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--color-text-disabled); }
+.lrow-status.ok .lrow-dot { background: var(--lrow-dot-ok); }
+.lrow-status.warn { color: var(--color-warning); }
+.lrow-status.warn .lrow-dot { background: var(--lrow-dot-warn); }
+.lrow-status.bad { color: var(--color-error); }
+.lrow-status.bad .lrow-dot { background: var(--lrow-dot-bad); }
+/* The fix: an underlined link in the problem's tone (actions.css .act-inline, which loads after this file: hence the `a.` for specificity). Its hit area is 24 px high through padding that the
+   negative margin takes back, so line 2 stays 12 px text. Above the row's cover. */
+a.lrow-fix { position: relative; z-index: 1; flex: none; max-width: none; padding: 4px; margin: -4px; --act-fg: var(--color-accent); }
+.lrow-fix.bad { --act-fg: var(--color-error); }
+.lrow-fix.warn { --act-fg: var(--color-warning); }
+.lrow-more { position: relative; z-index: 1; margin-left: 4px; color: var(--color-text-secondary); }
+
+/* line 2, right: the full ID, muted, with the copy icon. The whole button is the 24 px hit area (padding / negative margin). */
+.lrow-idc { grid-area: 2 / 2; justify-self: end; min-width: 0; display: flex; justify-content: flex-end; font-size: var(--text-sm); line-height: 1.4; }
+.lrow-id {
+  appearance: none; border: 0; background: none; cursor: pointer; position: relative; z-index: 1;
+  display: inline-flex; align-items: center; gap: 4px; padding: 5px 4px; margin: -5px -4px;
+  font: var(--text-sm) var(--font); line-height: 1.4; color: var(--color-text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.lrow-id .i { --size-icon: 14px; }
+.lrow-id:hover, .lrow-id:focus-visible { color: var(--color-text-primary); }
+.lrow-id:focus-visible { outline: 1.5px solid currentColor; outline-offset: -1px; border-radius: 3px; }
+
+/* ---------- the expanded body: flat, indented under the name ---------- */
+.lrow-body {
+  display: grid; gap: var(--spacing-3); min-width: 0;
+  padding: var(--spacing-1) var(--spacing-4) var(--spacing-4) calc(var(--spacing-4) + var(--lrow-indent));
+}
+.lrow-idline { display: flex; align-items: center; gap: var(--spacing-2); color: var(--color-text-secondary); }
+.lrow-idline .lrow-id { margin: 0; padding: 4px; font-size: var(--text-md); }
+.lrow-idlabel { font-size: var(--text-sm); }
+
+/* key–value pairs: one column, two from 520 px; a pair marked wide takes a row of its own */
+.lrow-kv { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--spacing-2) var(--spacing-4); }
+.lrow-pair { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 0 var(--spacing-3); min-width: 0; }
+.lrow-pair dt { color: var(--color-text-secondary); }
+.lrow-pair dd { margin: 0; min-width: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+@media (min-width: 520px) {
+  .lrow-kv { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lrow-pair.wide { grid-column: 1 / -1; }
+}
+
+/* "What to do": plain text, plain links */
+.lrow-todo { display: grid; gap: 2px; min-width: 0; }
+.lrow-todo-title { font-size: var(--text-sm); color: var(--color-text-secondary); }
+.lrow-todo.bad .lrow-todo-title { color: var(--color-error); }
+.lrow-todo.warn .lrow-todo-title { color: var(--color-warning); }
+.lrow-todo-help { margin: 0; overflow-wrap: anywhere; }
+.lrow-todo-links { display: flex; flex-wrap: wrap; gap: 0 var(--spacing-4); min-width: 0; }
+a.lrow-todo-link { --act-fg: var(--color-accent); padding: 4px 0; margin: 0; z-index: auto; }
+a.lrow-todo-link.primary { font-weight: 500; }
+
+/* the muted row of secondary links (these keep the ↗ icon) */
+.lrow-links { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--spacing-2); font-size: var(--text-sm); color: var(--color-text-secondary); }
+.lrow-link {
+  display: inline-flex; align-items: center; gap: 3px; padding: 5px 0; color: inherit; text-decoration: none; transition: color .15s ease;
+}
+.lrow-link:hover, .lrow-link:focus-visible { color: var(--color-text-primary); }
+.lrow-link .i { --size-icon: 12px; }
+.lrow-sep { color: var(--color-text-secondary); }
+
+/* ---------- pictures: 24 px; a circle for a page, a rounded square for a business ---------- */
+.lav {
+  --lav: 24px; position: relative; flex: none; display: inline-grid; place-items: center; width: var(--lav); height: var(--lav); overflow: hidden;
+  background: var(--color-background-muted); color: var(--color-text-secondary); user-select: none;
+}
+.lav-circle { border-radius: var(--radius-full); }
+.lav-square { border-radius: 5px; }
+.lav .i { --size-icon: 14px; }
+.lav-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; }
+.lav.ok .lav-img { opacity: 1; }
+.lav.ok .i { visibility: hidden; }
+
+/* ---------- group header: [16 px picture] Name · 2 .................. subtotal ---------- */
+/* Sticky under the tabs (the bar is 48 px + the 34 px tab strip); opaque so rows scroll under it, above the rows' heads (z-index 2). */
+.lgroup {
+  position: sticky; top: 82px; z-index: 3; display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-3); min-width: 0;
+  padding: var(--spacing-2) var(--spacing-4); background: var(--color-background-surface);
+  font-size: var(--text-sm); color: var(--color-text-secondary);
+}
+.lgroup-name { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.lgroup-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lgroup-count, .lgroup-value { flex: none; }
+.lgroup-value { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.lgroup .lav { --lav: 16px; }
+.lgroup .lav .i { --size-icon: 10px; }
+
+/* ---------- narrow window ---------- */
+@media (max-width: 479.98px) {
+  .lrow-idc { display: none; }                      /* the ID is still in the expanded body */
+  .lrow-head { grid-template-columns: minmax(0, 1fr) auto; }
+}

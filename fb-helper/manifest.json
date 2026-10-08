@@ -26,7 +26,7 @@
     }
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'none'; connect-src https://graph.facebook.com"
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src https://graph.facebook.com https://open.er-api.com https://cdn.jsdelivr.net"
   },
   "minimum_chrome_version": "121"
 }

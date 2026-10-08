@@ -285,6 +285,10 @@ main { padding-bottom: 0; }
 .total-meta { color: var(--color-text-secondary); white-space: nowrap; text-align: right; }
 .total-value small { margin-left: var(--spacing-2); font-size: var(--text-sm); color: var(--color-text-secondary); }
 .total-value { grid-column: 1 / -1; font-size: var(--text-xl); overflow-wrap: anywhere; }
+/* Under a converted total: what it is made of, muted ("1 696 $ + 20 € +1 · rates 08.10 · ExchangeRate-API"). */
+.total-sub { grid-column: 1 / -1; color: var(--color-text-secondary); font-size: var(--text-sm); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.total-sub a { color: inherit; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
+.total-sub a:hover, .total-sub a:focus-visible { color: var(--color-text-primary); }
 .chips:empty { display: none; }
 .chip { appearance: none; border: 0; cursor: pointer; font-family: var(--font); }
 /* Tinted pills have no neutral hover fill to borrow, so keyboard focus is a hairline in the pill's own colour. */

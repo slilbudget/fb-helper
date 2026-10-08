@@ -13,7 +13,7 @@ import { on, emit } from "./bus.js";
 import { accountSteps, adSteps } from "./nextsteps.js";
 import { actLink } from "./rows.js";
 import { PERIODS, statsOf as spendStats, periodRange as rangeOf, addUp } from "./spend.js";
-import { bindPeriods, fillTotal } from "./period.js";
+import { bindPeriods, fillTotal, refreshTip } from "./period.js";
 import "./strings/actions.js";
 import { registerTab, registerRender, registerInit, registerStart } from "./registry.js";
 
@@ -226,12 +226,13 @@ function accStatus(a) {
 }
 function renderHint() {
   const total = $("#accountsTotal");
+  refreshTip($("#loadAccounts"), t("refresh"), state.fetchedAt);          // "Refresh · updated 3 min ago"
   if (!state.fetchedAt) return fill(total);
   const all = state.accounts.length, rows = visibleRows(), n = rows.length;
-  const count = isFiltered() ? t("acc.found", { n, all }) : `${all} ${tn(all, "acc.count")}`;
-  const metaText = `${count}${state.truncated ? t("acc.notAll") : ""} · ${t("acc.updated", { t: ago(state.fetchedAt) })}`;
-  if (!n) return fill(total, el("span", { class: "total-meta" }, metaText));
-  // Row 1: what the number is (left) + how fresh / how many (right). Row 2: the number.
+  // The count only when a search / filter is on ("3 of 10 found"); an incomplete list always says so.
+  const metaText = `${isFiltered() ? t("acc.found", { n, all }) : ""}${state.truncated ? t("acc.notAll") : ""}`.trim();
+  if (!n) return fill(total, metaText ? el("span", { class: "total-meta" }, metaText) : null);
+  // Row 1: what the number is (left: "Spend · Aug 29") + the filter count (right). Row 2: the number.
   fillTotal(total, { metaText, range: state.period === "all" ? "" : periodRange(), zeroCur: rows[0].currency,
     sum: addUp(rows.map((a) => ({ spend: statsOf(a)?.spend ?? null, currency: a.currency }))) });
 }

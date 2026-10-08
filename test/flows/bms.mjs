@@ -85,8 +85,8 @@ async function bmsFlow() {
   ok("the tab is full height", await pop.evaluate(() => document.body.classList.contains("tall")));
   ok("rows sorted by spend today: most first, a business without accounts last", (await names(pop)).join() === "Alpha Media,Beta Ads,Partner Agency,Gamma Group", (await names(pop)).join());
   const t0 = await totalOfTab(pop);
-  ok("total line: 'Spend of businesses · today · <date>' + the sum of the business rows; count and age on the right",
-    /^Spend of businesses · today · \w{3} \d{1,2}$/.test(t0.label) && t0.value === TODAY.total && /^4 businesses · updated just now$/.test(t0.meta), JSON.stringify(t0));
+  ok("total line: 'Spend · <date>' (the segment says which period) + the sum of the business rows; no count while nothing is filtered",
+    /^Spend · \w{3} \d{1,2}$/.test(t0.label) && t0.value === TODAY.total && !t0.meta, JSON.stringify(t0));
   ok("…the ad account without a business ($1,000) is in no row and not in the total", !has(t0.value, "1,0") && (await pop.locator(".bm").count()) === 4, t0.value);
 
   const alpha = await rowOf(pop, "Alpha Media");
@@ -160,9 +160,9 @@ async function bmsSpendFlow() {
   const before = b.hits.length;
   const expect = {
     "Yesterday": { order: "Alpha Media,Beta Ads,Partner Agency,Gamma Group", Alpha: "$80.00 + €40.00", Beta: "$8.00", Partner: "$6.00", total: "$94.00 + €40.00" },
-    "7 days": { order: "Beta Ads,Alpha Media,Partner Agency,Gamma Group", Alpha: "$600.00 + €300.00", Beta: "$1,000.00", Partner: "$40.00", total: "$1,640.00 + €300.00" },
-    "30 days": { order: "Beta Ads,Alpha Media,Partner Agency,Gamma Group", Alpha: "$2,000.00 + €900.00", Beta: "$3,000.00", Partner: "$100.00", total: "$5,100.00 + €900.00" },
-    "All time": { order: "Alpha Media,Beta Ads,Partner Agency,Gamma Group", Alpha: "$9,000.00 + €1,000.00", Beta: "$5,000.00", Partner: "$500.00", total: "$14,500.00 + €1,000.00" },
+    "7 days": { order: "Beta Ads,Alpha Media,Partner Agency,Gamma Group", Alpha: "$600.00 + €300.00", Beta: "$1,000.00", Partner: "$40.00", total: "$1,640 + €300.00" },
+    "30 days": { order: "Beta Ads,Alpha Media,Partner Agency,Gamma Group", Alpha: "$2,000.00 + €900.00", Beta: "$3,000.00", Partner: "$100.00", total: "$5,100 + €900.00" },
+    "All time": { order: "Alpha Media,Beta Ads,Partner Agency,Gamma Group", Alpha: "$9,000.00 + €1,000.00", Beta: "$5,000.00", Partner: "$500.00", total: "$14,500 + €1,000" },
   };
   for (const [label, e] of Object.entries(expect)) {
     await pop.click(`#bmsPeriod .seg-btn:has-text("${label}")`);
@@ -170,15 +170,15 @@ async function bmsSpendFlow() {
     const s = await spends(pop), t = await totalOfTab(pop);
     ok(`${label}: each business's spend and the total (the sum of the rows)`, s["Alpha Media"] === e.Alpha && s["Beta Ads"] === e.Beta && s["Partner Agency"] === e.Partner && s["Gamma Group"] === "—" && t.value === e.total, JSON.stringify({ s, t }));
     ok(`${label}: rows ordered by that period's spend`, (await names(pop)).join() === e.order, (await names(pop)).join());
-    ok(`${label}: the total line names the period`, t.label.startsWith(`Spend of businesses · ${label.toLowerCase()}`) && (label === "All time" ? !/·.*·/.test(t.label) : /· \w{3} \d{1,2}(–\w{3} \d{1,2})?$/.test(t.label)), t.label);
+    ok(`${label}: the total line is 'Spend' + the date range (no period word, nothing after 'Spend' for All time)`, label === "All time" ? t.label === "Spend" : /^Spend · \w{3} \d{1,2}(–\w{3} \d{1,2})?$/.test(t.label), t.label);
   }
   ok("switching periods sends no request", b.hits.length === before, b.hits.slice(before).join());
 
   // the period is one value for both tabs
   await pop.click('#bmsPeriod .seg-btn:has-text("7 days")');
   await pop.click('[data-tab="accounts"]');
-  ok("7 days chosen on the Businesses tab is 7 days on the Ad accounts tab", (await period(pop, "#periodSeg")) === "7 days" && (await pop.locator("#accountsTotal .total-label").textContent()).toLowerCase().includes("7 days"));
-  ok("…with that period's numbers there ($1,640 + €300 over the business accounts, plus Solo's $7,000)", has(await text(pop, "#accountsTotal .total-value"), "$8,640.00") && has(await text(pop, "#accountsTotal .total-value"), "€300.00"), await text(pop, "#accountsTotal .total-value"));
+  ok("7 days chosen on the Businesses tab is 7 days on the Ad accounts tab", (await period(pop, "#periodSeg")) === "7 days" && /^Spend · \w{3} \d{1,2}(–\w{3} \d{1,2})?$/.test(await pop.locator("#accountsTotal .total-label").textContent()));
+  ok("…with that period's numbers there ($1,640 + €300 over the business accounts, plus Solo's $7,000)", has(await text(pop, "#accountsTotal .total-value"), "$8,640") && has(await text(pop, "#accountsTotal .total-value"), "€300.00"), await text(pop, "#accountsTotal .total-value"));
   await pop.click('#periodSeg .seg-btn:has-text("All time")');
   await pop.click('[data-tab="bms"]');
   ok("All time chosen on the Ad accounts tab is All time on the Businesses tab", (await period(pop, "#bmsPeriod")) === "All time" && (await totalOfTab(pop)).value === expect["All time"].total, JSON.stringify(await totalOfTab(pop)));
@@ -213,7 +213,7 @@ async function bmsSpendFlow() {
   ok("spend refused for this token: every business shows a dash with the reason as tooltip (never a made-up $0), and the total says to refresh",
     unknown["Alpha Media"] === "—" && unknown["Beta Ads"] === "—" && has((await rowOf(ni, "Alpha Media")).spendTitle, "No data for this period") && has((await totalOfTab(ni)).value, "refresh"), JSON.stringify({ unknown, t: await totalOfTab(ni) }));
   await ni.click('#bmsPeriod .seg-btn:has-text("All time")');
-  ok("…All time still shows Meta's totals", (await spends(ni))["Alpha Media"] === "$9,000.00 + €1,000.00" && (await totalOfTab(ni)).value === "$14,500.00 + €1,000.00", JSON.stringify(await spends(ni)));
+  ok("…All time still shows Meta's totals", (await spends(ni))["Alpha Media"] === "$9,000.00 + €1,000.00" && (await totalOfTab(ni)).value === "$14,500 + €1,000", JSON.stringify(await spends(ni)));
   await noIns.ctx.close();
 }
 
@@ -500,7 +500,7 @@ async function bmsLangFlow() {
     && (await pop.getAttribute("#loadBms", "aria-label")) === "Обновить бизнесы и спенд" && (await pop.getAttribute("#bmFilter", "aria-label")) === "Поиск бизнесов"
     && (await pop.locator("#bmsPeriod .seg-btn").allTextContents()).join() === "Сегодня,Вчера,7 дней,30 дней,Всё время", `${await text(pop, '[data-tab="bms"]')} | ${(await pop.locator("#bmsPeriod .seg-btn").allTextContents()).join()}`);
   const t = await totalOfTab(pop);
-  ok("RU: total line (Спенд бизнесов · сегодня, count with a plural, age) and the sum", /^Спенд бизнесов · сегодня · \d{2}\.\d{2}$/.test(t.label) && /^4 бизнеса · обновлено только что$/.test(t.meta) && t.value === "117,00 $ + 50,00 €", JSON.stringify(t));
+  ok("RU: total line (Спенд · date, no count, the age is the refresh tooltip) and the sum", /^Спенд · \d{2}\.\d{2}$/.test(t.label) && !t.meta && /^Обновить бизнесы и спенд · обновлено /.test(await pop.getAttribute("#loadBms", "title")) && t.value === "117,00 $ + 50,00 €", JSON.stringify(t));
   const alpha = await rowOf(pop, "Alpha Media"), beta = await rowOf(pop, "Beta Ads"), gamma = await rowOf(pop, "Gamma Group");
   ok("RU: pills, summary and the problems with their fixes", alpha.pill.text === "Активен" && alpha.summary === "3 кабинета · 2 активно · 1 заблокировано" && beta.pill.text === "Нет активных кабинетов" && gamma.pill.text === "Нет кабинетов"
     && beta.probs.map((x) => `${x.text}>${x.fixes[0].text}`).join() === "Верификация не пройдена>Открыть верификацию,Нет активных кабинетов>Кабинеты" && gamma.probs[0].fixes[0].text === "Создать кабинет", JSON.stringify([alpha, beta, gamma].map((r) => [r.pill.text, r.summary, r.probs.map((x) => x.text)])));
@@ -509,7 +509,7 @@ async function bmsLangFlow() {
   ok("RU: nothing found", has(await text(pop, "#bmsList"), "Ничего не найдено"));
   await pop.fill("#bmFilter", "");
   await pop.click('[data-lang="en"]');
-  ok("back to English everywhere", await until(pop, () => /^4 businesses · updated/.test(document.querySelector("#bmsTotal .total-meta").textContent.trim()) && /Active/.test(document.querySelector("#bmsList").textContent)
+  ok("back to English everywhere", await until(pop, () => /^Spend · /.test(document.querySelector("#bmsTotal .total-label").textContent.trim()) && /^Refresh businesses and spend · updated/.test(document.querySelector("#loadBms").title) && /Active/.test(document.querySelector("#bmsList").textContent)
     && document.querySelector("#bmFilter").placeholder === "Search" && /Copy IDs/.test(document.querySelector("#copyBmIds").textContent) && document.querySelector('[data-tab="bms"]').textContent.trim() === "Businesses"));
   noErrs(b);
   await b.ctx.close();

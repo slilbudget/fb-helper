@@ -9,7 +9,6 @@
 import { t, tn, applyStatic } from "./i18n.js";
 import "./strings/bms.js";
 import { $, el, fill, pill, toast, copy, keepFocus } from "./dom.js";
-import { ago } from "./format.js";
 import { state, Stale, saveSession, fbUser, claimSlot, registerCache, isDead, deadCode } from "./state.js";
 import { readPaged } from "./graph.js";
 import { settledGrab, grabToken, tokenReady } from "./token.js";
@@ -17,7 +16,7 @@ import { LINKS } from "./links.js";
 import { on, emit } from "./bus.js";
 import { registerTab, registerRender, registerInit, registerStart } from "./registry.js";
 import { avatar, problems } from "./rows.js";
-import { bindPeriods, fillTotal, spendCell } from "./period.js";
+import { bindPeriods, fillTotal, spendCell, refreshTip } from "./period.js";
 import { statsOf, periodRange } from "./spend.js";
 import { ensureAccounts, reloadAccounts } from "./accounts.js";
 import { BM_BASE, BM_OPTIONAL, BM_LIMIT, BM_MAX_PAGES, BM_SLOT_MS, slimBm, buildRows, filterRows, sortRows, totalOf, idsOf, isPermError } from "./bms-model.js";
@@ -157,18 +156,18 @@ function buildControls() {
   applyStatic(card);
   bindPeriods($("#bmsPeriod"), "bm-");                // the same period as the Ad accounts tab (period.js)
 }
-// "Spend of businesses · today · Aug 29" + "12 businesses · updated 3 min ago" (with a search: "3 of 12 found") and the sum of the
-// rows shown, so the rows add up to it (ad accounts without a business are not in it; the Ad accounts tab totals everything).
-// "—" until the Ad accounts list is loaded.
+// "Spend · Aug 29" and the sum of the rows shown, so the rows add up to it (ad accounts without a business are not in it; the Ad accounts
+// tab totals everything). A search shows "3 of 12 found" on the right; an incomplete list says so. "—" until the Ad accounts list is
+// loaded. "updated 3 min ago" is the refresh button's tooltip.
 function renderTotal() {
   const total = $("#bmsTotal");
   if (!total) return;
+  refreshTip($("#loadBms"), t("bms.refresh"), state.fetchedAt || state.bmsAt);
   if (!state.bmsAt) return fill(total);
   const all = allRows(), rows = filterRows(all, state.bmQuery);
-  const count = isFiltered() ? t("bms.found", { n: rows.length, all: all.length }) : `${all.length} ${tn(all.length, "bms.count")}`;
-  const metaText = `${count}${state.bmsTruncated || state.truncated ? t("bms.notAll") : ""} · ${t("bms.updated", { t: ago(state.fetchedAt || state.bmsAt) })}`;
+  const metaText = `${isFiltered() ? t("bms.found", { n: rows.length, all: all.length }) : ""}${state.bmsTruncated || state.truncated ? t("bms.notAll") : ""}`.trim();
   fillTotal(total, {
-    label: t("bms.spend"), metaText, range: state.period === "all" || !state.fetchedAt ? "" : periodRange(state.accounts, state.period, state.fetchedAt),
+    metaText, range: state.period === "all" || !state.fetchedAt ? "" : periodRange(state.accounts, state.period, state.fetchedAt),
     sum: state.fetchedAt ? totalOf(rows) : null, zeroCur: rows.find((r) => r.accounts.length)?.accounts[0].currency,
   });
 }
@@ -232,7 +231,7 @@ function renderRow(r) {
 // Ad accounts list's (accounts.js: same rule and limits as when that tab is opened).
 registerTab("bms", { tall: true, onShow: () => { renderBms(); autoLoadBms(); ensureAccounts(); } });
 registerRender(() => renderBms());                   // RU · EN
-registerRender(() => { if (active()) renderTotal(); }, { lang: false, tick: true });   // every 30 s: "updated … ago"
+registerRender(() => { if (active()) renderTotal(); }, { lang: false, tick: true });   // every 30 s: the refresh tooltip says how old the list is
 registerInit(() => {
   buildControls();
   // The spend and counts come from the Ad accounts list: its refresh is part of this one (silent where its own button would complain).

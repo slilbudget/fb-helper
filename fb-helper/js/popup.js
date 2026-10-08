@@ -1,6 +1,7 @@
 // FB Helper — read-only helper: EAAB token, session cookies, ad account status.
-// Nothing leaves the browser except GET calls to graph.facebook.com: on a click, or when the Accounts tab opens with
-// nothing loaded yet / after the FB page was reloaded.
+// Nothing leaves the browser except GET calls to the Graph host (GRAPH_URL below), made on a click or when the Accounts tab opens
+// with nothing loaded yet / after the FB page was reloaded, and one public exchange-rate file (money.js) at most once a day, only
+// while a total adds up several currencies.
 // Reading the token from the FB tab is local.
 // Token and account cache live in chrome.storage.session (gone when the browser closes). The account cache
 // belongs to the FB user (c_user), not to a token string: FB pages hand out different tokens, and switching
@@ -17,7 +18,11 @@
 //   cookies.js    Cookies tab + the User-Agent        token.js     Token tab, owner check, "Token + cookies + UA"
 //   spend.js      what an account spent in a period + adding amounts up (pure, shared by the list tabs)
 //   period.js     the spend period switch and the total line (one state.period for the Ad accounts and Businesses tabs)
-//   rows.js       parts of a list row shared by the tabs: next-step link, picture, "problem → fix" line, secondary links
+//   rows.js       parts of a list row shared by the tabs: next-step link, picture, "problem → fix" line, secondary links (the older set)
+//   row.js        THE shared list row: row(), groupHeader(), fixLink(), kv(), whatToDo(), linksRow(), avatarEl() (css/rows.css); the three
+//                 list tabs move to it, then rows.js goes
+//   money-core.js money.js   amounts (fmtMoney), USD conversion, the lines of totals and rows (pure, tested in Node) + the daily exchange
+//                 rates (rates(): chrome.storage.local, 24 h, the one network read besides Graph; the CSP lists its two origins)
 //   accounts.js   Ad accounts tab, with the ads of each account
 //   bms.js        Businesses tab (spend, status and problems per business; asks accounts.js for the ad account list)
 //   pages.js      Pages tab (Instagram identity, publishing, ad rights, each problem with its fix)

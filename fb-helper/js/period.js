@@ -4,11 +4,12 @@
 
 import { t } from "./i18n.js";
 import { el, fill, keepFocus } from "./dom.js";
-import { fmt } from "./format.js";
+import { fmt, ago } from "./format.js";
 import { state } from "./state.js";
 import { on, emit } from "./bus.js";
 import { registerRender, registerInit } from "./registry.js";
 import { PERIODS, isPeriod, totalsText } from "./spend.js";
+import { fmtMoney, totalLine, cachedRates, loadCachedRates, rates } from "./money.js";
 
 Object.assign(state, { period: "today" });
 
@@ -36,24 +37,46 @@ export function setPeriod(key) {
 on("period", drawPeriods);
 registerRender(drawPeriods);                                                   // RU · EN: the labels
 registerInit(() => { try { const p = localStorage.getItem("period"); if (isPeriod(p)) state.period = p; } catch { /* */ } });
+registerInit(() => { loadCachedRates(); });                                    // the saved rates (storage only, no request): the first paint of a total already has them
 
 // ---------- the total ----------
-// The block under the controls: "Spend · today · Aug 29" (left) and `metaText` (right) on the first row, the sum under them.
-// label = what is added up ("Spend" by default; the Businesses tab says "Spend of businesses").
+// The block under the controls: "Spend · Aug 29" (left, the date range of the period: the segment above already says which period) and
+// `metaText` (right: "3 of 10 found", "(not all)"; empty when nothing is to be said) on the first row, the sum under them.
+// label = what is added up ("Spend" by default).
 // sum = { totals, unknown } (spend.js addUp / mergeUp), or null when nothing is known yet (shown as "—").
 // zeroCur = the currency to print a zero in when every spend was 0 (none known: "—").
-export function fillTotal(box, { label = t("acc.spend"), metaText, range = "", sum = null, zeroCur = null }) {
-  const period = t(PERIODS.find((p) => p.key === state.period).label);
-  const sumText = sum ? totalsText(sum.totals) : "";
-  const value = !sum ? "—" : sum.unknown && !sumText ? t("acc.refreshDash") : sumText || (zeroCur ? fmt(0, zeroCur) : "—");
+// One currency: that amount. Two or more: "≈ 1 727 $" (USD, at the daily rate: money.js) with a muted line under it ("1 696 $ + 20 € ·
+// rates 08.10 · ExchangeRate-API") and the whole breakdown as the tooltip. Rates are asked for only here, only for such a total, and a
+// total never waits for them: it is drawn at once as "$1,696 + €20.00" and turns into "≈ …" when the rates are there. No rates at all
+// (offline, both sources down): it stays the per-currency sum.
+const latest = new WeakMap();                                                   // box → the arguments of its newest fillTotal (a late rates answer must not repaint an older one)
+export function fillTotal(box, opts) {
+  const multi = !!opts.sum && Object.keys(opts.sum.totals).length >= 2;
+  const used = multi ? cachedRates() : null;
+  paintTotal(box, opts, used);
+  if (!multi) { latest.delete(box); return; }
+  latest.set(box, opts);
+  rates().then((r) => { if (r && r.rates !== used?.rates && latest.get(box) === opts) paintTotal(box, opts, r); });
+}
+function paintTotal(box, { label = t("acc.spend"), metaText, range = "", sum = null, zeroCur = null }, r) {
+  const line = sum ? totalLine(sum.totals, r) : null;
+  const value = !sum ? "—" : sum.unknown && !line.main ? t("acc.refreshDash") : line.main || (zeroCur ? fmtMoney(0, zeroCur) : "—");
+  const parts = line?.approx ? [`${line.breakdown}${line.more ? ` +${line.more}` : ""}`, line.note] : [];
   fill(box,
-    el("span", { class: "total-label" }, `${label} · ${period.toLowerCase()}${range ? ` · ${range}` : ""}`),
-    el("span", { class: "total-meta" }, metaText),
-    el("span", { class: "total-value" }, value,
-      sum?.unknown && sumText ? el("small", { title: t("acc.notAllTitle") }, t("acc.notAllShort")) : null));
+    el("span", { class: "total-label" }, `${label}${range ? ` · ${range}` : ""}`),
+    metaText ? el("span", { class: "total-meta" }, metaText) : null,
+    el("span", { class: "total-value", title: line?.approx ? line.title : null }, value,
+      sum?.unknown && line.main ? el("small", { title: t("acc.notAllTitle") }, t("acc.notAllShort")) : null),
+    line?.approx ? el("span", { class: "total-sub", title: line.title }, parts.join(" · "),
+      line.attribution ? [" · ", el("a", { href: line.attribution.url, target: "_blank", rel: "noopener noreferrer" }, line.attribution.text)] : null) : null);
+}
+// "updated 3 min ago" lives in the refresh button's tooltip, not on the screen: "Refresh · updated 3 min ago".
+export function refreshTip(btn, base, updatedAt) {
+  if (btn) btn.title = updatedAt ? `${base} · ${t("acc.updated", { t: ago(updatedAt) })}` : base;
 }
 
-// One row's spend, in the font of an account row's spend (.acc-spend). Same rules as the total. missing = the tooltip of a "—".
+// One row's spend, in the font of an account row's spend (.acc-spend). missing = the tooltip of a "—". Rows keep the old per-currency
+// text for now (fmt via totalsText); the new list rows use money.js rowAmount.
 export function spendCell(sum, zeroCur, missing) {
   const sumText = sum ? totalsText(sum.totals) : "";
   if (!sum || (sum.unknown && !sumText) || (!sumText && !zeroCur)) return el("div", { class: "acc-spend muted", title: missing }, "—");

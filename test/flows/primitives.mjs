@@ -72,7 +72,7 @@ async function renderFlows() {
   await adsPage(b);
   const pop = await popup(b, "accounts");
   await rowsAre(pop, ".acc", 1);
-  const before = { pill: await text(pop, "#usage"), meta: await text(pop, "#accountsTotal .total-meta") };
+  const before = { pill: await text(pop, "#usage"), meta: await pop.getAttribute("#loadAccounts", "title") };
   await pop.evaluate(async () => {
     const { state } = await import(chrome.runtime.getURL("js/state.js"));
     const { runRenders } = await import(chrome.runtime.getURL("js/registry.js"));
@@ -80,8 +80,8 @@ async function renderFlows() {
     state.fetchedAt -= 5 * 60000;
     runRenders("tick");
   });
-  ok("the 30 s tick redraws the header pill and the 'updated … ago' line", (await text(pop, "#usage")) === "Paused 5 min" && has(await text(pop, "#accountsTotal .total-meta"), "updated 5 min ago") && before.pill === "" && has(before.meta, "just now"),
-    `${before.pill} | ${before.meta} -> ${await text(pop, "#usage")} | ${await text(pop, "#accountsTotal .total-meta")}`);
+  ok("the 30 s tick redraws the header pill and the 'updated … ago' of the refresh button's tooltip", (await text(pop, "#usage")) === "Paused 5 min" && has(await pop.getAttribute("#loadAccounts", "title"), "updated 5 min ago") && before.pill === "" && has(before.meta, "just now"),
+    `${before.pill} | ${before.meta} -> ${await text(pop, "#usage")} | ${await pop.getAttribute("#loadAccounts", "title")}`);
   ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
   await b.ctx.close();
 }

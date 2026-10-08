@@ -38,7 +38,7 @@ export function summary() {
 }
 
 // One browser context = one profile. fb(url) → html of a Facebook page; graph(url) → { status?, headers?, body }.
-export async function boot({ user = "1001", fb, graph } = {}) {
+export async function boot({ user = "1001", fb, graph, rates } = {}) {
   const page$ = { hits: [], fb: fb || (() => ""), graph: graph || (() => ({ body: { data: [] } })), user };
   const ctx = await chromium.launchPersistentContext("", { channel: "chromium", headless: true,
     args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`] });
@@ -65,6 +65,21 @@ export async function boot({ user = "1001", fb, graph } = {}) {
     const hue = [...u.pathname].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 360, 7);
     r.fulfill({ contentType: "image/svg+xml", body: `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="hsl(${hue} 55% 55%)"/></svg>` });
   });
+  // Exchange rates (money.js): both origins are answered here, never by the network. rates(url, n) → { status?, body, delay? } | { abort: true }.
+  // The default answers 503 for both, so a total of several currencies stays the per-currency sum ("$117.00 + €50.00") unless a test
+  // brings rates (ratesOk below). b.rateHits lists every request: origin + path.
+  page$.rateHits = [];
+  page$.rates = rates || (() => ({ status: 503, body: {} }));
+  for (const origin of ["https://open.er-api.com", "https://cdn.jsdelivr.net"]) {
+    await ctx.route(`${origin}/**`, async (r) => {
+      const u = new URL(r.request().url());
+      page$.rateHits.push(u.origin + u.pathname);
+      const out = page$.rates(u, page$.rateHits.length) || {};
+      if (out.delay) await new Promise((res) => setTimeout(res, out.delay));
+      if (out.abort) return r.abort("failed");
+      r.fulfill({ status: out.status || 200, contentType: "application/json", headers: { "access-control-allow-origin": "*", ...(out.headers || {}) }, body: JSON.stringify(out.body ?? out) });
+    });
+  }
   const pg = await ctx.newPage(); await pg.goto("chrome://extensions");
   const id = await pg.evaluate(() => document.querySelector("extensions-manager").shadowRoot
     .querySelector("extensions-item-list").shadowRoot.querySelector("extensions-item").id);
@@ -120,3 +135,13 @@ export async function openAds(p) {
   return until(p, () => { const a = document.querySelector(".acc.open .ads"); return !!a && a.textContent.trim() !== "" && !/Loading/.test(a.textContent); });
 }
 export const stored = (p, key) => p.evaluate((k) => chrome.storage.session.get(k).then((o) => o[k]), key);
+
+// ---------- mock exchange rates (units per 1 USD) ----------
+export const FX = { USD: 1, EUR: 0.8, GBP: 0.75, VND: 25000, UAH: 40, RUB: 90, PLN: 4 };
+const dayOf = (d) => new Date(d).toISOString().slice(0, 10);
+// Both providers' payload shapes, dated `when` (default: now, so a test never meets a stale table by accident).
+export const fxEr = (r = FX, when = Date.now()) => { const d = new Date(when); return { result: "success", provider: "https://www.exchangerate-api.com", base_code: "USD",
+  time_last_update_unix: Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 2, 31) / 1000), time_last_update_utc: `${dayOf(when)} 00:02:31`, rates: r }; };
+export const fxCdn = (r = FX, when = Date.now()) => ({ date: dayOf(when), usd: Object.fromEntries(Object.entries(r).map(([k, v]) => [k.toLowerCase(), v])) });
+// A rates handler for boot({ rates }): the primary source answers with fxEr, the fallback with fxCdn.
+export const ratesOk = (u) => ({ body: u.hostname === "open.er-api.com" ? fxEr() : fxCdn() });
