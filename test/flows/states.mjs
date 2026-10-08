@@ -84,7 +84,7 @@ async function errorFlow() {
   await done(b);
 
   // loading: skeleton rows, 'Loading…' for screen readers, the refresh icon turns, the controls that need rows are hidden
-  b = await boot({ fb: adsFb(TOK), graph: () => ({ delay: 4000, body: accountsJson }) });
+  b = await boot({ fb: adsFb(TOK), graph: () => ({ delay: 2000, body: accountsJson }) });       // every read takes 2 s (the list, then the business edges): the skeleton stays long enough to be measured
   await adsPage(b);
   pop = await popup(b, "accounts");
   await until(pop, () => document.querySelectorAll("#accountsList .lsk").length > 0);
@@ -95,7 +95,7 @@ async function errorFlow() {
   ok("loading: five skeleton rows (decorative), a busy list with 'Loading ad accounts…' for screen readers", sk.rows === 5 && sk.hidden && sk.busy === "true" && sk.sr === tr("acc.loading"), JSON.stringify(sk));
   ok("…the refresh icon turns while the button is busy", sk.btnBusy === "true" && sk.spin === "spin", JSON.stringify(sk));
   ok("…no controls without rows", await hiddenControls(pop, TABS.accounts.hidden));
-  ok("…and when the rows arrive the skeleton is gone, a real row is exactly as high as a skeleton row (nothing jumps), the icon stands still", (await rowsAre(pop, ROW, 1)) && (await pop.locator("#accountsList .lsk").count()) === 0
+  ok("…and when the rows arrive the skeleton is gone, a real row is exactly as high as a skeleton row (nothing jumps), the icon stands still", (await until(pop, ([s, k]) => document.querySelectorAll(s).length === k, [ROW, 1], 25000)) && (await pop.locator("#accountsList .lsk").count()) === 0
     && near(await pop.evaluate(() => Math.round(document.querySelector("#accountsList .lrow").getBoundingClientRect().height)), sk.h) && (await until(pop, () => getComputedStyle(document.querySelector("#loadAccounts .i")).animationName === "none")), JSON.stringify(sk));
   await done(b);
 
