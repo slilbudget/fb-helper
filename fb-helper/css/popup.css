@@ -104,11 +104,10 @@ body.tall { min-height: 600px; }
 .tab.active { background: var(--color-background-surface); color: var(--color-text-primary); }
 
 /* ---------- dividers: 1px, inset 16px from both edges, never edge-to-edge ---------- */
-.card:not(:last-child)::after, .acc:not(:last-child)::after, .row:not(:last-child)::after {
+.card:not(:last-child)::after, .row:not(:last-child)::after {
   content: ""; position: absolute; left: var(--spacing-4); right: var(--spacing-4); bottom: 0; height: 1px;
   background: var(--color-border); pointer-events: none;
 }
-.acc:not(:last-child)::after { z-index: 1; }
 
 /* ---------- sections ---------- */
 main { padding-bottom: 0; }
@@ -147,7 +146,7 @@ main { padding-bottom: 0; }
 /* One quiet hover everywhere: grey text/icons turn near-black, a filled control steps one shade darker,
    nothing else. No focus rings; keyboard focus looks exactly like hover. */
 :focus, :focus-visible { outline: 0; }
-.tab, .seg-btn, .btn, .icon-btn, .field, .acc-head, .acc-id, .acc-link, .more summary, .kind-ads a, .guide-row a, .lang-btn {
+.tab, .seg-btn, .btn, .icon-btn, .field, .acc-id, .acc-link, .more summary, .kind-ads a, .guide-row a, .lang-btn {
   transition: color .15s ease, background-color .15s ease;
 }
 
@@ -299,24 +298,8 @@ main { padding-bottom: 0; }
 .chip.warn.on { background: var(--color-warning); }
 .chip.bad.on { background: var(--color-error); }
 
-/* ---------- accounts ---------- */
+/* ---------- lists (the Ad accounts rows are css/rows.css; the older ID / spend pieces below are still used by the Businesses and Pages tabs) ---------- */
 .list { display: grid; }
-.acc { position: relative; }
-/* Hover = full-width, square off-white fill between the dividers (the shared one-step hover).
-   Text stays 16px from the edge. */
-.acc-head {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px var(--spacing-3); align-items: center;
-  margin: -1px 0 0; padding: calc(var(--spacing-3) + 1px) var(--spacing-4) var(--spacing-3); cursor: pointer;
-  position: relative; z-index: 2;   /* 1px up and above the dividers: covers the line above and below */
-}
-.acc-head:hover, .acc-head:has(.acc-title:focus-visible) { background: var(--color-hover-row); }
-.acc-title {
-  appearance: none; border: 0; background: none; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer;
-  display: flex; align-items: center; gap: 6px; min-width: 0;
-}
-.acc-title .i-chevron { --size-icon: 16px; color: var(--color-text-disabled); flex: none; }
-.acc.open .acc-title .i-chevron { transform: rotate(180deg); color: var(--color-text-secondary); }
-.acc-name { font-size: var(--text-lg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .acc-ids { display: flex; align-items: center; gap: var(--spacing-2); min-width: 0; padding-left: 22px; }
 .acc-link { display: inline-grid; place-items: center; color: var(--color-text-secondary); }   /* rest/hover like every icon button */
 .acc-link .i { --size-icon: 14px; }
@@ -328,14 +311,11 @@ main { padding-bottom: 0; }
 }
 .acc-id .i { --size-icon: 14px; }
 .acc-id:hover, .acc-id:focus-visible { color: var(--color-text-primary); }
-.acc-head > .pill { justify-self: end; }
 .acc-spend { justify-self: end; font-size: var(--text-lg); white-space: nowrap; }
 .acc-spend.muted { color: var(--color-text-disabled); }
-.acc-sub { justify-self: end; text-align: right; color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
 .owner { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; }
 .owner-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }   /* a long BM name ends in "…"; the full one is the tooltip */
 .owner .i { --size-icon: 14px; }
-.acc-meta { min-width: 0; padding-left: 22px; display: flex; flex-wrap: wrap; gap: 2px var(--spacing-3); color: var(--color-text-secondary); }
 /* ---------- rows of the Businesses and Pages tabs: the grammar of an account row ----------
    line 1  picture · name ................ ONE status pill
    line 2  ID (copy) · muted facts ....... (spend, on the Businesses tab)
@@ -371,42 +351,6 @@ main { padding-bottom: 0; }
 .av-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; }
 .av.ok .av-img { opacity: 1; }
 .av.ok .i { visibility: hidden; }
-.acc-body { --acc-indent: 22px; display: none; gap: var(--spacing-3); padding: var(--spacing-1) var(--spacing-4) var(--spacing-4) calc(var(--spacing-4) + var(--acc-indent)); }
-.acc.open .acc-body { display: grid; }
-.ads { display: grid; }
-.ads:empty { display: none; }
-/* The ads of an account: one full-width grey card. Its header (.ads-toggle) is the same box before the first load,
-   collapsed and open, so toggling moves nothing; the card reaches back over the rows' indent, gutters left = right. */
-.ads-card { margin-left: calc(-1 * var(--acc-indent)); background: var(--color-background-muted); border-radius: calc(var(--radius-element) + 4px); overflow: hidden; }
-.ads-head { display: flex; align-items: center; }
-.ads-toggle {
-  appearance: none; border: 0; cursor: pointer; flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--spacing-1-5);
-  height: var(--size-element-md); padding: 0 var(--spacing-3); background: transparent; color: var(--color-text-secondary);
-  font: var(--text-md) var(--font); text-align: left; white-space: nowrap;
-}
-.ads-toggle .i { --size-icon: 14px; }
-/* Hover like the tabs: the bar stays put, only the words darken (open or closed, so the dark word means "this will act"). */
-.ads-toggle:hover:not(:disabled), .ads-toggle:focus-visible { color: var(--color-text-primary); }
-.ads-toggle:disabled { color: var(--color-text-disabled); cursor: default; }
-/* The refresh icon of the ads: same rest/hover pair as the tabs (grey, darker on hover), no fill. */
-.ads-refresh {
-  appearance: none; border: 0; background: transparent; cursor: pointer; flex: none;
-  width: var(--size-element-md); height: var(--size-element-md); display: grid; place-items: center; color: var(--color-text-secondary);
-}
-.ads-refresh .i { --size-icon: 16px; }
-.ads-refresh:hover:not(:disabled), .ads-refresh:focus-visible { color: var(--color-text-primary); }
-.ads-refresh:disabled { color: var(--color-text-disabled); cursor: default; }
-.ads-card .ads { padding: 0 var(--spacing-3) var(--spacing-1); }
-.ads-card .ad { border-top-color: rgba(28, 30, 33, .08); }
-.ads-card .pill:not(.ok):not(.warn):not(.bad) { background: var(--color-background-surface); }   /* the neutral pill must not vanish into the grey */
-.ads-sum { padding-bottom: var(--spacing-2); color: var(--color-text-secondary); font-size: var(--text-sm); }
-.i-chevron.up { transform: rotate(180deg); }
-.ad { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px var(--spacing-2); align-items: center; padding: var(--spacing-2) 0; border-top: 1px solid var(--color-border); }
-.ad > span:first-child { overflow-wrap: anywhere; }
-.ads .hint:not(:last-child) { padding-bottom: var(--spacing-2); }
-.ad-stats { grid-column: 1 / -1; color: var(--color-text-secondary); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
-.ad small { grid-column: 1 / -1; color: var(--color-error); overflow-wrap: anywhere; }
-.ad small .why { display: block; }
 .empty { text-align: center; color: var(--color-text-secondary); padding: var(--spacing-4); }
 
 .toast {
@@ -421,7 +365,6 @@ main { padding-bottom: 0; }
 @media (max-width: 460px) {
   .seg { grid-template-columns: repeat(3, 1fr); }
   .kv { grid-template-columns: 96px minmax(0, 1fr); }
-  .acc-body { --acc-indent: 0px; }
   .tabs { gap: 2px; }
   .tab { font-size: var(--text-xs); padding: 0; letter-spacing: -0.02em; }   /* five tabs in ~65 px each: "Ad accounts" and "Страницы" must still fit */
   #copyLiveIds span { display: none; }

@@ -67,7 +67,7 @@ async function rowFlow() {
   });
   ok("the name is a real <button aria-expanded=false aria-controls aria-describedby=line 2>", s.tag === "BUTTON" && s.expanded === "false" && s.describedby === s.subId && /^lrow-body-\d+$/.test(s.controls) && !s.controlsExists, JSON.stringify(s));
   ok("…its accessible name is the name only; the full name is its tooltip", s.name === "Nova Media — spring promo" && s.titleAttr === "Nova Media — spring promo");
-  ok("…line 2 reads: the problem word, the fix, '+2'", s.subText === "Ads policyRequest review+2", s.subText);   // the "·" between the items is CSS, not text
+  ok("…line 2 reads: the problem word, the fix, '+2'", s.subText === "Ads policyAppeal+2", s.subText);   // the "·" between the items is CSS, not text
   ok("…the row has exactly one name button, the copy button, and one fix link in its head", s.buttons === 2 && s.links === 1, JSON.stringify(s));
   const dom = await q(pop, () => [...document.querySelectorAll(".lrow")].every((r) => r.querySelector(".lrow-head") && !r.querySelector(".lrow-head a, .lrow-head button")?.closest("button.lrow-title")?.querySelector("a, button")));
   ok("…no interactive control nested inside another", dom);
@@ -94,7 +94,7 @@ async function rowFlow() {
     return { href: a.href, target: a.target, rel: a.rel, aria: a.getAttribute("aria-label"), title: a.title, icon: !!a.querySelector(".i"), focus: a.dataset.focus, color: cs.color, deco: getComputedStyle(lab).textDecorationLine,
       h: r.height, z: cs.zIndex, pos: cs.position };
   });
-  ok("the fix is an underlined link in the problem's colour, no ↗ icon, new tab, noopener noreferrer, owner in its accessible name, tooltip", fx.href === URL_REVIEW && fx.target === "_blank" && fx.rel === "noopener noreferrer" && fx.aria === "Request review · Nova Media — spring promo" && fx.title === "Opens Account Quality" && !fx.icon && fx.deco === "underline" && fx.color === "rgb(216, 35, 42)", JSON.stringify(fx));
+  ok("the fix is an underlined link in the problem's colour, no ↗ icon, new tab, noopener noreferrer, owner in its accessible name, tooltip", fx.href === URL_REVIEW && fx.target === "_blank" && fx.rel === "noopener noreferrer" && fx.aria === "Appeal · Nova Media — spring promo" && fx.title === "Opens Account Quality" && !fx.icon && fx.deco === "underline" && fx.color === "rgb(216, 35, 42)", JSON.stringify(fx));
   ok("…24 px high hit area, above the row's covering area", fx.h >= 24 && fx.pos === "relative" && fx.z === "1", JSON.stringify(fx));
   const more = await q(pop, () => { const e = document.querySelector('.lrow[data-row="problem"] .lrow-more'); return { text: e.textContent, title: e.title }; });
   ok("'+2' is muted text with a tooltip", more.text === "+2" && has(more.title, "2 more"), JSON.stringify(more));
@@ -136,8 +136,8 @@ async function rowFlow() {
   ok("collapsed rows are two lines (≤ 68 px with a 24 px picture, 64 without), a long name ends in an ellipsis", lay.healthy.h <= 68 && lay.problem.h <= 64 && lay.long.h <= 68 && lay.long.nameCut && lay.long.nameOverflow === "ellipsis", JSON.stringify(lay));
   ok("line 2 never wraps (one 17-px line); a long status phrase is cut with an ellipsis while the fix and '+3' keep their width", lay.long.subH <= 24 && lay.long.st.cut && lay.long.st.ov === "ellipsis" && lay.long.subScroll, JSON.stringify(lay.long));
   const keep = await q(pop, () => { const r = document.querySelector('.lrow[data-row="long"]'), fixR = r.querySelector(".lrow-fix").getBoundingClientRect(), sub = r.querySelector(".lrow-sub").getBoundingClientRect(), more = r.querySelector(".lrow-more").getBoundingClientRect(); return { fixInside: fixR.right <= sub.right + 1, moreInside: more.right <= sub.right + 1, fixW: Math.round(fixR.width) }; });
-  ok("…the fix link and '+3' are fully inside line 2", keep.fixInside && keep.moreInside && keep.fixW > 60, JSON.stringify(keep));
-  ok("no fix label is ever cut: 'Pay balance' shows whole (the 24 px hit area is padding that a negative margin takes back, not width the text loses)", await q(pop, () => [...document.querySelectorAll(".lrow-head .lrow-fix .act-label")].length === 3 && [...document.querySelectorAll(".lrow-head .lrow-fix .act-label")].every((e) => e.scrollWidth <= e.clientWidth)));
+  ok("…the fix link and '+3' are fully inside line 2", keep.fixInside && keep.moreInside && keep.fixW > 40, JSON.stringify(keep));
+  ok("no fix label is ever cut: 'Pay' shows whole (the 24 px hit area is padding that a negative margin takes back, not width the text loses)", await q(pop, () => [...document.querySelectorAll(".lrow-head .lrow-fix .act-label")].length === 3 && [...document.querySelectorAll(".lrow-head .lrow-fix .act-label")].every((e) => e.scrollWidth <= e.clientWidth)));
   ok("no horizontal scroll at 560 px", await noHScroll(pop));
   const idc = await q(pop, () => { const out = {}; for (const k of ["healthy", "long"]) { const e = document.querySelector(`.lrow[data-row="${k}"] .lrow-idc`), hd = document.querySelector(`.lrow[data-row="${k}"] .lrow-head`).getBoundingClientRect(); const r = e.getBoundingClientRect(); out[k] = { shown: getComputedStyle(e).display !== "none", rightGap: Math.round(hd.right - r.right), text: e.textContent.trim(), color: getComputedStyle(e.querySelector(".lrow-id")).color }; } return out; });
   ok("the full ID is right-aligned under the value, muted, on collapsed rows at 560 px", idc.healthy.shown && idc.healthy.text === "1864109161555839" && idc.healthy.rightGap === 16 && idc.long.text === "999888777666555" && idc.healthy.color === "rgb(96, 103, 112)", JSON.stringify(idc));
@@ -219,7 +219,7 @@ async function rowFlow() {
   ok("kv drops the pairs that are '—', '', false or null (Clicks, Balance, Timezone, Payment stay; CPC, Country gone)", body.dts.join() === "Clicks,Balance,Timezone,Payment", body.dts.join());
   ok("…two columns at 560 px; a pair marked wide has a row of its own", body.cols === 2 && body.wide === 1, JSON.stringify([body.cols, body.wide]));
   ok("…the body is indented under the name", body.indent === body.nameX, JSON.stringify([body.indent, body.nameX]));
-  ok("What to do: the help line, then ONLY the actions not already on line 2 (the 'Request review' fix is not repeated; the javascript: URL is dropped)", body.todoTitle === "What to do" && has(body.help, "ads-policy") && body.links.map((l) => l.text).join() === "Ads Manager", JSON.stringify(body.links));
+  ok("What to do: the help line, then ONLY the actions not already on line 2 (the 'Appeal' fix is not repeated; the javascript: URL is dropped)", body.todoTitle === "What to do" && has(body.help, "ads-policy") && body.links.map((l) => l.text).join() === "Ads Manager", JSON.stringify(body.links));
   ok("…plain: no tint, links ≥ 24 px, still real links", body.todoBox === "rgba(0, 0, 0, 0)" && body.links.every((l) => l.h >= 24 && l.href.startsWith("https://")), JSON.stringify(body.links));
   ok("the muted links row keeps its ↗ icons and names the owner", body.linksRow.length === 2 && body.linksRow.every((l) => l.icon && l.aria.endsWith(": problem") && l.rel === "noopener noreferrer"), JSON.stringify(body.linksRow));
   await pop.click('.lrow[data-row="problem"] .lrow-title');
@@ -236,7 +236,7 @@ async function rowFlow() {
       other: [...sameUrlOtherLabel.querySelectorAll("a")].map((x) => x.textContent.trim()).join(), nothing: m.whatToDo({}) === null, linksNone: m.linksRow([{ label: "next.review", url: "http://insecure" }, null]) === null, kvNone: m.kv([["A", "—"], ["B", ""], false]) === null,
       fixBad: m.fixLink({ label: "next.review", url: "javascript:alert(1)" }) === null };
   });
-  ok("whatToDo puts the primary action first; with every action on line 2 and no help it is null; help alone still shows; the same URL under another label is kept", wtd.order === "Request review,Ads Manager,Billing" && wtd.primaryCls === "Request review" && wtd.onlyFix === null && wtd.helpOnly === "0/Just words" && wtd.other === "Account Quality" && wtd.nothing, JSON.stringify(wtd));
+  ok("whatToDo puts the primary action first; with every action on line 2 and no help it is null; help alone still shows; the same URL under another label is kept", wtd.order === "Appeal,Ads Manager,Billing" && wtd.primaryCls === "Appeal" && wtd.onlyFix === null && wtd.helpOnly === "0/Just words" && wtd.other === "Account Quality" && wtd.nothing, JSON.stringify(wtd));
   ok("fixLink / linksRow refuse a URL that is not https; kv with nothing to show is null", wtd.fixBad && wtd.linksNone && wtd.kvNone, JSON.stringify(wtd));
 
   // ---- layout at 380 px ----

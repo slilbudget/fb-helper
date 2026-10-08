@@ -8,8 +8,8 @@ import { addStrings } from "../i18n.js";
 export const STRINGS = {
   ru: {
     "next.title": "Что делать",
-    "next.review": "Запросить проверку", "next.quality": "Account Quality", "next.adsManager": "Ads Manager", "next.billing": "Биллинг",
-    "next.pay": "Оплатить баланс", "next.secure": "Защитить профиль", "next.support": "Поддержка", "next.openAd": "Открыть объявление",
+    "next.review": "Апелляция", "next.quality": "Account Quality", "next.adsManager": "Ads Manager", "next.billing": "Биллинг",
+    "next.pay": "Оплатить", "next.secure": "Защитить", "next.support": "Поддержка", "next.openAd": "Открыть объявление", "next.assign": "Назначить себя",
 
     "next.help.r0": "Кабинет заблокирован, причина не названа. В Account Quality видно причину и кнопку апелляции.",
     "next.help.r1": "Нарушение правил рекламы. Подай апелляцию в Account Quality — там видно, что именно нарушено.",
@@ -28,11 +28,12 @@ export const STRINGS = {
     "next.help.closing": "Кабинет в очереди на закрытие. Если ты его не закрывал — пиши в поддержку.",
     "next.help.closed": "Кабинет закрыт, обычно насовсем. Если это ошибка — пиши в поддержку.",
     "next.help.restricted": "Кабинет активен, но Meta наложила ограничение. В Account Quality видно какое, там же можно запросить проверку.",
+    "next.help.noAccess": "Ты не назначен на этот кабинет, поэтому не можешь им управлять. Открой настройки бизнеса и назначь себя.",
   },
   en: {
     "next.title": "What to do",
-    "next.review": "Request review", "next.quality": "Account Quality", "next.adsManager": "Ads Manager", "next.billing": "Billing",
-    "next.pay": "Pay balance", "next.secure": "Secure the profile", "next.support": "Support", "next.openAd": "Open ad",
+    "next.review": "Appeal", "next.quality": "Account Quality", "next.adsManager": "Ads Manager", "next.billing": "Billing",
+    "next.pay": "Pay", "next.secure": "Secure", "next.support": "Support", "next.openAd": "Open ad", "next.assign": "Assign me",
 
     "next.help.r0": "The account is disabled and no reason is given. Account Quality shows the cause and the appeal button.",
     "next.help.r1": "Ads policy violation. Appeal in Account Quality — it shows what exactly was flagged.",
@@ -51,6 +52,7 @@ export const STRINGS = {
     "next.help.closing": "The account is queued for closure. If you didn't close it, contact support.",
     "next.help.closed": "The account is closed, usually for good. If it is a mistake, contact support.",
     "next.help.restricted": "The account is active but Meta put a restriction on it. Account Quality shows which; you can request a review.",
+    "next.help.noAccess": "You are not assigned to this ad account, so you cannot manage it. Open the business settings and assign yourself.",
   },
 };
 addStrings(STRINGS);

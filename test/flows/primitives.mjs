@@ -1,6 +1,6 @@
 // The shared building blocks a new tab relies on, exercised inside the real popup with the extension's own module
 // instances: rate slots across windows, readPaged against the Graph mock, redraw registrations.
-import { GRAPH, TOK, ok, has, boot, adsPage, popup, text, until, rowsAre, resetLocks, accountsJson, adsFb, stored, openAds } from "../harness.mjs";
+import { GRAPH, TOK, ok, has, boot, adsPage, popup, text, until, rowsAre, resetLocks, accountsJson, adsFb, stored, openAds, ROW } from "../harness.mjs";
 
 async function slotFlows() {
   console.log("\n# primitives: rate slots (claimSlot)");
@@ -24,7 +24,7 @@ async function slotFlows() {
 
   // the list keeps its minute, one account's ads their 30 s
   await p1.click('[data-tab="accounts"]');
-  await rowsAre(p1, ".acc", 1);
+  await rowsAre(p1, ROW, 1);
   const sl = await slots(p1), now = Date.now();
   ok("the account list holds its slot for a minute (key accounts)", sl.accounts - now > 55000 && sl.accounts - now <= 60500, String(sl.accounts - now));
   await resetLocks(p1); await openAds(p1);
@@ -71,7 +71,7 @@ async function renderFlows() {
   const b = await boot({ fb: adsFb(TOK), graph: () => ({ body: accountsJson }) });
   await adsPage(b);
   const pop = await popup(b, "accounts");
-  await rowsAre(pop, ".acc", 1);
+  await rowsAre(pop, ROW, 1);
   const before = { pill: await text(pop, "#usage"), meta: await pop.getAttribute("#loadAccounts", "title") };
   await pop.evaluate(async () => {
     const { state } = await import(chrome.runtime.getURL("js/state.js"));
@@ -91,7 +91,7 @@ async function tabApiFlows() {
   const b = await boot({ fb: adsFb(TOK), graph: () => ({ body: accountsJson }) });
   await adsPage(b);
   const pop = await popup(b, "accounts");
-  await rowsAre(pop, ".acc", 1);
+  await rowsAre(pop, ROW, 1);
   // Two tabs that exist only for this test: the button and panel are markup (popup.html in a real tab), the rest is registerTab.
   await pop.evaluate(async () => {
     for (const name of ["zz", "zy"]) {

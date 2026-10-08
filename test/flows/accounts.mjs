@@ -1,5 +1,7 @@
 // Ad accounts tab: API version, the account cache per FB user, dead sessions, ads, automatic load, all-time spend, layout.
-import { GRAPH, TOK, TOK2, ok, has, boot, adsPage, popup, text, until, rowsAre, resetLocks, clickToast, accountsJson, isAds, adsFb, boxWait, GONE, loadAccounts, openAds, stored } from "../harness.mjs";
+import { GRAPH, TOK, TOK2, ok, has, boot, adsPage, popup, text, until, rowsAre, resetLocks, clickToast, accountsJson, isAds, adsFb, boxWait, GONE, loadAccounts, openAds, stored, ROW, ratesOk, captureClipboard, clip } from "../harness.mjs";
+import { LINKS } from "../../fb-helper/js/links.js";
+import { STRINGS } from "../../fb-helper/js/strings/actions.js";
 
 // Every account-list load also asks /me/businesses (BM accounts the person is not assigned to): counted apart.
 const accHits = (b) => b.hits.filter((h) => !h.startsWith("/me/businesses"));
@@ -33,15 +35,15 @@ async function cacheFlows() {
   ok("accounts loaded", await loadAccounts(pop, 2));
   ok("ads loaded", await openAds(pop) && (await pop.locator(".ad").count()) === 1);
   pop = await popup(b, "accounts");
-  ok("reopen keeps rows, open row and ads", (await rowsAre(pop, ".acc", 2)) && (await rowsAre(pop, ".acc.open", 1)) && (await rowsAre(pop, ".ad", 1)));
+  ok("reopen keeps rows, open row and ads", (await rowsAre(pop, ROW,2)) && (await rowsAre(pop, `${ROW}.open`, 1)) && (await rowsAre(pop, ".ad", 1)));
   await fb.close(); pop = await popup(b, "accounts");
   ok("no FB tab: token gone", await boxWait(pop, GONE), await text(pop, "#tokenBox"));
-  ok("no FB tab: cache stays", await rowsAre(pop, ".acc", 2));
+  ok("no FB tab: cache stays", await rowsAre(pop, ROW,2));
   const c0 = calls; await clickToast(pop, "#loadAccounts");
   ok("refresh without a token sends nothing", calls === c0);
   await b.ctx.addCookies([{ name: "c_user", value: "2002", domain: ".facebook.com", path: "/", secure: true }]);
   pop = await popup(b, "accounts");
-  ok("another FB user -> cache dropped", (await rowsAre(pop, ".acc", 0)) && (await until(pop, () => chrome.storage.session.get("accounts").then((o) => !o.accounts))));
+  ok("another FB user -> cache dropped", (await rowsAre(pop, ROW,0)) && (await until(pop, () => chrome.storage.session.get("accounts").then((o) => !o.accounts))));
   await b.ctx.close();
 }
 
@@ -99,7 +101,7 @@ async function sessionFlows() {
   pop = await popup(b2, "accounts");
   await loadAccounts(pop, 1); await openAds(pop);
   b2.graph = () => dead(190, 463); await resetLocks(pop);
-  const toast = await clickToast(pop, ".acc.open .ads-refresh");
+  const toast = await clickToast(pop, `${ROW}.open .ads-refresh`);
   ok("failed ads refresh keeps the list", has(await text(pop, ".ads"), "Keep me"), await text(pop, ".ads"));
   ok("…and reports the code in a toast", has(toast, "190/463"), toast);
   await b2.ctx.close();
@@ -166,7 +168,7 @@ async function adsFlows() {
   b = await boot({ fb: adsFb(TOK), graph: (u) => isAds(u) ? (fail ? { status: 500, body: { error: { code: 1, message: "boom" } } } : { body: { data: [base] } }) : { body: accountsJson } });
   pop = await open(b);
   fail = true; await resetLocks(pop);
-  const toast = await clickToast(pop, ".acc.open .ads-refresh");
+  const toast = await clickToast(pop, `${ROW}.open .ads-refresh`);
   ok("failed refresh: list kept", (await pop.locator(".ad").count()) === 1);
   ok("failed refresh: error toast", has(toast, "boom"), toast);
   ok("failed refresh: the row says the list is old", has(await text(pop, ".ads"), "Not refreshed: boom"), await text(pop, ".ads"));
@@ -234,7 +236,7 @@ async function adsFlows() {
   ok("numbers are persisted compact (no raw Graph objects)", !JSON.stringify(await stored(pop, "ads")).includes("date_start"));
   // a day later the cached numbers must not pass for today's
   await pop.evaluate(() => chrome.storage.session.get("ads").then((o) => { for (const v of Object.values(o.ads)) v.statsAt -= 2 * 86400000; return chrome.storage.session.set({ ads: o.ads }); }));
-  const oldPop = await popup(b, "accounts"); await rowsAre(oldPop, ".acc", 1);
+  const oldPop = await popup(b, "accounts"); await rowsAre(oldPop, ROW,1);
   const oldTxt = await oldPop.evaluate(() => document.querySelector(".ads").textContent);
   ok("cached from an earlier day: hint, no numbers", has(oldTxt, "out of date") && !has(oldTxt, "$12.40"), oldTxt);
   await b.ctx.close();
@@ -251,7 +253,7 @@ async function adsFlows() {
   ok("the top refresh reads the accounts only, the ads cost nothing", accReads() === a0 + 1 && listCalls() === l0 && statCalls() === s0, `${a0}/${l0}/${s0} -> ${accReads()}/${listCalls()}/${statCalls()}`);
   ok("…and the ads card is still expanded", (await pop.locator(".ad").count()) === 4);
   liveAds[0].name = "Busy renamed"; liveRows[0].p_today = ins("20", "4000", "50");
-  await resetLocks(pop); await pop.click(".acc.open .ads-refresh");
+  await resetLocks(pop); await pop.click(`${ROW}.open .ads-refresh`);
   await until(pop, () => /Busy renamed/.test(document.querySelector(".ad")?.textContent || "") && /\$20\.00/.test(document.querySelector(".ad")?.textContent || ""));
   lines = await adLines();
   ok("the ads icon re-reads this account's ads: new list and new numbers", has(lines[0], "Busy renamed") && has(lines[0], "$20.00") && has(lines[0], "50 clicks"), lines[0]);
@@ -261,26 +263,31 @@ async function adsFlows() {
   // (up to 3 h, but never past UTC midnight: the mock account is in UTC and numbers of an earlier day are hidden)
   await pop.evaluate(() => { const d = new Date(), back = Math.min(3 * 3600000, d - Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) - 90000);
     return chrome.storage.session.get("ads").then((o) => { for (const v of Object.values(o.ads)) v.statsAt -= back; return chrome.storage.session.set({ ads: o.ads }); }); });
-  const re = await popup(b, "accounts"); await rowsAre(re, ".acc", 1);
+  const re = await popup(b, "accounts"); await rowsAre(re, ROW,1);
   await until(re, () => /metrics updated (\d+ (min|h) ago|just now)/.test(document.querySelector(".ads-sum")?.textContent || ""));
   ok("reopened later: the sum line shows the age of the numbers", /metrics updated (\d+ (min|h) ago|just now)/.test(await text(re, ".ads-sum")), await text(re, ".ads-sum"));
   liveRows[0].p_today = ins("33", "5000", "60");
-  await resetLocks(re); await re.click(".acc.open .ads-refresh");
+  await resetLocks(re); await re.click(`${ROW}.open .ads-refresh`);
   await until(re, () => /metrics updated just now/.test(document.querySelector(".ads-sum")?.textContent || ""));
   ok("…the ads icon brings the numbers up to date", has(await text(re, ".ads-sum"), "metrics updated just now") && has(await text(re, ".ad"), "$33.00"), await text(re, ".ads-sum") + " | " + await text(re, ".ad"));
   await re.close();
-  // the card is symmetric and its header does not move when the list folds or unfolds
-  const geo = () => pop.$eval(".acc.open .ads-toggle", (n) => { const r = n.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map(Math.round).join(); });
-  const gap = () => pop.$eval(".acc.open .ads-card", (n) => { const r = n.getBoundingClientRect(), bb = document.body.getBoundingClientRect(); return { l: Math.round(r.left - bb.left), r: Math.round(bb.right - r.right) }; });
-  const gOpen = await geo(), gg = await gap();
-  ok("ads card: same gap left and right", Math.abs(gg.l - gg.r) <= 1, JSON.stringify(gg));
-  await pop.hover(".acc.open .ads-toggle");
-  ok("hover on the ads header keeps the bar as it is (words only, like the tabs)", (await pop.$eval(".acc.open .ads-toggle", (n) => getComputedStyle(n).backgroundColor)) === "rgba(0, 0, 0, 0)");
-  await pop.click(".acc.open .ads-toggle");                      // collapse
+  // the ads section is flat (no tinted box), lines up with the facts above it, and its header does not move when the list folds or unfolds
+  const geo = () => pop.$eval(`${ROW}.open .ads-toggle`, (n) => { const r = n.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map(Math.round).join(); });
+  const flat = () => pop.evaluate(() => {
+    const sec = document.querySelector("#accountsList .lrow.open .ads-sec"), body = document.querySelector("#accountsList .lrow.open .lrow-body"), kv = body.querySelector(".lrow-kv");
+    const cs = getComputedStyle(sec), bb = body.getBoundingClientRect(), r = sec.getBoundingClientRect();
+    return { bg: cs.backgroundColor, radius: cs.borderRadius, left: Math.round(r.left - kv.getBoundingClientRect().left), right: Math.round(bb.right - r.right) };
+  });
+  const gOpen = await geo(), fl = await flat();
+  ok("ads section: no tinted box (transparent, square) and the same left edge as the facts", fl.bg === "rgba(0, 0, 0, 0)" && fl.radius === "0px" && fl.left === 0, JSON.stringify(fl));
+  ok("…and the same 16 px gutter on the right as every row", fl.right === 16, JSON.stringify(fl));
+  await pop.hover(`${ROW}.open .ads-toggle`);
+  ok("hover on the ads header keeps the bar as it is (words only, like the tabs)", (await pop.$eval(`${ROW}.open .ads-toggle`, (n) => getComputedStyle(n).backgroundColor)) === "rgba(0, 0, 0, 0)");
+  await pop.click(`${ROW}.open .ads-toggle`);                      // collapse
   const gShut = await geo();
   ok("folding the ads keeps the header exactly where it was", gOpen === gShut, `${gOpen} -> ${gShut}`);
-  ok("…and folded, the refresh icon is still there", (await pop.locator(".acc.open .ads-refresh").count()) === 1);
-  await pop.click(".acc.open .ads-toggle");                      // expand
+  ok("…and folded, the refresh icon is still there", (await pop.locator(`${ROW}.open .ads-refresh`).count()) === 1);
+  await pop.click(`${ROW}.open .ads-toggle`);                      // expand
   ok("unfolding keeps it there too", (await geo()) === gOpen, `${gOpen} -> ${await geo()}`);
   await b.ctx.close();
 
@@ -308,7 +315,7 @@ async function adsFlows() {
     if (mode !== "down") {
       await resetLocks(pop);
       const before = statCalls2(b);
-      await pop.click(".acc.open .ads-refresh");
+      await pop.click(`${ROW}.open .ads-refresh`);
       await pop.waitForTimeout(800);
       ok(`numbers ${mode}: refused for this account -> not asked again`, statCalls2(b) === before, `${before} -> ${statCalls2(b)}`);
     }
@@ -330,7 +337,7 @@ async function autoFlows() {
   let pop = await popup(b);
   ok("token tab open: nothing requested yet", hitsOf(b) === 0);
   await pop.click('[data-tab="accounts"]');
-  ok("first visit: rows appear without pressing refresh", await rowsAre(pop, ".acc", 1));
+  ok("first visit: rows appear without pressing refresh", await rowsAre(pop, ROW,1));
   ok("…with exactly one request", hitsOf(b) === 1, String(hitsOf(b)));
   ok("…and no toast for an automatic load", (await toastOf(pop)) === "", await toastOf(pop));
   await pop.click('[data-tab="token"]'); await pop.click('[data-tab="accounts"]'); await pop.waitForTimeout(700);
@@ -338,7 +345,7 @@ async function autoFlows() {
 
   // 2. reopening: the popup remembers the Accounts tab; the one-minute slot still holds -> silent, cache shown
   pop = await popup(b); await pop.waitForTimeout(700);
-  ok("reopen within a minute: no request, cache shown, no complaint", hitsOf(b) === 1 && (await rowsAre(pop, ".acc", 1)) && !has(await toastOf(pop), "Refresh available"), `${hitsOf(b)} ${await toastOf(pop)}`);
+  ok("reopen within a minute: no request, cache shown, no complaint", hitsOf(b) === 1 && (await rowsAre(pop, ROW,1)) && !has(await toastOf(pop), "Refresh available"), `${hitsOf(b)} ${await toastOf(pop)}`);
   // 3. a minute later, same FB page: reopening the popup still sends nothing (the list is from this page load)
   await resetLocks(pop);
   pop = await popup(b); await pop.waitForTimeout(1200);
@@ -407,7 +414,7 @@ async function autoFlows() {
   await pop.click("#loadAccounts", { force: true }).catch(() => {});   // the button is disabled while loading: even a forced click must do nothing
   await pop.waitForTimeout(300);
   ok("a click during the automatic load neither errors nor doubles the request", !has(await toastOf(pop), "Refresh available") && hitsOf(b) === 1, `${await toastOf(pop)} / ${hitsOf(b)}`);
-  ok("…then shows the rows", await rowsAre(pop, ".acc", 1));
+  ok("…then shows the rows", await rowsAre(pop, ROW,1));
   await b.ctx.close();
 }
 
@@ -424,8 +431,8 @@ async function allTimeFlows() {
   ] } }) });
   await adsPage(b);
   const pop = await popup(b, "accounts");
-  await rowsAre(pop, ".acc", 3);
-  const spends = () => pop.$$eval(".acc", (rows) => Object.fromEntries(rows.map((r) => [r.querySelector(".acc-name").textContent, r.querySelector(".acc-spend").textContent.trim()])));
+  await rowsAre(pop, ROW,3);
+  const spends = () => pop.$$eval(ROW, (rows) => Object.fromEntries(rows.map((r) => [r.querySelector(".lrow-name").textContent, r.querySelector(".lrow-value").textContent.trim()])));
   const today = await spends();
   ok("Today: unchanged", today.New === "$3.00" && today.Old === "$3.00" && today.Reset === "$3.00", JSON.stringify(today));
   await pop.click('#periodSeg .seg-btn:has-text("All time")');
@@ -435,19 +442,21 @@ async function allTimeFlows() {
   ok("All time, total reset below 30 days + today -> $53.00", all.Reset === "$53.00", JSON.stringify(all));
   ok("All time total is the sum", has(await text(pop, "#accountsTotal .total-value"), "$156.00"), await text(pop, "#accountsTotal .total-value"));
   const totalOf = async (name) => {
-    await pop.click(`.acc:has(.acc-name:text-is("${name}")) .acc-title`);
-    return pop.evaluate((n) => [...document.querySelectorAll(".acc")].find((r) => r.querySelector(".acc-name").textContent === n).querySelector(".kv dd").textContent.trim(), name);
+    await pop.click(`${ROW}:has(.lrow-name:text-is("${name}")) .lrow-title`);
+    const v = await pop.evaluate((n) => [...document.querySelectorAll("#accountsList .lrow")].find((r) => r.querySelector(".lrow-name").textContent === n).querySelector(".lrow-kv dd")?.textContent.trim(), name);
+    await pop.click(`${ROW}:has(.lrow-name:text-is("${name}")) .lrow-title`);      // close it again
+    return v;
   };
   ok("'Total spent' inside the row matches All time (lagging total)", (await totalOf("New")) === "$3.00", await totalOf("New"));
   ok("'Total spent' inside the row matches All time (reset total)", (await totalOf("Reset")) === "$53.00", await totalOf("Reset"));
   // a day later the cached "today" is stale ("—"), but All time must not jump back to Meta's lagging 0
   await pop.evaluate(() => chrome.storage.session.get("fetchedAt").then((o) => chrome.storage.session.set({ fetchedAt: o.fetchedAt - 2 * 86400000 })));
-  const later = await popup(b, "accounts"); await rowsAre(later, ".acc", 3);
+  const later = await popup(b, "accounts"); await rowsAre(later, ROW,3);
   await later.click('#periodSeg .seg-btn:has-text("All time")');
-  const stable = await later.$$eval(".acc", (rows) => Object.fromEntries(rows.map((r) => [r.querySelector(".acc-name").textContent, r.querySelector(".acc-spend").textContent.trim()])));
+  const stable = await later.$$eval(ROW, (rows) => Object.fromEntries(rows.map((r) => [r.querySelector(".lrow-name").textContent, r.querySelector(".lrow-value").textContent.trim()])));
   ok("All time is stable when the cached day is stale", stable.New === "$3.00" && stable.Reset === "$53.00", JSON.stringify(stable));
   await later.click('#periodSeg .seg-btn:has-text("Today")');
-  const todayStale = await later.$$eval(".acc-spend", (n) => n.map((x) => x.textContent.trim()).join());
+  const todayStale = await later.$$eval(`${ROW} .lrow-value`, (n) => n.map((x) => x.textContent.trim()).join());
   ok("…while Today honestly shows unknown", !/\$/.test(todayStale), todayStale);
   await b.ctx.close();
 }
@@ -466,12 +475,13 @@ async function layoutFlows() {
   await adsPage(b);
   const pop = await popup(b, "accounts");
   await loadAccounts(pop, 2);
-  await pop.click(".acc .acc-title"); await pop.click(".acc.open [data-ads]");
+  await pop.click(`${ROW} .lrow-title`); await pop.click(`${ROW}.open [data-ads]`);
   await until(pop, () => document.querySelectorAll(".ad").length === 2);
+  await pop.click(`${ROW}[data-row="222"] .lrow-title`);                  // the second row (disabled, long name and business) open too
   const widthOf = (w) => pop.setViewportSize({ width: w, height: 700 }).then(() => pop.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth })));
-  for (const w of [800, 560, 480, 360, 320]) {
+  for (const w of [800, 560, 480, 380, 360, 320]) {
     const m = await widthOf(w);
-    ok(`no horizontal scroll at ${w}px (long names, ads, BM, pixels)`, m.sw <= m.cw, JSON.stringify(m));
+    ok(`no horizontal scroll at ${w}px (long names, ads, business, pixels, payment)`, m.sw <= m.cw, JSON.stringify(m));
   }
   for (const tab of ["token", "cookies"]) {               // the copy buttons (incl. "Token + cookies + UA") and the UA box
     await pop.click(`[data-tab="${tab}"]`);
@@ -493,11 +503,11 @@ async function staleFlows() {
   const ads = await adsPage(b);
   const pop = await popup(b, "accounts");
   await loadAccounts(pop, 1);
-  await pop.click(".acc .acc-title"); await pop.click(".acc.open [data-ads]");
-  ok("ads are loading", await until(pop, () => /Loading/.test(document.querySelector(".acc.open .ads")?.textContent || "")));
+  await pop.click(`${ROW} .lrow-title`); await pop.click(`${ROW}.open [data-ads]`);
+  ok("ads are loading", await until(pop, () => /Loading/.test(document.querySelector("#accountsList .lrow.open .ads")?.textContent || "")));
   tok = TOK2; await ads.reload();
   await pop.evaluate(() => document.querySelector("#refreshToken").click());
-  ok("token changed meanwhile -> no 'Loading' left on screen", await until(pop, () => !/Loading/.test(document.querySelector(".acc.open .ads")?.textContent || "")), await text(pop, ".acc.open .ads"));
+  ok("token changed meanwhile -> no 'Loading' left on screen", await until(pop, () => !/Loading/.test(document.querySelector("#accountsList .lrow.open .ads")?.textContent || "")), await text(pop, `${ROW}.open .ads`));
   ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
   await b.ctx.close();
 }
@@ -514,19 +524,19 @@ async function fieldsFlows() {
   const reads = () => b.hits.filter((h) => h.startsWith("/me/adaccounts"));
   refuse.add("adspixels");
   const pop = await popup(b, "accounts");
-  ok("the list loads although pixels are refused", await rowsAre(pop, ".acc", 1));
+  ok("the list loads although pixels are refused", await rowsAre(pop, ROW,1));
   const r = reads();
   ok("one retry: the same page again, without that field only", r.length === 2 && has(r[0], "adspixels") && !has(r[1], "adspixels")
     && ["funding_source_details", "adtrust_dsl", "adspaymentcycle", "p_today"].every((f) => has(r[1], f)), r.join(" | "));
-  await pop.click(".acc .acc-title");
-  ok("pixels are shown as unknown, not as none", has(await text(pop, ".acc .kv"), "Pixels—"), await text(pop, ".acc .kv"));
+  await pop.click(`${ROW} .lrow-title`);
+  ok("pixels are unknown (the pair is not drawn), not 'none'", !has(await text(pop, `${ROW} .lrow-kv`), "Pixels"), await text(pop, `${ROW} .lrow-kv`));
   await resetLocks(pop); await pop.click("#loadAccounts");
   for (let i = 0; i < 40 && reads().length < 3; i++) await pop.waitForTimeout(100);
   await pop.waitForTimeout(500);
   ok("the refusal is remembered for this token: the next read does not ask for the field again", reads().length === 3 && !has(reads()[2], "adspixels"), reads().join(" | "));
   refuse.add("insights");
   await resetLocks(pop); await pop.click("#loadAccounts");
-  ok("refused insights: rows still load, spend is unknown (a dash), not 0", await until(pop, () => document.querySelector(".acc-spend")?.textContent.trim() === "—"), await text(pop, ".acc-spend"));
+  ok("refused insights: rows still load, spend is unknown (a dash), not 0", await until(pop, () => document.querySelector("#accountsList .lrow-value")?.textContent.trim() === "—"), await text(pop, `${ROW} .lrow-value`));
   ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
   await b.ctx.close();
 }
@@ -543,12 +553,12 @@ async function pagingFlows() {
   await adsPage(b);
   const reads = () => b.hits.filter((h) => h.startsWith("/me/adaccounts"));
   const pop = await popup(b, "accounts");
-  ok("two pages: both are read, the second by cursor", (await rowsAre(pop, ".acc", 2)) && reads().length === 2 && has(reads()[1], "after=c1") && !has(reads()[0], "after="), reads().join(" | "));
+  ok("two pages: both are read, the second by cursor", (await rowsAre(pop, ROW,2)) && reads().length === 2 && has(reads()[1], "after=c1") && !has(reads()[0], "after="), reads().join(" | "));
   ok("…the page size is 50", has(reads()[0], "limit=50"));
   pages = 99;                                             // an endless list
   await resetLocks(pop);
   const toast = await clickToast(pop, "#loadAccounts");
-  ok("an endless list stops after 10 pages and says so", (await rowsAre(pop, ".acc", 10)) && reads().length === 12 && has(toast, "10-page limit"), `${reads().length} ${toast}`);
+  ok("an endless list stops after 10 pages and says so", (await rowsAre(pop, ROW,10)) && reads().length === 12 && has(toast, "10-page limit"), `${reads().length} ${toast}`);
   ok("…the count line says the list is not complete", has(await text(pop, "#accountsTotal .total-meta"), "(not all)"), await text(pop, "#accountsTotal .total-meta"));
   ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
   await b.ctx.close();
@@ -561,7 +571,7 @@ async function slotFlows() {
   await adsPage(b);
   const pop = await popup(b);
   await pop.click('[data-tab="accounts"]');               // the automatic load takes the one-minute slot
-  ok("the automatic load shows the list", await rowsAre(pop, ".acc", 1));
+  ok("the automatic load shows the list", await rowsAre(pop, ROW,1));
   const reads = () => b.hits.filter((h) => h.startsWith("/me/adaccounts")).length;
   const refused = await clickToast(pop, "#loadAccounts");
   const secs = Number((/in (\d+) s/.exec(refused) || [])[1]);
@@ -570,9 +580,9 @@ async function slotFlows() {
   for (let i = 0; i < 40 && reads() < 2; i++) await pop.waitForTimeout(100);
   ok("slots freed: the refresh goes out", reads() === 2, String(reads()));
   await openAds(pop);
-  ok("ads: the account's refresh icon is locked after a read (30 s per account)", await pop.$eval(".acc.open .ads-refresh", (n) => n.disabled));
+  ok("ads: the account's refresh icon is locked after a read (30 s per account)", await pop.$eval(`${ROW}.open .ads-refresh`, (n) => n.disabled));
   await resetLocks(pop);
-  ok("ads: freeing the slots re-enables the icon (the storage change reaches the buttons)", await until(pop, () => !document.querySelector(".acc.open .ads-refresh").disabled));
+  ok("ads: freeing the slots re-enables the icon (the storage change reaches the buttons)", await until(pop, () => !document.querySelector("#accountsList .lrow.open .ads-refresh").disabled));
   ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
   await b.ctx.close();
 }
@@ -592,11 +602,299 @@ async function bmFlows() {
   } });
   await adsPage(b);
   const pop = await popup(b, "accounts");
-  ok("assigned + owned + client accounts of the BMs, each once", await rowsAre(pop, ".acc", 3), await text(pop, "#accountsList"));
+  ok("assigned + owned + client accounts of the BMs, each once", await rowsAre(pop, ROW,3), await text(pop, "#accountsList"));
   ok("…a BM edge the token can't read is skipped, the rest of the list stays", b.hits.some((h) => h.startsWith("/901/owned_ad_accounts")) && b.hits.some((h) => h.startsWith("/901/client_ad_accounts")), b.hits.join(" | "));
   ok("…the BM accounts carry the same fields as the assigned ones", has(b.hits.find((h) => h.startsWith("/900/owned_ad_accounts")) || "", "adtrust_dsl"));
   ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
   await b.ctx.close();
 }
 
-export const flows = { version: versionFlows, cache: cacheFlows, session: sessionFlows, ads: adsFlows, auto: autoFlows, alltime: allTimeFlows, layout: layoutFlows, stale: staleFlows, fields: fieldsFlows, paging: pagingFlows, slots: slotFlows, bm: bmFlows };
+// ---------- the list: groups, order, silent healthy rows, problem words, fixes ----------
+const day = new Date().toISOString().slice(0, 10);
+const ins = (spend, imp = "1000", clicks = "30") => ({ data: [{ spend: String(spend), impressions: imp, inline_link_clicks: clicks, date_start: day, date_stop: day }] });
+const TS = { id: "9001", name: "Tailspin Toys" }, CO = { id: "9002", name: "Contoso Ads" }, FA = { id: "9003", name: "Fabrikam Media" };
+const mk = (id, name, cur, status, reason, today, biz, extra = {}) => ({ account_id: id, name, account_status: status, disable_reason: reason, currency: cur, timezone_name: "UTC",
+  amount_spent: String(Math.round((today || 0) * 100 * 9)), balance: "0", spend_cap: "0", created_time: "2025-03-04T10:00:00+0000", business_country_code: "US",
+  p_today: ins(today || 0, "12400", "310"), p_yesterday: ins(0), p_week: ins(0), p_month: ins(0), ...(biz ? { business: biz } : {}), ...extra });
+// 13 accounts assigned to the person (3 businesses + personal) and one that only the business edge shows. USD / EUR / VND, one of every problem.
+const MINE = [
+  mk("1001", "TS | US | Prospecting", "USD", 1, 0, 1240.5, TS, { adtrust_dsl: "2500", balance: "12000", funding_source_details: { display_string: "Visa ·· 4242" },
+    adspixels: { data: [{ id: "55501", name: "Main pixel" }] }, adspaymentcycle: { data: [{ threshold_amount: "25000" }] }, timezone_name: "Europe/Kiev" }),
+  mk("1002", "TS | US | Retargeting", "USD", 1, 0, 215.3, TS),
+  mk("1003", "TS | CA | Test", "USD", 2, 1, 0, TS),                       // disabled: ads policy
+  mk("1004", "TS | Old 2023", "USD", 101, 0, 0, TS),                      // closed
+  mk("2001", "Contoso EU 1", "EUR", 1, 0, 680.4, CO),
+  mk("2002", "Contoso EU 2", "EUR", 3, 0, 90, CO, { balance: "35000" }),  // unpaid
+  mk("2003", "Contoso Compromised", "EUR", 2, 15, 0, CO),                 // disabled: compromised (Secure + Appeal)
+  mk("2004", "Contoso Restricted", "EUR", 1, 5, 20, CO),                  // active, restricted
+  mk("3001", "Fabrikam VN 1", "VND", 1, 0, 25000000, FA),
+  mk("3002", "Fabrikam VN 2", "VND", 7, 0, 0, FA),                        // risk review
+  mk("3004", "Fabrikam Closed for good", "VND", 2, 7, 0, FA),             // disabled for good
+  mk("4001", "Personal | Alex", "USD", 1, 0, 55.2, null),
+  mk("4002", "Personal | Grace", "USD", 9, 0, 0, null),                   // grace period
+];
+const VIA = [mk("3003", "Fabrikam Unassigned", "VND", 1, 0, 1200000, FA)];   // read through business 9003, not assigned
+const BMS = { data: [TS, CO, FA].map((x) => ({ id: x.id, name: x.name })) };
+const listGraph = (accounts = MINE, via = VIA) => (u) => {
+  const p = u.pathname.replace(/^\/v[\d.]+\//, "/");
+  if (p === "/me/adaccounts") return { body: { data: accounts } };
+  if (p === "/me/businesses") return { body: BMS };
+  if (p === "/9003/owned_ad_accounts") return { body: { data: via } };
+  return { body: { data: [] } };
+};
+// The list as the screen shows it, in DOM order: group headers and rows.
+const dump = (p) => p.evaluate(() => [...document.querySelectorAll("#accountsList > *")].map((n) => {
+  if (n.classList.contains("lgroup")) return { g: n.querySelector(".lgroup-text").textContent, count: n.querySelector(".lgroup-count").textContent, value: n.querySelector(".lgroup-value")?.textContent.replace(/\s+/g, " ").trim(), valueTitle: n.querySelector(".lgroup-value")?.title };
+  const st = n.querySelector(".lrow-status"), fix = n.querySelector(".lrow-head .lrow-fix"), val = n.querySelector(".lrow-value");
+  return { id: n.dataset.row, name: n.querySelector(".lrow-name").textContent, status: st?.querySelector(".lrow-status-text").textContent ?? null, tone: st ? st.className.replace("lrow-status", "").trim() : null,
+    statusTitle: st?.title || null, sr: n.querySelector(".lrow-sub .sr-only")?.textContent ?? null, fix: fix?.textContent.trim() ?? null, href: fix?.href ?? null, aria: fix?.getAttribute("aria-label") ?? null,
+    fixes: n.querySelectorAll(".lrow-head .lrow-fix").length, more: n.querySelector(".lrow-more")?.textContent ?? null,
+    value: val.textContent.replace(/\s+/g, " ").trim(), muted: val.classList.contains("muted"), valueTitle: val.title || null, id2: n.querySelector(".lrow-idtext")?.textContent ?? null };
+}));
+const names = (d) => d.map((x) => x.g ?? x.name);
+
+async function listFlow() {
+  console.log("\n# accounts list: groups, order, silent healthy rows, problem words, fixes");
+  let b = await boot({ fb: adsFb(TOK), graph: listGraph(), rates: ratesOk });
+  await adsPage(b);
+  let pop = await popup(b, "accounts");
+  ok("14 rows: 13 assigned + 1 that only the business shows", await rowsAre(pop, ROW, 14));
+  const WANT = ["Tailspin Toys", "Fabrikam Media", "Contoso Ads", "Personal ad accounts"];
+  ok("groups: biggest subtotal first by USD equivalent (Tailspin $1,456 > Fabrikam VND 26.2 M = $1,048 > Contoso €790 = $988), then the personal group last",
+    await until(pop, (want) => [...document.querySelectorAll("#accountsList .lgroup-text")].map((x) => x.textContent).join("|") === want, WANT.join("|")), JSON.stringify((await dump(pop)).filter((x) => x.g).map((x) => x.g)));
+  let d = await dump(pop);
+  ok("inside a group: active by spend, then the ones with a problem (by spend), then the dead ones", JSON.stringify(names(d)) === JSON.stringify([
+    "Tailspin Toys", "TS | US | Prospecting", "TS | US | Retargeting", "TS | CA | Test", "TS | Old 2023",
+    "Fabrikam Media", "Fabrikam VN 1", "Fabrikam Unassigned", "Fabrikam VN 2", "Fabrikam Closed for good",
+    "Contoso Ads", "Contoso EU 1", "Contoso EU 2", "Contoso Restricted", "Contoso Compromised",
+    "Personal ad accounts", "Personal | Alex", "Personal | Grace"]), JSON.stringify(names(d)));
+  const heads = d.filter((x) => x.g);
+  ok("each header: name · count and the subtotal in its own currency (exact; two or more currencies would be 'a + b')", JSON.stringify(heads.map((h) => [h.count, h.value]))
+    === JSON.stringify([["· 4", "$1,456"], ["· 4", "VND 26,200,000"], ["· 4", "€790.40"], ["· 2", "$55.20"]]), JSON.stringify(heads));
+  ok("the group header is sticky, a heading, 12 px", await pop.evaluate(() => { const g = document.querySelector("#accountsList .lgroup"), cs = getComputedStyle(g); return cs.position === "sticky" && g.getAttribute("role") === "heading" && cs.fontSize === "12px"; }));
+  const R = (id) => d.find((x) => x.id === id);
+
+  // silent healthy rows
+  for (const id of ["1001", "1002", "2001", "3001", "4001"]) {
+    ok(`${R(id).name}: healthy = silent (no dot, no word, no link; 'Active' only for screen readers)`, R(id).status === null && R(id).sr === "Active" && R(id).fix === null && R(id).more === null, JSON.stringify(R(id)));
+  }
+  ok("the right column: amount on line 1, the full ID on line 2", R("1001").value === "$1,241" && R("1001").id2 === "1001" && R("1002").value === "$215.30" && R("2001").value === "€680.40" && R("3001").value === "VND 25,000,000", JSON.stringify([R("1001").value, R("1002").value, R("2001").value, R("3001").value]));
+  ok("zero spend is muted, spend is not", R("1003").value === "$0" && R("1003").muted && !R("1001").muted);
+  ok("a non-USD amount says its USD value in the tooltip (rates known), a USD one has none", R("3001").valueTitle === "≈ $1,000" && R("2001").valueTitle === "≈ $850.50" && R("1001").valueTitle === null, JSON.stringify([R("3001").valueTitle, R("2001").valueTitle, R("1001").valueTitle]));
+
+  // problem words + ONE fix link each
+  const FIX = { "1003": ["Ads policy", "bad", "Appeal", "https://www.facebook.com/accountquality/"], "2002": ["Unpaid", "warn", "Pay", LINKS.billing("2002")],
+    "2003": ["Compromised", "bad", "Secure", LINKS.hacked()], "2004": ["Restricted", "warn", "Appeal", LINKS.accountQuality()],
+    "3002": ["In review", "warn", "Account Quality", LINKS.accountQuality()], "3003": ["No access", "warn", "Assign me", LINKS.bmAdAccounts("9003")],
+    "4002": ["Grace period", "warn", "Pay", LINKS.billing("4002")] };
+  for (const [id, [word, tone, fix, href]] of Object.entries(FIX)) {
+    const r = R(id);
+    ok(`${r.name}: '${word}' (${tone}) + one fix link '${fix}' to the right page`, r.status === word && r.tone === tone && r.fix === fix && r.href === href && r.fixes === 1 && r.sr === null, JSON.stringify(r));
+  }
+  ok("the problem word replaces the status: no 'Disabled', no '(1)' code, no '/ Integrity'", d.filter((x) => x.status).every((x) => !/Disabled|\(\d+\)|\//.test(x.status)), JSON.stringify(d.map((x) => x.status)));
+  ok("the tooltip of a reason word keeps both: 'Disabled: Ads policy' / 'Restricted: AFC review'", R("1003").statusTitle === "Disabled: Ads policy" && R("2004").statusTitle === "Restricted: AFC review" && R("2002").statusTitle === null, JSON.stringify([R("1003").statusTitle, R("2004").statusTitle]));
+  ok("the fix names its owner for a screen reader ('Appeal · TS | CA | Test')", R("1003").aria === "Appeal · TS | CA | Test", R("1003").aria);
+  ok("'+N' = a further step: Secure + Appeal → '+1'; one step → none; looking places (Ads Manager) do not count", R("2003").more === "+1" && R("1003").more === null && R("2002").more === null && R("3002").more === null, JSON.stringify(d.map((x) => x.more)));
+  ok("closed and closed-for-good accounts are grey with no link (the steps are in the body)", R("1004").status === "Closed" && R("1004").tone === "" && R("1004").fixes === 0 && R("3004").status === "Closed for good" && R("3004").tone === "" && R("3004").fixes === 0, JSON.stringify([R("1004"), R("3004")]));
+  ok("exactly 7 fix links on the whole list (one per problem row, none on healthy and dead rows)", d.reduce((n, x) => n + (x.fixes || 0), 0) === 7);
+  ok("unassigned: 'No access' + 'Assign me' to the business it was read through", R("3003").status === "No access" && R("3003").href === LINKS.bmAdAccounts("9003"));
+  const rowsStored = await stored(pop, "accounts");
+  ok("the accounts read through a business are marked in the cache, the assigned ones are not", rowsStored.find((x) => x.account_id === "3003")?._viaBm === true && rowsStored.find((x) => x.account_id === "3003")?._bmId === "9003" && rowsStored.filter((x) => x._viaBm).length === 1);
+
+  // the status chips: the new short words, one chip per status
+  const chips = () => pop.$$eval("#statusChips .chip", (c) => c.map((x) => x.textContent.trim()));
+  ok("chips: short status words with counts, one per status (not per reason)", (await chips()).join() === "Active 5,Disabled 3,Unpaid 1,Restricted 1,No access 1,In review 1,Grace period 1,Closed 1", (await chips()).join());
+  await pop.click('#statusChips .chip:has-text("Disabled")');
+  d = await dump(pop);
+  ok("the Disabled chip: the 3 disabled accounts (three different reasons); the subtotals follow the rows shown (all zero → groups by name)", JSON.stringify(names(d)) === JSON.stringify(["Contoso Ads", "Contoso Compromised", "Fabrikam Media", "Fabrikam Closed for good", "Tailspin Toys", "TS | CA | Test"]), JSON.stringify(names(d)));
+  ok("…and the count appears (only filtered): '3 of 14 found'", has(await text(pop, "#accountsTotal .total-meta"), "3 of 14 found"), await text(pop, "#accountsTotal .total-meta"));
+  await pop.click('#statusChips .chip:has-text("Disabled")');
+  ok("a second click clears it", await rowsAre(pop, ROW, 14));
+  await pop.fill("#accountFilter", "no access");
+  ok("search finds a status word ('no access' → the unassigned account)", await until(pop, () => document.querySelectorAll("#accountsList .lrow").length === 1 && /Unassigned/.test(document.querySelector("#accountsList").textContent)));
+  await pop.fill("#accountFilter", "Contoso");
+  d = await dump(pop);
+  ok("search by business name: only that group, its count follows the rows shown, '4 of 14 found'", JSON.stringify(heads.length && d.filter((x) => x.g).map((x) => x.g)) === '["Contoso Ads"]' && has(await text(pop, "#accountsTotal .total-meta"), "4 of 14 found"));
+  await pop.fill("#accountFilter", "");
+  await rowsAre(pop, ROW, 14);
+
+  // Active IDs: the active accounts that are shown (status ACTIVE: restricted and unassigned ones too)
+  await captureClipboard(pop);
+  await pop.click("#copyLiveIds");
+  ok("Active IDs copies the ACTIVE accounts, one per line", await until(pop, () => window.__clip.length === 1) && (await clip(pop))[0].split("\n").sort().join() === "1001,1002,2001,2004,3001,3003,4001", JSON.stringify(await clip(pop)));
+  await pop.click('#statusChips .chip:has-text("Closed")');
+  ok("…and follows the filter (no active account shown → nothing copied)", has(await clickToast(pop, "#copyLiveIds"), "No active ad accounts") && (await clip(pop)).length === 1);
+  await pop.click('#statusChips .chip:has-text("Closed")');
+
+  // the business filter (from the Businesses tab): no group headers, the chip
+  await pop.evaluate(async () => { const { emit } = await import(chrome.runtime.getURL("js/bus.js")); emit("filter-bm", { id: "9001", name: "Tailspin Toys" }); });
+  d = await dump(pop);
+  ok("a business filter: its 4 accounts, no group headers (the chip says which business), the chip clears it", d.length === 4 && d.every((x) => !x.g) && has(await text(pop, "#statusChips"), "Tailspin Toys ✕") && (await pop.locator("#statusChips .chip.on").count()) === 1, JSON.stringify(names(d)));
+  await pop.click('#statusChips .chip:has-text("Tailspin Toys")');
+  ok("clearing it brings the headers back", (await pop.locator("#accountsList .lgroup").count()) === 4 && (await rowsAre(pop, ROW, 14)));
+
+  // a period without spend: groups fall back to their names, the personal group stays last
+  await pop.click('#periodSeg .seg-btn:has-text("Yesterday")');
+  d = await dump(pop);
+  ok("Yesterday (no spend anywhere): groups by name, personal last; zero amounts are muted", JSON.stringify(d.filter((x) => x.g).map((x) => x.g)) === JSON.stringify(["Contoso Ads", "Fabrikam Media", "Tailspin Toys", "Personal ad accounts"]) && d.filter((x) => !x.g).every((x) => x.muted), JSON.stringify(d.filter((x) => x.g).map((x) => x.g)));
+  await pop.click('#periodSeg .seg-btn:has-text("Today")');
+  ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
+  await b.ctx.close();
+
+  // without rates the groups are ordered by the plain sum: VND's big numbers win
+  b = await boot({ fb: adsFb(TOK), graph: listGraph() });
+  await adsPage(b);
+  pop = await popup(b, "accounts");
+  await rowsAre(pop, ROW, 14); await pop.waitForTimeout(500);
+  d = await dump(pop);
+  ok("rates unavailable: groups by the plain sum, no crash, no '≈' anywhere on the rows", JSON.stringify(d.filter((x) => x.g).map((x) => x.g)) === JSON.stringify(["Fabrikam Media", "Tailspin Toys", "Contoso Ads", "Personal ad accounts"]) && d.every((x) => !/≈/.test(x.value || "") && !x.valueTitle), JSON.stringify(d.filter((x) => x.g).map((x) => x.g)));
+  ok("no console errors (rates down)", b.errs.length === 0, b.errs.join(" | "));
+  await b.ctx.close();
+
+  // only personal accounts: a header would repeat the total
+  b = await boot({ fb: adsFb(TOK), graph: listGraph(MINE.filter((a) => !a.business), []) });
+  await adsPage(b);
+  pop = await popup(b, "accounts");
+  ok("only personal accounts: just the rows, no header", (await rowsAre(pop, ROW, 2)) && (await pop.locator("#accountsList .lgroup").count()) === 0);
+  await b.ctx.close();
+  // one business and personal ones: the header shows
+  b = await boot({ fb: adsFb(TOK), graph: listGraph(MINE.filter((a) => !a.business || a.business === TS), []) });
+  await adsPage(b);
+  pop = await popup(b, "accounts");
+  ok("one business + personal accounts: both headers", (await rowsAre(pop, ROW, 6)) && (await pop.locator("#accountsList .lgroup").count()) === 2);
+  await b.ctx.close();
+}
+
+// ---------- RU / EN ----------
+async function listRuFlow() {
+  console.log("\n# accounts list: Russian and English");
+  const b = await boot({ fb: adsFb(TOK), graph: listGraph(), rates: ratesOk });
+  await adsPage(b);
+  const pop = await popup(b, "accounts");
+  await rowsAre(pop, ROW, 14);
+  const label = () => text(pop, "#tabbtn-accounts");
+  ok("EN: the tab is 'Accounts', the Personal group is 'Personal ad accounts'", (await label()) === "Accounts" && has(await text(pop, "#accountsList"), "Personal ad accounts"), await label());
+  await pop.click('[data-lang="ru"]');
+  ok("RU: the tab is 'Кабинеты'", await until(pop, () => document.querySelector("#tabbtn-accounts").textContent.trim() === "Кабинеты"));
+  const d = await dump(pop);
+  const R = (id) => d.find((x) => x.id === id);
+  ok("RU: group 'Личные кабинеты', words and fix verbs (Правила рекламы · Апелляция, Долг · Оплатить, Взлом · Защитить +1, Нет доступа · Назначить себя, Ограничен, Проверка, Отсрочка, Закрыт, Закрыт навсегда)",
+    d.some((x) => x.g === "Личные кабинеты") && JSON.stringify([R("1003"), R("2002"), R("2003"), R("3003"), R("2004"), R("3002"), R("4002"), R("1004"), R("3004")].map((x) => [x.status, x.fix, x.more]))
+      === JSON.stringify([["Правила рекламы", "Апелляция", null], ["Долг", "Оплатить", null], ["Взлом", "Защитить", "+1"], ["Нет доступа", "Назначить себя", null], ["Ограничен", "Апелляция", null], ["Проверка", "Account Quality", null], ["Отсрочка", "Оплатить", null], ["Закрыт", null, null], ["Закрыт навсегда", null, null]]), JSON.stringify(d.map((x) => x.status)));
+  ok("RU: the tooltip 'Заблокирован: Правила рекламы'; amounts in the Russian format", R("1003").statusTitle === "Заблокирован: Правила рекламы" && R("1001").value === "1 241 $" && R("2001").value === "680,40 €", JSON.stringify([R("1003").statusTitle, R("1001").value]));
+  ok("RU: chips use the same words", (await pop.$$eval("#statusChips .chip", (c) => c.map((x) => x.textContent.trim()))).join() === "Активен 5,Заблокирован 3,Долг 1,Ограничен 1,Нет доступа 1,Проверка 1,Отсрочка 1,Закрыт 1");
+  await pop.click('#statusChips .chip:has-text("Долг")');
+  ok("RU: a chip chosen in Russian still filters after switching to English (the filter is a status, not a word)", await rowsAre(pop, ROW, 1));
+  await pop.click('[data-lang="en"]');
+  ok("…and shows the same account in English", (await rowsAre(pop, ROW, 1)) && (await pop.locator(`${ROW} .lrow-status-text`).textContent()) === "Unpaid");
+  await pop.click('#statusChips .chip:has-text("Unpaid")');
+  ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
+  await b.ctx.close();
+}
+
+// ---------- the expanded body ----------
+async function bodyFlow() {
+  console.log("\n# accounts list: the expanded body");
+  const b = await boot({ fb: adsFb(TOK), graph: listGraph(), rates: ratesOk });
+  await adsPage(b);
+  const pop = await popup(b, "accounts");
+  await rowsAre(pop, ROW, 14);
+  const rowSel = (id) => `${ROW}[data-row="${id}"]`;
+  const open = async (id) => { await pop.click(`${rowSel(id)} .lrow-title`); };
+  const body = (id) => pop.evaluate((sel) => {
+    const bd = document.querySelector(`${sel} .lrow-body`);
+    if (!bd) return null;
+    const kvs = [...bd.querySelectorAll(".lrow-pair")].map((p) => [p.querySelector("dt").textContent, p.querySelector("dd").textContent.trim()]);
+    const todo = bd.querySelector(".lrow-todo");
+    return { children: [...bd.children].map((c) => c.className.split(" ")[0]), kvs, cols: bd.querySelector(".lrow-kv") && getComputedStyle(bd.querySelector(".lrow-kv")).gridTemplateColumns.split(" ").length,
+      todo: todo && { title: todo.querySelector(".lrow-todo-title").textContent, cls: todo.className, help: todo.querySelector(".lrow-todo-help")?.textContent ?? null, links: [...todo.querySelectorAll("a")].map((a) => [a.textContent.trim(), a.href]) },
+      links: [...bd.querySelectorAll(".lrow-links a")].map((a) => [a.textContent.trim(), a.href, !!a.querySelector(".i-external")]), idline: bd.querySelector(".lrow-idline")?.textContent.replace(/\s+/g, " ").trim(), ads: !!bd.querySelector(".ads-sec .ads-toggle") };
+  }, rowSel(id));
+
+  await open("1001");
+  let bd = await body("1001");
+  ok("a full account: ID line, the facts in the decided order, the two places, then the Ads section (no 'What to do' for a healthy one)", JSON.stringify(bd.children) === JSON.stringify(["lrow-idline", "lrow-kv", "lrow-links", "ads-sec"]) && bd.todo === null && bd.ads, JSON.stringify(bd.children));
+  ok("…Clicks · CPC · Total spent · Unpaid balance · Billing threshold · Daily limit · Spend cap · Payment · Pixels · Timezone · Country · Created", bd.kvs.map((x) => x[0]).join() === "Clicks,CPC,Total spent,Unpaid balance,Billing threshold,Daily limit,Spend cap,Payment,Pixels,Timezone,Country,Created", bd.kvs.map((x) => x[0]).join());
+  const kv = Object.fromEntries(bd.kvs);
+  ok("…with the values: 310 clicks, CPC $4.00, total $11,165, balance $120.00, threshold $250.00, limit $2,500, no cap, Visa, the pixel, UTC+3, US, 2025-03-04",
+    kv.Clicks === "310" && kv.CPC === "$4.00" && kv["Total spent"] === "$11,165" && kv["Unpaid balance"] === "$120.00" && kv["Billing threshold"] === "$250.00" && kv["Daily limit"] === "$2,500" && kv["Spend cap"] === "none"
+    && kv.Payment === "Visa ·· 4242" && kv.Pixels === "Main pixel · 55501" && /^UTC\+3/.test(kv.Timezone) && kv.Country === "US" && kv.Created === "2025-03-04", JSON.stringify(kv));
+  ok("…and not one value is a dash", bd.kvs.every((x) => x[1] && x[1] !== "—"));
+  ok("the body starts with the ID and its copy button, 'Ads Manager ↗ · Billing ↗' keep their icons and go to this account", bd.idline === "ID1001" && JSON.stringify(bd.links) === JSON.stringify([["Ads Manager", LINKS.adsManager("1001"), true], ["Billing", LINKS.billing("1001"), true]]), JSON.stringify(bd.links));
+  ok("two columns at 560 px", bd.cols === 2, String(bd.cols));
+  await pop.setViewportSize({ width: 380, height: 900 });
+  ok("one column at 380 px", (await body("1001")).cols === 1);
+  await pop.setViewportSize({ width: 560, height: 900 });
+  await open("1001");
+  ok("closing throws the body away", (await body("1001")) === null);
+
+  // a bare account: pairs Graph did not give are not drawn
+  await open("1002");
+  bd = await body("1002");
+  ok("a bare account: no threshold, daily limit or payment rows (they would be '—'); no pixels read as 'none'", bd.kvs.map((x) => x[0]).join() === "Clicks,CPC,Total spent,Unpaid balance,Spend cap,Pixels,Timezone,Country,Created" && Object.fromEntries(bd.kvs).Pixels === "none", bd.kvs.map((x) => x[0]).join());
+  await pop.click('#periodSeg .seg-btn:has-text("All time")');
+  ok("All time: Clicks and CPC are not the period's, they go; the total stays and equals the row's amount", (await body("1002")).kvs.map((x) => x[0]).join() === "Total spent,Unpaid balance,Spend cap,Pixels,Timezone,Country,Created", (await body("1002")).kvs.map((x) => x[0]).join());
+  ok("…the open row stays open across the redraw", await pop.locator(`${rowSel("1002")}.open`).count() === 1);
+  await pop.click('#periodSeg .seg-btn:has-text("Today")');
+  await open("1002");
+
+  // what to do: the help line + the steps that are NOT already on line 2 or in the links row
+  const stepsOf = async (id) => { await open(id); const x = await body(id); await open(id); return x; };
+  bd = await stepsOf("1003");
+  ok("disabled (ads policy): help line, no step repeated (Appeal is on line 2, Ads Manager in the links row), title in the problem's tone", bd.todo.title === "What to do" && has(bd.todo.cls, "bad") && bd.todo.help === STRINGS.en["next.help.r1"] && bd.todo.links.length === 0, JSON.stringify(bd.todo));
+  bd = await stepsOf("2003");
+  ok("compromised: Secure is on line 2, so 'What to do' lists Appeal", JSON.stringify(bd.todo.links) === JSON.stringify([["Appeal", LINKS.accountQuality()]]) && bd.todo.help === STRINGS.en["next.help.r15"], JSON.stringify(bd.todo));
+  bd = await stepsOf("3004");
+  ok("closed for good: no fix on line 2, so both steps are here: Support, Account Quality (neutral title)", JSON.stringify(bd.todo.links) === JSON.stringify([["Support", LINKS.support()], ["Account Quality", LINKS.accountQuality()]]) && !/bad|warn/.test(bd.todo.cls), JSON.stringify(bd.todo));
+  bd = await stepsOf("3003");
+  ok("unassigned: the help line says why; 'Assign me' is on line 2", bd.todo.help === STRINGS.en["next.help.noAccess"] && bd.todo.links.length === 0, JSON.stringify(bd.todo));
+  bd = await stepsOf("2002");
+  ok("unpaid: help only (Pay is on line 2); Billing is in the links row", has(bd.todo.help, "unpaid") && bd.todo.links.length === 0 && bd.links.some((l) => l[0] === "Billing"), JSON.stringify(bd));
+  ok("a step link in the body opens a new tab (noopener noreferrer)", await (async () => { await open("2003"); const a = pop.locator(`${rowSel("2003")} .lrow-todo a`); const r = await a.evaluate((n) => [n.target, n.rel]); await open("2003"); return r.join() === "_blank,noopener noreferrer"; })());
+
+  // open rows and focus survive a redraw (the period event redraws the whole list)
+  await open("1001"); await open("2004");
+  await pop.focus(`${rowSel("1002")} .lrow-title`);
+  await pop.evaluate(async () => { const { emit } = await import(chrome.runtime.getURL("js/bus.js")); emit("period", "today"); });
+  ok("a redraw keeps the open rows open and the focus on the same control", (await pop.locator(`${ROW}.open`).count()) === 2 && (await pop.evaluate(() => document.activeElement.dataset.focus)) === "row:1002");
+  ok("…the open rows are remembered across a popup reopen", await (async () => { const re = await popup(b, "accounts"); const ok2 = await rowsAre(re, `${ROW}.open`, 2); await re.close(); return ok2; })());
+  ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
+  await b.ctx.close();
+}
+
+// ---------- layout of the new list: two lines, no wrap, no sideways scroll ----------
+async function listLayoutFlow() {
+  console.log("\n# accounts list: layout at 560 and 380");
+  const glued = "W".repeat(70);
+  const long = "A very long ad account name that has to end in an ellipsis long before it reaches the amount on the right";
+  const accounts = [mk("1", long, "VND", 2, 1, 123456789, { id: "9001", name: `${glued} Holding` }), mk("2", "Short", "USD", 1, 0, 5, { id: "9001", name: `${glued} Holding` }),
+    mk("3", glued, "EUR", 2, 15, 7, { id: "9002", name: "Other business" }), mk("4", "Personal", "USD", 3, 0, 1, null)];
+  const b = await boot({ fb: adsFb(TOK), graph: listGraph(accounts, []), rates: ratesOk });
+  await adsPage(b);
+  const pop = await popup(b, "accounts");
+  await rowsAre(pop, ROW, 4);
+  for (const w of [560, 380]) {
+    await pop.setViewportSize({ width: w, height: 800 });
+    await pop.waitForTimeout(150);
+    const m = await pop.evaluate(() => {
+      const de = document.documentElement;
+      const rows = [...document.querySelectorAll("#accountsList .lrow")].sort((a, b) => a.dataset.row - b.dataset.row).map((r) => { const hd = r.querySelector(".lrow-head").getBoundingClientRect(), sub = r.querySelector(".lrow-sub"), nm = r.querySelector(".lrow-name"), fix = r.querySelector(".lrow-fix"), val = r.querySelector(".lrow-value");
+        return { h: Math.round(hd.height), subH: sub ? Math.round(sub.getBoundingClientRect().height) : 0, cut: nm.scrollWidth > nm.clientWidth, fixOk: !fix || fix.getBoundingClientRect().right <= sub.getBoundingClientRect().right + 1, valRight: Math.round(hd.right - val.getBoundingClientRect().right) }; });
+      const groups = [...document.querySelectorAll("#accountsList .lgroup")].map((g) => { const t = g.querySelector(".lgroup-text"); return { cut: t.scrollWidth > t.clientWidth, over: g.scrollWidth > g.clientWidth + 1 }; });
+      return { sw: de.scrollWidth, cw: de.clientWidth, rows, groups };
+    });
+    ok(`${w}px: no horizontal scroll`, m.sw <= m.cw, JSON.stringify([m.sw, m.cw]));
+    ok(`${w}px: every row is two lines (≤ 64 px), line 2 never wraps (≤ 24 px), the amount is 16 px from the edge`, m.rows.every((r) => r.h <= 64 && r.subH <= 24 && r.valRight === 16), JSON.stringify(m.rows));
+    ok(`${w}px: long names end in an ellipsis; the fix link stays inside line 2; long business names are cut, not wrapped`, m.rows[0].cut && m.rows.every((r) => r.fixOk) && m.groups.every((g) => !g.over) && m.groups[0].cut, JSON.stringify([m.rows.map((r) => r.cut), m.groups]));
+  }
+  await pop.setViewportSize({ width: 560, height: 300 });
+  await pop.evaluate(() => window.scrollTo(0, 300));
+  await pop.waitForTimeout(150);
+  const top = await pop.$$eval("#accountsList .lgroup", (g) => g.map((x) => Math.round(x.getBoundingClientRect().top)));
+  ok("scrolled, the header of the group in view sticks under the tabs (82 px)", top.some((x) => x === 82), JSON.stringify(top));
+  ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
+  await b.ctx.close();
+}
+
+export const flows = { version: versionFlows, cache: cacheFlows, session: sessionFlows, ads: adsFlows, auto: autoFlows, alltime: allTimeFlows, layout: layoutFlows, stale: staleFlows, fields: fieldsFlows, paging: pagingFlows, slots: slotFlows, bm: bmFlows,
+  accList: listFlow, accRu: listRuFlow, accBody: bodyFlow, accLayout: listLayoutFlow };

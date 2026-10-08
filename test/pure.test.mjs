@@ -158,16 +158,40 @@ test("i18n: every key the popup uses exists in both languages (all js files; str
 
 // "BM" / "БМ" is slang: the interface says "бизнес-портфолио" / "business portfolio" (full term) or "бизнесы" / "businesses" (short).
 // The one place it stays is the copied "Token + cookies + UA" block (its "BM:" line), which other tools parse.
-test("i18n: the business wording is the full term or 'Businesses'; the owner line has no 'BM' prefix", async () => {
+test("i18n: the business wording is the full term or 'Businesses'; the rows have no 'BM' prefix", async () => {
   const { setLang, t, has } = await import("../fb-helper/js/i18n.js");
   await import("../fb-helper/js/strings/actions.js");
-  for (const [lang, tab] of [["ru", "Бизнесы"], ["en", "Businesses"]]) {
+  for (const [lang, tab, accounts] of [["ru", "Бизнесы", "Кабинеты"], ["en", "Businesses", "Accounts"]]) {
     await setLang(lang);
     assert.equal(t("tab.bms"), tab);
-    for (const k of ["tab.bms", "acc.bmFilterClear", "acc.inBm", "acc.noBm", "acc.personalTitle", "surface.bm", "reason.11", "next.help.r6", "next.help.r11"])
+    assert.equal(t("tab.accounts"), accounts);
+    for (const k of ["tab.bms", "acc.bmFilterClear", "acc.personal", "acc.noAccess", "surface.bm", "reason.6", "reason.11", "next.help.r6", "next.help.r11", "next.help.noAccess"])
       assert.ok(has(k) && !/(^|[^\p{L}])(BM|БМ)(?![\p{L}])/u.test(t(k, { n: "X", id: "1" })), `${lang} ${k}: ${t(k)}`);
-    assert.ok(!has("acc.bm") && !has("acc.bmPrefix"), "the prefix strings are gone");
-    assert.match(t("acc.inBm", { n: "Alpha", id: "7" }), lang === "ru" ? /бизнес-портфолио Alpha/ : /business portfolio Alpha/);
+    assert.ok(!has("acc.bm") && !has("acc.bmPrefix") && !has("acc.inBm") && !has("acc.noBm"), "the prefix and owner-line strings are gone (the group header names the business)");
   }
+  await setLang("en");
+});
+
+// The short words of an ad account's row (design.md section 8): the status and the disable reason are one word each, no "(N)" code, no "/ Integrity".
+test("i18n: status and reason words of an ad account are short, in both languages, with the decided wording", async () => {
+  const { setLang, t, has } = await import("../fb-helper/js/i18n.js");
+  const en = { "status.1": "Active", "status.2": "Disabled", "status.3": "Unpaid", "status.7": "In review", "status.8": "Settling", "status.9": "Grace period",
+    "status.100": "Closing", "status.101": "Closed", "status.restricted": "Restricted", "acc.noAccess": "No access",
+    "reason.1": "Ads policy", "reason.2": "IP review", "reason.3": "Payment risk", "reason.4": "Shut down", "reason.5": "AFC review", "reason.6": "Business integrity",
+    "reason.7": "Closed for good", "reason.8": "Unused", "reason.9": "Unused", "reason.10": "Unused", "reason.11": "Business integrity", "reason.12": "Misrepresented",
+    "reason.13": "Entity unshared", "reason.14": "Thread review", "reason.15": "Compromised" };
+  const ru = { "status.1": "Активен", "status.2": "Заблокирован", "status.3": "Долг", "status.7": "Проверка", "status.8": "Оплата идёт", "status.9": "Отсрочка",
+    "status.100": "Закрывается", "status.101": "Закрыт", "status.restricted": "Ограничен", "acc.noAccess": "Нет доступа",
+    "reason.1": "Правила рекламы", "reason.2": "IP-проверка", "reason.3": "Платёжный риск", "reason.4": "Закрыт", "reason.5": "AFC-проверка", "reason.6": "Integrity бизнеса",
+    "reason.7": "Закрыт навсегда", "reason.8": "Не используется", "reason.9": "Не используется", "reason.10": "Не используется", "reason.11": "Integrity бизнеса",
+    "reason.12": "Искажение данных", "reason.13": "Юрлицо отвязано", "reason.14": "Проверка переписки", "reason.15": "Взлом" };
+  for (const [lang, words] of [["en", en], ["ru", ru]]) {
+    await setLang(lang);
+    for (const [k, v] of Object.entries(words)) {
+      assert.equal(t(k), v, `${lang} ${k}`);
+      assert.ok(!/[(/]/.test(t(k)) && t(k).length <= 20, `${lang} ${k}: one short word, no code`);
+    }
+  }
+  assert.ok(!has("reason.other"), "no generic 'Reason' word: an unknown code is a plain Disabled");
   await setLang("en");
 });

@@ -129,10 +129,11 @@ export const adsFb = (tok) => (u) => u.hostname.startsWith("adsmanager") && tok 
 // ---------- shared steps ----------
 export const boxWait = (p, re) => until(p, (src) => new RegExp(src).test(document.querySelector("#tokenBox").textContent.trim()), re.source);
 export const GONE = /^(?!EAA|—)/;                                   // the field holds a reason, not a token
-export const loadAccounts = async (p, n = 1) => { await p.click("#loadAccounts"); return rowsAre(p, ".acc", n); };
+export const ROW = "#accountsList .lrow";                           // a row of the Ad accounts tab (js/row.js)
+export const loadAccounts = async (p, n = 1) => { await p.click("#loadAccounts"); return rowsAre(p, ROW, n); };
 export async function openAds(p) {
-  await p.click(".acc .acc-title"); await p.click(".acc.open [data-ads]");
-  return until(p, () => { const a = document.querySelector(".acc.open .ads"); return !!a && a.textContent.trim() !== "" && !/Loading/.test(a.textContent); });
+  await p.click(`${ROW} .lrow-title`); await p.click(`${ROW}.open [data-ads]`);
+  return until(p, (sel) => { const a = document.querySelector(`${sel}.open .ads`); return !!a && a.textContent.trim() !== "" && !/Loading/.test(a.textContent); }, ROW);
 }
 export const stored = (p, key) => p.evaluate((k) => chrome.storage.session.get(k).then((o) => o[k]), key);
 
