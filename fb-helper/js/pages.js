@@ -1,5 +1,5 @@
-// The Pages tab: every Facebook page this token can see, and whether each is ready to run ads (an Instagram identity: a NEW page
-// needs "Use Facebook Page" chosen once, else automated launches to Instagram placements fail; published; may advertise; my access).
+// The Pages tab: every Facebook page this token can see, and whether each is alive for advertising and usable (Dead: Meta does not allow
+// promoting it; Hidden: unpublished; No access: no Advertise task for me). Instagram is told in the body only: it is not a problem.
 // The list = the profile's own pages (me/accounts, which carries the user's tasks) + every page of every business of the profile
 // (<business>/owned_pages and /client_pages), one row per page. Every problem comes with its fix as one link. The logic is in
 // pages-model.js (plain Node, tested); this file loads, caches and draws it with the shared row (row.js). Same shape as the other
@@ -7,7 +7,7 @@
 // all requests, is under ONE rate slot), dead session / API pause respected, other windows followed.
 // Read-only: GET only, and never a Page access token (the field lists are explicit, the rows whitelisted).
 
-import { t, has } from "./i18n.js";
+import { t } from "./i18n.js";
 import "./strings/pages.js";
 import { $, el, fill, keepFocus, toast, scrollFade } from "./dom.js";
 import { ago } from "./format.js";
@@ -22,8 +22,8 @@ import { registerTab, registerRender, registerInit, registerStart } from "./regi
 import { LINKS } from "./links.js";
 import { row, kv, whatToDo, fixLink, linksRow } from "./row.js";
 import {
-  OPTIONAL, BASE, BIZ_OPTIONAL, BIZ_EDGES, PROBLEMS, keysToDrop, slimPage, finishPages, accessVerdict, viaBusiness,
-  igOf, handleOf, accessOf, humanTask, issuesOf, problemCounts, filterPages, sortPages,
+  OPTIONAL, BASE, BIZ_OPTIONAL, BIZ_EDGES, CHIPS, IG_FIX, keysToDrop, slimPage, finishPages, accessVerdict, viaBusiness,
+  igOf, issuesOf, chipCounts, filterPages, sortPages,
 } from "./pages-model.js";
 
 const SLOT_MS = 60 * 1000;                   // one list read per minute (a failed attempt counts too); the slot covers ALL requests of a refresh
@@ -31,7 +31,7 @@ const PAGE_SIZE = 50, MAX_PAGES = 4;         // per edge: up to 200 pages; more 
 
 Object.assign(state, {
   pages: [], pagesAt: 0, pagesTruncated: false, pagesBizFail: false,   // pagesBizFail: a business or one of its edges could not be read (the pages only in it may be missing)
-  pagesQ: "", pagesProblem: null, pagesLoading: false, pagesOpen: new Set(),
+  pagesQ: "", pagesChip: null, pagesLoading: false, pagesOpen: new Set(),
 });
 
 // ---------- storage ----------
@@ -44,7 +44,7 @@ let skip = new Set();
 on("generation", () => { skip = new Set(); renderPages(); });
 on("token-hint", () => renderPages());               // the Token tab's reason for having no token changed
 on("token-dead", () => renderPages());
-on("cache-dropped", () => { state.pagesProblem = null; renderPages(); });
+on("cache-dropped", () => { state.pagesChip = null; renderPages(); });
 on("pictures", () => renderPages());                 // pictures were read (pictures.js)
 
 // ---------- load ----------
@@ -111,8 +111,8 @@ const loader = listLoader({
 });
 
 // ---------- draw ----------
-const visiblePages = () => sortPages(filterPages(state.pages, { q: state.pagesQ, problem: state.pagesProblem }));
-const isFiltered = () => !!(state.pagesQ.trim() || state.pagesProblem);
+const visiblePages = () => sortPages(filterPages(state.pages, { q: state.pagesQ, chip: state.pagesChip }));
+const isFiltered = () => !!(state.pagesQ.trim() || state.pagesChip);
 // The line under the controls says something only when there is something to say: how many of the pages a filter leaves ("3 of 10
 // found"), or that the list is not complete. "Updated 3 min ago" is the refresh button's tooltip.
 function renderTotal() {
@@ -124,13 +124,14 @@ function renderTotal() {
       : state.pagesTruncated ? t("pages.notAllLine") : "";
   fill(box, line ? el("span", { class: "total-label" }, line) : null);
 }
+// Alive · Dead · Hidden · No access, each with its count; a chip with nothing behind it is not drawn (like the status chips of the Ad accounts tab).
 function renderChips() {
-  const counts = problemCounts(state.pages);
-  if (state.pagesProblem && !counts[state.pagesProblem]) state.pagesProblem = null;
-  fill($("#pagesChips"), ...Object.keys(PROBLEMS).filter((k) => counts[k] > 0).map((k) => {
-    const on = state.pagesProblem === k;
-    return el("button", { type: "button", class: `pill chip ${PROBLEMS[k]}${on ? " on" : ""}`, "aria-pressed": String(on), "data-focus": `pchip:${k}`, "aria-label": `${t(`pages.p.${k}`)}: ${counts[k]}`,
-      onclick: () => { state.pagesProblem = on ? null : k; renderPages(); } }, `${t(`pages.p.${k}`)} ${counts[k]}`);
+  const counts = chipCounts(state.pages);
+  if (state.pagesChip && !counts[state.pagesChip]) state.pagesChip = null;
+  fill($("#pagesChips"), ...Object.keys(CHIPS).filter((k) => counts[k] > 0).map((k) => {
+    const on = state.pagesChip === k;
+    return el("button", { type: "button", class: `pill chip ${CHIPS[k]}${on ? " on" : ""}`, "aria-pressed": String(on), "data-focus": `pchip:${k}`, "aria-label": `${t(`pages.chip.${k}`)}: ${counts[k]}`,
+      onclick: () => { state.pagesChip = on ? null : k; renderPages(); } }, `${t(`pages.chip.${k}`)} ${counts[k]}`);
   }));
   scrollFade($("#pagesChips"));
 }
@@ -142,11 +143,7 @@ function drawPages() {
   const rows = visiblePages();
   const empty = () => emptyView({ tab: "pages", loaded: !!state.pagesAt, loading: state.pagesLoading, none: t("pages.none"), loadingText: t("pages.loading"), retry: () => loader.retry() });
   if (!state.pagesAt) return fill(list, empty());
-  const notes = [
-    listNote("pages", "pg-note"),                                   // a refresh was refused: the old list stays, the note says why it is old
-    // The fix for the problem the chip shows, written out (the word's tooltip says it too, but a tooltip is easy to miss).
-    state.pagesProblem === "noIg" ? el("div", { class: "hint pg-note" }, t("pages.igFix")) : null,
-  ];
+  const notes = [listNote("pages", "pg-note")];                    // a refresh was refused: the old list stays, the note says why it is old
   // Pages that are only in a business: read through the business edges. A muted line only when one of those reads failed.
   const foot = state.pagesBizFail ? el("div", { class: "pg-foot" }, t("pages.bmHint")) : null;
   if (!state.pages.length) return fill(list, ...notes, empty(), foot);
@@ -154,58 +151,51 @@ function drawPages() {
   fill(list, ...notes, ...rows.map(renderPage), foot);
 }
 
-// "Advertise, Manage, Insights": the tasks in plain words (an unknown task is shown as plain words too).
-const taskText = (tasks) => tasks.map((x) => (has(`pages.task.${x}`) ? t(`pages.task.${x}`) : humanTask(x))).filter(Boolean).join(", ");
-// The Instagram line of the body: what the identity is, with the explanation as the tooltip.
-function instagramPair(p) {
+// The Instagram line of the body: what the identity is, with the explanation as the tooltip. Only here: a page without an account is not a
+// problem of the row, but "none" is in the warning colour and has its way out beside it (Set up → Ads Manager, where «Use Facebook Page» is chosen).
+function instagramPair(p, name) {
   const ig = igOf(p);
   const pair = (value, title) => [t("pages.kv.ig"), value, { title, wide: true }];
-  if (ig.state === "real") return pair(ig.username ? t("pages.ig.real", { u: ig.username }) : t("pages.ig.realNoName"), t("pages.igRealTitle"));
+  if (ig.state === "real") return pair(ig.username ? `@${ig.username}` : t("pages.ig.realNoName"), t("pages.igRealTitle"));
   if (ig.state === "pbia") return pair(t("pages.ig.pbia"), t("pages.igPbiaTitle"));
-  if (ig.state === "none") return pair(t("pages.ig.none"), t("pages.igNoneTitle"));
-  return pair(t("pages.ig.unknown"), t("pages.igUnknownTitle"));
+  if (ig.state === "unknown") return pair(t("pages.ig.unknown"), t("pages.igUnknownTitle"));
+  const url = IG_FIX.url(p);
+  return pair([el("span", { class: "pg-none" }, t("pages.ig.none")),
+    url ? fixLink({ label: IG_FIX.label, url, tip: t(IG_FIX.tip) }, { tone: "warn", cls: "pg-ig-fix", focus: `pfix:${p.id}:ig`, owner: name }) : null], t(IG_FIX.tip));
 }
-// The problems of a page (the worst is on line 2 of the row too): each as its word and its fix, so every problem has its way out in one place.
+// The problems of a page when it has several (the worst is on line 2 of the row too): each as its word and its fix, so every problem has its way out in one place.
 function problemList(p, issues, name) {
   return el("span", { class: "pg-probs" }, issues.map((i) => el("span", { class: "pg-prob", "data-problem": i.key },
     el("span", { class: `pg-prob-text ${i.tone}`, title: i.rawTip || t(i.tip) }, t(i.label)),
     i.fix ? fixLink({ label: i.fix.label, url: i.fix.url, tip: t(i.fix.tip) }, { tone: i.tone, focus: `pfix:${p.id}:${i.key}`, owner: name }) : null)));
 }
-// One page = the shared row (row.js): picture · name … the Instagram handle; healthy = silent (only the identity of a page-backed
-// account), a problem = its word + its fix (+N for the others); the ID. The body (built when the row opens): every problem with its fix,
-// Instagram, business, my access, links - but never a pair that only says again what the row's problem already says (no Instagram → the
-// problem, so no "Instagram: none" pair; no access → no "Your access: not assigned" pair).
+// One page = the shared row (row.js): picture · name; line 2 is the ID alone while the page is fine (silent), else the ID · the worst problem
+// (Dead / Hidden / No access) · its one fix (+N for the others). The body (built when the row opens): all the problems with their fixes when
+// there are two or more (with one, line 2 already has it), the reason Graph gave for a dead page, Instagram, the owner business, the links.
 function renderPage(p) {
   const name = p.name || t("pages.noName");
   const issues = issuesOf(p), worst = issues[0];
-  const handle = handleOf(p), pbia = igOf(p).state === "pbia";
+  const dead = issues.find((i) => i.key === "dead");
   return row({
     key: p.id, avatar: { kind: "page", url: picturesOf("page", p.id, p.picture) }, name,
-    value: handle, valueTitle: handle ? t("pages.igRealTitle") : null, valueMuted: true,
-    status: worst ? { tone: worst.tone, text: t(worst.label), title: worst.rawTip || t(worst.tip) } : { tone: "ok", text: t("pages.ready") },
-    context: !worst && pbia ? [el("span", { class: "lrow-ctx", title: t("pages.igPbiaTitle") }, t("pages.igPbia"))] : [],
+    status: worst ? { tone: worst.tone, text: t(worst.label), title: worst.rawTip || t(worst.tip) } : { tone: "ok", text: t("pages.alive") },
     fix: worst?.fix && { label: worst.fix.label, url: worst.fix.url, tip: t(worst.fix.tip) },
     more: Math.max(0, issues.length - 1),
     id: { value: p.id },
     open: state.pagesOpen.has(p.id),
     onToggle: (open) => { if (open) state.pagesOpen.add(p.id); else state.pagesOpen.delete(p.id); },
-    body: () => {
-      const acc = accessOf(p), bmId = p._viaBm || p.business?.id;     // a business I am in comes first: the owner's settings may not be mine to open
-      const says = (key) => issues.some((i) => i.key === key);        // the problem is already on screen (line 2 or the list above)
-      return [
-        issues.length ? whatToDo({ help: problemList(p, issues, name), tone: issues[0].tone, owner: name, focus: `ptodo:${p.id}` }) : null,
-        kv([
-          says("noIg") ? null : instagramPair(p),
-          [t("pages.kv.business"), p.business?.name || "", { wide: true }],
-          says("noAccess") ? null : [t("pages.kv.access"), acc.via ? t(acc.unsure ? "pages.access.viaUnsure" : "pages.access.via") : taskText(acc.tasks), { wide: true }],
-        ]),
-        linksRow([
-          { id: "page", label: "pages.linkPage", url: LINKS.page(p.id), tip: t("pages.linkPageTitle") },
-          { id: "suite", label: "pages.linkSuite", url: LINKS.pageSuite(p.id), tip: t("pages.linkSuiteTitle") },
-          { id: "bm", label: "pages.linkBm", url: LINKS.bmPages(bmId), tip: t("pages.linkBmTitle") },
-        ], { owner: name, focus: `plink:${p.id}` }),
-      ];
-    },
+    body: () => [
+      issues.length > 1 ? whatToDo({ help: problemList(p, issues, name), tone: worst.tone, owner: name, focus: `ptodo:${p.id}` }) : null,
+      kv([
+        dead?.rawTip ? [t("pages.kv.reason"), dead.rawTip, { wide: true }] : null,
+        instagramPair(p, name),
+        [t("pages.kv.business"), p.business?.name || "", { wide: true }],
+      ]),
+      linksRow([
+        { id: "page", label: "pages.linkPage", url: LINKS.page(p.id), tip: t("pages.linkPageTitle") },
+        { id: "suite", label: "pages.linkSuite", url: LINKS.pageSuite(p.id), tip: t("pages.linkSuiteTitle") },
+      ], { owner: name, focus: `plink:${p.id}` }),
+    ],
   });
 }
 

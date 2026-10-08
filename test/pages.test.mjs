@@ -1,10 +1,10 @@
-// js/pages-model.js: the logic of the Pages tab (field lists, row whitelist, pages found through businesses, Instagram state, problems
-// and their fixes, chips, search, order). Plain Node: the model has no DOM. Run: `node --test test/*.test.mjs`
+// js/pages-model.js: the logic of the Pages tab (field lists, row whitelist, pages found through businesses, Instagram state, the three
+// problems — dead, hidden, no access — with their fixes, the chips, search, order). Plain Node: the model has no DOM. Run: `node --test test/*.test.mjs`
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  OPTIONAL, BASE, BIZ_OPTIONAL, BIZ_EDGES, ROW_KEYS, PROBLEMS, isPermissionError, keysToDrop, slimPage, finishPages, accessVerdict, viaBusiness,
-  igOf, handleOf, adRightsOf, accessOf, humanTask, problemsOf, problemCounts, filterPages, sortPages, PRIORITY, FIXES, issuesOf,
+  OPTIONAL, BASE, BIZ_OPTIONAL, BIZ_EDGES, ROW_KEYS, PROBLEMS, CHIPS, isPermissionError, keysToDrop, slimPage, finishPages, accessVerdict, viaBusiness,
+  igOf, adRightsOf, problemsOf, chipCounts, filterPages, sortPages, PRIORITY, FIXES, IG_FIX, issuesOf,
 } from "../fb-helper/js/pages-model.js";
 import { LINKS } from "../fb-helper/js/links.js";
 import { businessList, MAX_BUSINESSES } from "../fb-helper/js/biz-edges.js";
@@ -186,57 +186,53 @@ test("igOf: real account (either field), page-backed, none only when every Insta
   assert.equal(igOf({ _skip: ["instagram_business_account"], connected_page_backed_instagram_account: { id: "9" } }).state, "pbia", "what WAS read still counts");
 });
 
-test("handleOf: '@handle' only for a real Instagram account with a name", () => {
-  assert.equal(handleOf({ instagram_business_account: { id: "1", username: "nova.travel" } }), "@nova.travel");
-  assert.equal(handleOf({ connected_instagram_account: { id: "2", username: "old" } }), "@old");
-  assert.equal(handleOf({ instagram_business_account: { id: "1" } }), "", "a real account without a name: nothing");
-  assert.equal(handleOf({ connected_page_backed_instagram_account: { id: "9" } }), "", "the page-backed identity has no handle");
-  assert.equal(handleOf({}), "");
-});
-
-test("adRightsOf / accessOf / humanTask", () => {
+test("adRightsOf: ok with an ADVERTISE task, none without one, unknown for no list or an empty one", () => {
   assert.equal(adRightsOf({ tasks: ["MANAGE", "ADVERTISE"] }), "ok");
   assert.equal(adRightsOf({ tasks: ["MANAGE", "ANALYZE"] }), "none");
   assert.equal(adRightsOf({ tasks: [] }), "unknown", "an empty list describes nothing");
   assert.equal(adRightsOf({}), "unknown");
-  assert.deepEqual(accessOf({ tasks: ["ANALYZE", "MANAGE", "ADVERTISE", "WEIRD_TASK", "MANAGE"] }), { via: false, tasks: ["ADVERTISE", "MANAGE", "ANALYZE", "WEIRD_TASK"] }, "ADVERTISE first, the known ones in order, no repeats");
-  assert.deepEqual(accessOf({ _viaBm: "555", tasks: ["ADVERTISE"] }), { via: true, tasks: [] }, "through a business: not assigned, whatever else");
-  assert.deepEqual(accessOf({ _viaBm: "555", _unsure: true }), { via: true, unsure: true, tasks: [] }, "…and when that is no verdict (me/accounts was not read completely) it says so");
-  assert.deepEqual(accessOf({}), { via: false, tasks: [] });
-  assert.equal(humanTask("MANAGE_JOBS"), "Manage jobs");
-  assert.equal(humanTask("PROFILE_PLUS_FULL_CONTROL"), "Profile plus full control");
-  assert.equal(humanTask(""), "");
 });
 
-// ---------- problems: the chips ----------
+// ---------- problems and the chips ----------
 const P = (id, name, extra = {}) => ({ id, name, ...extra });
 const rows = [
   P("1", "Nova Travel", { instagram_business_account: { id: "17", username: "nova" }, is_published: true, tasks: ["ADVERTISE"], promotion_eligible: true, business: { id: "555", name: "Nova Media" } }),
-  P("2", "fresh page", {}),                                                                                     // nothing connected, everything read → No Instagram
-  P("3", "Backed", { connected_page_backed_instagram_account: { id: "9" }, tasks: ["MANAGE"] }),                // PBIA, but no ADVERTISE → No access
-  P("4", "Hidden", { is_published: false, promotion_eligible: false, promotion_ineligible_reason: "Unpublished", _skip: ["instagram_business_account"] }),   // IG unknown
+  P("2", "fresh page", {}),                                                                                     // nothing connected, everything read: no Instagram is NOT a problem
+  P("3", "Backed", { connected_page_backed_instagram_account: { id: "9" }, tasks: ["MANAGE"] }),                // PBIA, but no ADVERTISE → No access (and still alive)
+  P("4", "Hidden", { is_published: false, promotion_eligible: false, promotion_ineligible_reason: "Unpublished", _skip: ["instagram_business_account"] }),   // dead + hidden
   P("10", "page 10", { instagram_business_account: { id: "20", username: "ten" } }),
   P("11", "Via page", { instagram_business_account: { id: "21", username: "via" }, is_published: true, _viaBm: "555" }),   // found through a business: no tasks of mine
 ];
-test("problemsOf / problemCounts: No access (no ADVERTISE, or only via a business), No Instagram only with a verdict; unknown is never counted", () => {
+test("problemsOf: Dead (promotion_eligible = false), Hidden (is_published = false), No access (no ADVERTISE, or only via a business); Instagram is never a problem", () => {
   assert.deepEqual(problemsOf(rows[0]), []);
-  assert.deepEqual(problemsOf(rows[1]), ["noIg"]);
+  assert.deepEqual(problemsOf(rows[1]), [], "no Instagram account at all: not a problem");
   assert.deepEqual(problemsOf(rows[2]), ["noAccess"]);
-  assert.deepEqual(problemsOf(rows[3]), ["unpublished", "noAdv"], "Instagram of this row is unknown: not 'No Instagram'");
+  assert.deepEqual(problemsOf(rows[3]), ["dead", "hidden"], "the worst first");
   assert.deepEqual(problemsOf(rows[4]), [], "tasks unknown: no verdict about access");
   assert.deepEqual(problemsOf(rows[5]), ["noAccess"], "seen only through a business: not assigned");
-  assert.deepEqual(problemCounts(rows), { noAccess: 2, unpublished: 1, noAdv: 1, noIg: 1 });
-  assert.deepEqual(problemCounts([]), { noAccess: 0, unpublished: 0, noAdv: 0, noIg: 0 });
-  assert.deepEqual(Object.keys(PROBLEMS), ["noAccess", "unpublished", "noAdv", "noIg"], "the chips, in the order of the priority");
-  assert.deepEqual(PRIORITY, ["noAccess", "unpublished", "noAdv", "noIg"]);
-  assert.equal("noRights" in PROBLEMS, false, "'No ad rights' is merged into 'No access'");
+  assert.deepEqual(problemsOf({ is_published: true, promotion_eligible: true, tasks: ["ADVERTISE"] }), []);
+  assert.deepEqual(problemsOf({}), [], "nothing known: nothing wrong");
+  assert.deepEqual(Object.keys(PROBLEMS), ["dead", "hidden", "noAccess"]);
+  assert.deepEqual(PRIORITY, ["dead", "hidden", "noAccess"], "dead first, no access last");
+  assert.deepEqual(Object.values(PROBLEMS), ["bad", "warn", "warn"]);
+  for (const gone of ["noIg", "noAdv", "unpublished", "noRights"]) assert.equal(gone in PROBLEMS, false, gone);
 });
 
-test("every problem has its label in both languages", async () => {
+test("chipCounts: Alive (neither dead nor hidden; no access may overlap), Dead, Hidden, No access, in this order", () => {
+  assert.deepEqual(Object.keys(CHIPS), ["alive", "dead", "hidden", "noAccess"]);
+  assert.deepEqual(Object.values(CHIPS), ["ok", "bad", "warn", "warn"]);
+  assert.deepEqual(chipCounts(rows), { alive: 5, dead: 1, hidden: 1, noAccess: 2 }, "Backed and Via page are alive AND no access");
+  assert.deepEqual(chipCounts([]), { alive: 0, dead: 0, hidden: 0, noAccess: 0 });
+  assert.deepEqual(chipCounts([{ id: "1", promotion_eligible: false, is_published: false }]), { alive: 0, dead: 1, hidden: 1, noAccess: 0 }, "a page that is both is counted under both");
+  assert.deepEqual(chipCounts([{ id: "1", is_published: false }]), { alive: 0, dead: 0, hidden: 1, noAccess: 0 }, "hidden is not alive");
+});
+
+test("every chip and every problem has its label in both languages", async () => {
   await import("../fb-helper/js/strings/pages.js");
   for (const lang of ["ru", "en"]) {
     await setLang(lang);
     for (const k of Object.keys(PROBLEMS)) assert.ok(has(`pages.p.${k}`), `${lang}: pages.p.${k}`);
+    for (const k of Object.keys(CHIPS)) assert.ok(has(`pages.chip.${k}`), `${lang}: pages.chip.${k}`);
   }
   await setLang("en");
 });
@@ -251,28 +247,30 @@ test("filterPages: search by name, id or owner business (case-insensitive, trimm
   assert.deepEqual(ids(filterPages(rows, { q: "media" })), ["1"], "by owner business");
   assert.deepEqual(ids(filterPages([{ id: "5", name: "x", category: "Travel" }], { q: "travel" })), [], "the category is not part of a page any more");
   assert.deepEqual(ids(filterPages(rows, { q: "zzz" })), []);
-  assert.deepEqual(ids(filterPages(rows, { problem: "noIg" })), ["2"]);
-  assert.deepEqual(ids(filterPages(rows, { problem: "noAccess" })), ["3", "11"]);
-  assert.deepEqual(ids(filterPages(rows, { problem: "noAdv" })), ["4"]);
-  assert.deepEqual(ids(filterPages(rows, { problem: "noIg", q: "fresh" })), ["2"]);
-  assert.deepEqual(ids(filterPages(rows, { problem: "noIg", q: "nova" })), []);
-  assert.deepEqual(ids(filterPages(rows, { problem: "nonsense" })), [], "an unknown chip matches nothing");
+  assert.deepEqual(ids(filterPages(rows, { chip: "alive" })), ["1", "2", "3", "10", "11"], "alive = not dead and not hidden, whatever the access");
+  assert.deepEqual(ids(filterPages(rows, { chip: "dead" })), ["4"]);
+  assert.deepEqual(ids(filterPages(rows, { chip: "hidden" })), ["4"]);
+  assert.deepEqual(ids(filterPages(rows, { chip: "noAccess" })), ["3", "11"]);
+  assert.deepEqual(ids(filterPages(rows, { chip: "alive", q: "fresh" })), ["2"]);
+  assert.deepEqual(ids(filterPages(rows, { chip: "alive", q: "hidden" })), []);
+  assert.deepEqual(ids(filterPages(rows, { chip: "nonsense" })), [], "an unknown chip matches nothing");
+  assert.deepEqual(ids(filterPages(rows, { chip: "noIg" })), [], "Instagram is not a chip any more");
 });
 
-test("sortPages: healthy pages first by name (numbers as numbers, then id), then pages with problems by their worst problem, each by name; the input is not changed", () => {
+test("sortPages: healthy pages first by name (numbers as numbers, then id), then pages with problems by their worst problem (dead, hidden, no access), each by name; the input is not changed", () => {
   const OKP = { is_published: true, tasks: ["ADVERTISE"], promotion_eligible: true, instagram_business_account: { id: "9", username: "x" } };
   const input = [
-    P("1", "Zed noIg", { ...OKP, instagram_business_account: undefined }),
-    P("2", "Beta noAdv", { ...OKP, promotion_eligible: false }),
-    P("3", "Gamma unpublished", { ...OKP, is_published: false }),
+    P("1", "Zed no Instagram", { ...OKP, instagram_business_account: undefined }),
+    P("2", "Beta dead", { ...OKP, promotion_eligible: false }),
+    P("3", "Gamma hidden", { ...OKP, is_published: false }),
     P("4", "Delta noAccess", { ...OKP, tasks: ["MANAGE"] }),
     P("5", "page 10", OKP), P("6", "Page 2", OKP), P("7", "backed", OKP), P("8", "Page 2", OKP),
     P("9", "Alpha noAccess via", { ...OKP, tasks: undefined, _viaBm: "555" }),
-    P("10", "Omega noAdv + noIg", { ...OKP, promotion_eligible: false, instagram_business_account: undefined }),
+    P("10", "Omega dead + hidden + no access", { ...OKP, promotion_eligible: false, is_published: false, tasks: ["MANAGE"] }),
   ];
   const copy = input.map((p) => p.id).join();
-  assert.deepEqual(sortPages(input).map((p) => p.id), ["7", "6", "8", "5", "9", "4", "3", "2", "10", "1"],
-    "backed, Page 2, Page 2 (id), page 10 | No access: Alpha, Delta | Unpublished | Can't advertise: Beta, Omega | No Instagram");
+  assert.deepEqual(sortPages(input).map((p) => p.id), ["7", "6", "8", "5", "1", "2", "10", "3", "9", "4"],
+    "alive: backed, Page 2, Page 2 (id), page 10, Zed (no Instagram is alive) | Dead: Beta, Omega | Hidden: Gamma | No access: Alpha, Delta");
   assert.equal(input.map((p) => p.id).join(), copy);
   assert.deepEqual(sortPages([]), []);
 });
@@ -281,16 +279,13 @@ test("sortPages: healthy pages first by name (numbers as numbers, then id), then
 // A page with nothing wrong, so each test spoils exactly one thing.
 const OK = { id: "100000000000007", name: "Fine page", is_published: true, tasks: ["ADVERTISE"], promotion_eligible: true, instagram_business_account: { id: "17", username: "fine.page" } };
 const withProblem = {
+  dead: { ...OK, promotion_eligible: false, promotion_ineligible_reason: "Page is restricted" },
+  hidden: { ...OK, is_published: false },
   noAccess: { ...OK, tasks: ["MANAGE"], business: { id: "555", name: "Owner" } },
-  unpublished: { ...OK, is_published: false },
-  noAdv: { ...OK, promotion_eligible: false, promotion_ineligible_reason: "Page is restricted" },
-  noIg: { ...OK, instagram_business_account: undefined },
 };
-const FIX_URL = {
-  noAccess: LINKS.bmPages("555"), unpublished: LINKS.pageSuite(OK.id), noAdv: LINKS.accountQuality(), noIg: LINKS.adsManagerHome(),
-};
+const FIX_URL = { dead: LINKS.accountQuality(), hidden: LINKS.pageSuite(OK.id), noAccess: LINKS.bmPages("555") };
 
-test("every problem has exactly one fix link, to the page that fixes it", () => {
+test("every problem has exactly one fix link, to the page that fixes it: Appeal, Publish, Assign me", () => {
   assert.deepEqual([...PRIORITY].sort(), Object.keys(PROBLEMS).sort(), "the priority list names every problem once");
   assert.deepEqual(Object.keys(FIXES).sort(), Object.keys(PROBLEMS).sort(), "…and so does the fix table");
   for (const key of Object.keys(PROBLEMS)) {
@@ -301,10 +296,10 @@ test("every problem has exactly one fix link, to the page that fixes it", () => 
     assert.equal(issues[0].tone, PROBLEMS[key]);
     assert.ok(/^https:\/\/([a-z]+\.)?facebook\.com\//.test(issues[0].fix.url), `${key}: https on facebook.com`);
   }
-  assert.equal(FIX_URL.noAdv, "https://www.facebook.com/accountquality/");
+  assert.equal(FIX_URL.dead, "https://www.facebook.com/accountquality/");
   assert.equal(FIX_URL.noAccess, "https://business.facebook.com/settings/pages?business_id=555");
   assert.deepEqual(Object.fromEntries(Object.entries(FIXES).map(([k, f]) => [k, f.label])),
-    { noAccess: "pages.fix.assign", unpublished: "pages.fix.publish", noAdv: "pages.fix.appeal", noIg: "pages.fix.ig" }, "Assign me · Publish · Appeal · Set “Use Facebook Page”");
+    { dead: "pages.fix.appeal", hidden: "pages.fix.publish", noAccess: "pages.fix.assign" }, "Appeal · Publish · Assign me");
 });
 
 test("fixes: 'Assign me' goes to the Pages settings of the business the page was found through, else its owner, else Business Suite; a bad id drops the link, never a half URL", () => {
@@ -314,62 +309,89 @@ test("fixes: 'Assign me' goes to the Pages settings of the business the page was
   assert.equal(issuesOf({ ...OK, tasks: ["MANAGE"] })[0].fix.url, `https://business.facebook.com/latest/home?asset_id=${OK.id}`, "owner unknown: Business Suite");
   assert.equal(issuesOf({ ...OK, tasks: ["MANAGE"], business: { id: "x/../y" } })[0].fix.url, LINKS.pageSuite(OK.id), "a bad business id falls back");
   assert.equal(issuesOf({ ...OK, id: "not-a-number", is_published: false })[0].fix, null, "no usable id, no link");
-  assert.equal(issuesOf({ ...OK, instagram_business_account: undefined })[0].fix.url, "https://adsmanager.facebook.com/adsmanager/manage/ads");
 });
 
-test("a healthy page has no problem and no fix, whether its Instagram is real, page-backed or unread", () => {
+test("Instagram is not a problem: no account, an account, 'Use Facebook Page' or unread — no issue, no fix on the row; 'none' has its own fix, Set up → Ads Manager", () => {
+  const none = { ...OK, instagram_business_account: undefined };
+  assert.deepEqual(igOf(none), { state: "none" });
+  assert.deepEqual(issuesOf(none), [], "nothing connected and everything read: still a page that runs ads");
+  assert.deepEqual(problemsOf(none), []);
+  assert.equal(IG_FIX.label, "pages.fix.ig");
+  assert.equal(IG_FIX.tip, "pages.igNoneTitle", "the existing explanation");
+  assert.equal(IG_FIX.url(none), "https://adsmanager.facebook.com/adsmanager/manage/ads");
+  assert.equal(IG_FIX.url(none), LINKS.adsManagerHome());
+});
+
+test("a healthy page has no problem and no fix, whether its Instagram is real, page-backed, none or unread", () => {
   assert.deepEqual(issuesOf(OK), []);
   const pbia = { ...OK, instagram_business_account: undefined, connected_page_backed_instagram_account: { id: "9" } };
   assert.deepEqual(issuesOf(pbia), []);
   const unread = { ...OK, instagram_business_account: undefined, _skip: ["instagram_business_account"] };
   assert.deepEqual(issuesOf(unread), [], "no verdict about Instagram: not a problem");
+  assert.deepEqual(issuesOf({ ...OK, instagram_business_account: undefined }), []);
 });
 
-test("problems come worst first: No access > Unpublished > Can't advertise > No Instagram; the first is what the row says", () => {
-  const all = { ...OK, promotion_eligible: false, is_published: false, tasks: ["MANAGE"], instagram_business_account: undefined };
-  assert.deepEqual(issuesOf(all).map((i) => i.key), ["noAccess", "unpublished", "noAdv", "noIg"]);
-  assert.deepEqual(PRIORITY, ["noAccess", "unpublished", "noAdv", "noIg"]);
-  assert.deepEqual(issuesOf(all).map((i) => i.tone), ["warn", "warn", "bad", "warn"]);
+test("problems come worst first: Dead > Hidden > No access; the first is what the row says", () => {
+  const all = { ...OK, promotion_eligible: false, is_published: false, tasks: ["MANAGE"] };
+  assert.deepEqual(issuesOf(all).map((i) => i.key), ["dead", "hidden", "noAccess"]);
+  assert.deepEqual(issuesOf(all).map((i) => i.tone), ["bad", "warn", "warn"]);
+  assert.deepEqual(issuesOf(all).map((i) => i.label), ["pages.p.dead", "pages.p.hidden", "pages.p.noAccess"]);
   let p = all;
-  const fixes = { noAccess: { tasks: ["ADVERTISE"] }, unpublished: { is_published: true }, noAdv: { promotion_eligible: true } };
-  for (const want of ["noAccess", "unpublished", "noAdv", "noIg"]) {
+  const fixes = { dead: { promotion_eligible: true }, hidden: { is_published: true } };
+  for (const want of ["dead", "hidden", "noAccess"]) {
     assert.equal(issuesOf(p)[0].key, want);
     p = { ...p, ...fixes[want] };
   }
-  assert.deepEqual(issuesOf({ ...OK, tasks: undefined, _viaBm: "5", is_published: false }).map((i) => i.key), ["noAccess", "unpublished"], "a page found through a business can have more problems too");
+  assert.deepEqual(issuesOf({ ...OK, tasks: undefined, _viaBm: "5", is_published: false }).map((i) => i.key), ["hidden", "noAccess"], "a page found through a business can have more problems too");
 });
 
-test("tooltips: Graph's own reason for 'Can't advertise' is the tooltip text, not a line of its own; 'No access' says which kind", () => {
-  const [i] = issuesOf(withProblem.noAdv);
-  assert.equal(i.rawTip, "Page is restricted");
-  assert.equal(i.tip, "pages.noAdvTitle", "the fallback when Graph gave no reason");
+test("tooltips: a dead page says Graph's own reason when it has one, else a short explanation; Hidden and 'No access' say what they mean (which kind of no access)", () => {
+  const [d] = issuesOf(withProblem.dead);
+  assert.equal(d.rawTip, "Page is restricted");
+  assert.equal(d.tip, "pages.deadTitle", "the fallback when Graph gave no reason");
   assert.equal(issuesOf({ ...OK, promotion_eligible: false })[0].rawTip, undefined);
+  assert.equal(issuesOf({ ...OK, promotion_eligible: false })[0].tip, "pages.deadTitle");
+  assert.equal(issuesOf({ ...OK, promotion_ineligible_reason: "stale text on a live page" }).length, 0, "a reason on a page that can be promoted is not shown");
+  assert.equal(issuesOf(withProblem.hidden)[0].tip, "pages.hiddenTitle");
+  assert.equal(issuesOf(withProblem.hidden)[0].rawTip, undefined, "only a dead page has Graph's reason");
   assert.equal(issuesOf(withProblem.noAccess)[0].tip, "pages.noAccessTitle");
   assert.equal(issuesOf({ ...OK, tasks: undefined, _viaBm: "5" })[0].tip, "pages.noAccessViaTitle");
 });
 
-test("every label and tooltip of the problems and their fixes exists in both languages; short fix words; no slang", async () => {
+test("every label and tooltip of the problems, the chips and their fixes exists in both languages; the words of design.md §8; short fix words; no slang; nothing left of the old tab", async () => {
   const { STRINGS } = await import("../fb-helper/js/strings/pages.js");
-  const keys = new Set(["pages.ready", "pages.igPbia", "pages.igPbiaTitle", "pages.igRealTitle", "pages.igUnknownTitle", "pages.kv.ig", "pages.kv.business", "pages.kv.access",
-    "pages.ig.real", "pages.ig.realNoName", "pages.ig.pbia", "pages.ig.none", "pages.ig.unknown", "pages.access.via", "pages.noAccessViaTitle",
-    "pages.linkPage", "pages.linkPageTitle", "pages.linkSuite", "pages.linkSuiteTitle", "pages.linkBm", "pages.linkBmTitle", "pages.bmHint", "pages.notAllLine", "pages.found",
-    "pages.task.ADVERTISE", "pages.task.MANAGE", "pages.task.CREATE_CONTENT", "pages.task.MODERATE", "pages.task.MESSAGING", "pages.task.ANALYZE"]);
+  const keys = new Set(["pages.alive", "pages.igPbiaTitle", "pages.igRealTitle", "pages.igUnknownTitle", "pages.igNoneTitle", "pages.kv.reason", "pages.kv.ig", "pages.kv.business",
+    "pages.ig.realNoName", "pages.ig.pbia", "pages.ig.none", "pages.ig.unknown", "pages.noAccessViaTitle", "pages.linkPage", "pages.linkPageTitle", "pages.linkSuite", "pages.linkSuiteTitle",
+    "pages.bmHint", "pages.notAllLine", "pages.found", IG_FIX.label, IG_FIX.tip, ...Object.keys(CHIPS).map((k) => `pages.chip.${k}`)]);
   for (const p of [...Object.values(withProblem), { ...OK, tasks: undefined, _viaBm: "5" }]) for (const i of issuesOf(p)) { keys.add(i.label); keys.add(i.tip); keys.add(i.fix.label); keys.add(i.fix.tip); }
   for (const f of Object.values(FIXES)) { keys.add(f.label); keys.add(f.tip); }
   for (const l of ["ru", "en"]) assert.deepEqual([...keys].filter((k) => !STRINGS[l][k]), [], `missing in ${l}`);
   assert.deepEqual(Object.keys(STRINGS.ru).sort(), Object.keys(STRINGS.en).sort());
-  // what the tab no longer says: followers, likes, category, verified, Copy IDs, "No ad rights"
-  for (const gone of ["pages.followers", "pages.likes", "pages.verified", "pages.copyIds", "pages.p.noRights", "pages.count"]) assert.ok(!(gone in STRINGS.en), `${gone} is gone`);
+  // what the tab no longer says: followers, likes, category, verified, Copy IDs, "No ad rights", No Instagram, the access list, the Business pages link
+  for (const gone of ["pages.followers", "pages.likes", "pages.verified", "pages.copyIds", "pages.p.noRights", "pages.count", "pages.p.noIg", "pages.p.noAdv", "pages.p.unpublished", "pages.noAdvTitle", "pages.unpublishedTitle",
+    "pages.igFix", "pages.igPbia", "pages.ready", "pages.kv.access", "pages.ig.real", "pages.access.via", "pages.access.viaUnsure", "pages.task.ADVERTISE", "pages.task.MANAGE", "pages.linkBm", "pages.linkBmTitle"])
+    for (const l of ["ru", "en"]) assert.ok(!(gone in STRINGS[l]), `${gone} is gone (${l})`);
   // the product is renamed in the store build, and "BM" is slang the interface avoids
   for (const l of ["ru", "en"]) for (const v of Object.values(STRINGS[l]).flat()) assert.ok(!/fb helper|(^|[^\p{L}])(BM|БМ)(?![\p{L}])/iu.test(v), v);
-  // the words of design.md §8
-  assert.deepEqual(["pages.p.noAccess", "pages.p.unpublished", "pages.p.noAdv", "pages.p.noIg"].map((k) => STRINGS.en[k]), ["No access", "Unpublished", "Can't advertise", "No Instagram"]);
-  assert.deepEqual(["pages.p.noAccess", "pages.p.unpublished", "pages.p.noAdv", "pages.p.noIg"].map((k) => STRINGS.ru[k]), ["Нет доступа", "Не опубликована", "Нельзя рекламировать", "Нет Instagram"]);
-  assert.deepEqual(Object.values(FIXES).map((f) => STRINGS.en[f.label]), ["Assign me", "Publish", "Appeal", "Set “Use Facebook Page”"]);
-  assert.deepEqual(Object.values(FIXES).map((f) => STRINGS.ru[f.label]), ["Назначить себя", "Опубликовать", "Апелляция", "Выбрать «Use Facebook Page»"]);
+  // the words of the rows, the chips, the fixes, the body
+  const words = (l, ...ks) => ks.map((k) => STRINGS[l][k]);
+  assert.deepEqual(words("en", "pages.p.dead", "pages.p.hidden", "pages.p.noAccess"), ["Dead", "Hidden", "No access"]);
+  assert.deepEqual(words("ru", "pages.p.dead", "pages.p.hidden", "pages.p.noAccess"), ["Мёртвая", "Скрыта", "Нет доступа"]);
+  assert.deepEqual(words("en", "pages.chip.alive", "pages.chip.dead", "pages.chip.hidden", "pages.chip.noAccess"), ["Alive", "Dead", "Hidden", "No access"]);
+  assert.deepEqual(words("ru", "pages.chip.alive", "pages.chip.dead", "pages.chip.hidden", "pages.chip.noAccess"), ["Живые", "Мёртвые", "Скрытые", "Без доступа"]);
+  assert.deepEqual(Object.values(FIXES).map((f) => STRINGS.en[f.label]), ["Appeal", "Publish", "Assign me"]);
+  assert.deepEqual(Object.values(FIXES).map((f) => STRINGS.ru[f.label]), ["Апелляция", "Опубликовать", "Назначить себя"]);
+  assert.deepEqual(words("en", IG_FIX.label), ["Set up"]);
+  assert.deepEqual(words("ru", IG_FIX.label), ["Выбрать"]);
+  assert.deepEqual(words("en", "pages.kv.reason", "pages.kv.ig", "pages.kv.business", "pages.ig.pbia", "pages.ig.none", "pages.ig.unknown"), ["Reason", "Instagram", "Business", "runs as the Page", "none", "unknown"]);
+  assert.deepEqual(words("ru", "pages.kv.reason", "pages.kv.ig", "pages.kv.business", "pages.ig.pbia", "pages.ig.none", "pages.ig.unknown"), ["Причина", "Instagram", "Бизнес", "от имени страницы", "нет", "неизвестно"]);
+  assert.equal(STRINGS.en["pages.deadTitle"], "Meta does not allow advertising this page");
   // labels of links stay short enough for a 380 px window
-  for (const l of ["ru", "en"]) for (const f of Object.values(FIXES)) assert.ok(STRINGS[l][f.label].length <= 32, `${l} ${f.label}`);
+  for (const l of ["ru", "en"]) for (const f of [...Object.values(FIXES), IG_FIX]) assert.ok(STRINGS[l][f.label].length <= 16, `${l} ${f.label}`);
   for (const part of ["“Use Facebook Page”", "Identity → Instagram account", "once", "automated launches to Instagram placements fail"]) assert.ok(STRINGS.en["pages.igNoneTitle"].includes(part), part);
+  for (const part of ["“Use Facebook Page”", "once", "Instagram placements run as the Page"]) assert.ok(STRINGS.en["pages.igPbiaTitle"].includes(part), part);
+  // no word is said twice in a row on a row's line 2 or in a chip
+  for (const l of ["ru", "en"]) for (const k of [...Object.keys(PROBLEMS).map((x) => `pages.p.${x}`), ...Object.keys(CHIPS).map((x) => `pages.chip.${x}`)]) assert.ok(!/(^|\s)(\S+)\s+\2(\s|$)/iu.test(STRINGS[l][k]), `${l} ${k}`);
 });
 
 test("slimPage: control and bidi characters leave every name (page, business, Instagram handle, ineligibility reason)", () => {
@@ -395,7 +417,7 @@ test("finishPages without a verdict: pages seen only through a business are `_un
   assert.equal(unsure[1]._unsure, true); assert.equal(unsure[1]._viaBm, "9");
   assert.equal("_unsure" in unsure[0], false);
   assert.deepEqual(problemsOf(unsure[0]), ["noAccess"], "a page with a task list that has no ADVERTISE is still a verdict");
-  assert.deepEqual(problemCounts(unsure), { noAccess: 1, unpublished: 0, noAdv: 0, noIg: 0 }, "the chip counts only the verdict");
+  assert.deepEqual(chipCounts(unsure), { alive: 2, dead: 0, hidden: 0, noAccess: 1 }, "the No access chip counts only the verdict; both pages are alive");
   assert.deepEqual(issuesOf(unsure[1]), [], "no fix link either");
   assert.equal(finishPages([mine, via], { verdict: true })[1]._unsure, undefined);
   assert.ok(ROW_KEYS.includes("_unsure"));

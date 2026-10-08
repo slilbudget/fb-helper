@@ -9,11 +9,12 @@ import { ok, has, boot, popup, until, captureClipboard, clip, done, tr, near, se
 
 const SHOT = process.env.ROW_SHOT_DIR || "";                 // when set, screenshots of the lab go there
 const FB = "https://scontent.xx.fbcdn.net/v/t39.30808-1/";
+const LONG_FIX = "Set “Use Facebook Page”";                   // the longest fix label the row was designed for (no tab says it any more: a literal is its own label)
 const URL_REVIEW = "https://www.facebook.com/accountquality/", URL_ADS = "https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=111";
 
 // Builds the lab inside the popup page: a list of rows made by row.js. window.__lab records every body build and toggle.
 async function buildLab(pop) {
-  await pop.evaluate(async ({ fb, review, ads }) => {
+  await pop.evaluate(async ({ fb, review, ads, longFix }) => {
     const m = await import(chrome.runtime.getURL("js/row.js"));
     const lab = window.__lab = { built: {}, toggles: [], clicks: [] };
     document.addEventListener("click", (e) => { const a = e.target.closest?.("a"); if (a) { lab.clicks.push(a.href); e.preventDefault(); } }, true);   // no new tabs
@@ -46,10 +47,10 @@ async function buildLab(pop) {
       // a healthy row with no context: line 2 is the ID and nothing else
       m.row({ key: "quiet", avatar: { kind: "page", url: null }, name: "Quiet healthy row", value: "$2", status: { tone: "ok", text: "Ready" }, id: { value: "100000000000011" }, body: body("quiet") }),
       // the tightest line there is: a 16-digit ID, a picture, the longest English fix
-      m.row({ key: "worst", avatar: { kind: "page", url: null }, name: "The tightest line", value: "$0", valueMuted: true, status: { tone: "warn", text: "No Instagram" }, fix: { label: "pages.fix.ig", url: review }, id: { value: "1000000000000042" }, body: body("worst") }),
+      m.row({ key: "worst", avatar: { kind: "page", url: null }, name: "The tightest line", value: "$0", valueMuted: true, status: { tone: "warn", text: "No Instagram" }, fix: { label: longFix, url: review }, id: { value: "1000000000000042" }, body: body("worst") }),
     ];
     host.append(...rows);
-  }, { fb: FB, review: URL_REVIEW, ads: URL_ADS });
+  }, { fb: FB, review: URL_REVIEW, ads: URL_ADS, longFix: LONG_FIX });
 }
 const q = (p, fn, arg) => p.evaluate(fn, arg);
 const rowSel = (key) => `#lab .lrow[data-row="${key}"]`;
@@ -325,13 +326,13 @@ async function rowFlow() {
   ok("…rows stay two lines (68 px, line 2 does not wrap), long names are cut, the body is one column", ["long", "quiet", "worst"].every((k) => near(narrow.rows[k].h, 68)) && narrow.rows.problem.subH <= 24 && narrow.rows.long.subH <= 24 && narrow.rows.worst.subH <= 24 && narrow.rows.long.cut && narrow.kvCols === 1 && narrow.bodyScroll, JSON.stringify(narrow));
   ok("…the fix link and '+3' are never cut, even where the ID, a picture and a long status phrase compete for the line (the status word and the context give way, with an ellipsis)", Object.values(narrow.rows).every((x) => x.fixInside && x.moreInside), JSON.stringify(narrow.rows));
   const w2 = await lineTwo(pop, "worst");
-  ok("…the tightest line (a 16-digit ID, a picture, 'Set “Use Facebook Page”'): the status word is dropped whole and takes its '·' with it, so line 2 reads 'ID · fix' (no dangling separator)", !narrow.rows.worst.status && w2 === `1000000000000042 · ${tr("pages.fix.ig")}`, w2);
+  ok("…the tightest line (a 16-digit ID, a picture, 'Set “Use Facebook Page”'): the status word is dropped whole and takes its '·' with it, so line 2 reads 'ID · fix' (no dangling separator)", !narrow.rows.worst.status && w2 === `1000000000000042 · ${LONG_FIX}`, w2);
   ok("…a status word that has room stays: 'ID · Ads policy · Appeal+2 more' on the problem row", narrow.rows.problem.status && (await lineTwo(pop, "problem")) === `111222333444555 · Ads policy · ${tr("next.review")}${tr("row.more", { n: 2 })}`, await lineTwo(pop, "problem"));
   ok("…and the dropped status word is still in the accessibility tree: the row's description reads it", has((await axOf(pop, '#lab .lrow[data-row="worst"] button.lrow-title')).description, "No Instagram"), JSON.stringify(await axOf(pop, '#lab .lrow[data-row="worst"] button.lrow-title')));
   ok("…no horizontal scroll at 380 px", await noHScroll(pop));
   if (SHOT) await pop.screenshot({ path: path.join(SHOT, "rows-lab-380.png"), fullPage: true });
   await pop.setViewportSize({ width: 560, height: 900 }); await settle(pop);
-  ok("…back at 560 px the status word of the tightest line is there again (the line is measured again)", (await lineTwo(pop, "worst")) === `1000000000000042 · No Instagram · ${tr("pages.fix.ig")}`, await lineTwo(pop, "worst"));
+  ok("…back at 560 px the status word of the tightest line is there again (the line is measured again)", (await lineTwo(pop, "worst")) === `1000000000000042 · No Instagram · ${LONG_FIX}`, await lineTwo(pop, "worst"));
   await done(b);
 }
 

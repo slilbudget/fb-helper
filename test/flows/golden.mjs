@@ -227,21 +227,23 @@ async function pagesWords() {
   const pop = await popup(b, "pages");
   await rowsAre(pop, "#pagesList .lrow", 9); await idle(pop, "#tab-pages");
   golden("Pages tab: the controls, the chips, the count", { controls: [await pop.getAttribute("#pageFilter", "placeholder"), ages(await pop.getAttribute("#loadPages", "title"))], chips: await seen(pop, "#pagesChips .chip"), total: await one(pop, "#pagesTotal") },
-    { controls: ["Search", "Refresh · updated <age>"], chips: ["No access 4", "Unpublished 3", "Can't advertise 2", "No Instagram 3"], total: "" });
-  golden("Pages tab: every row as it reads (name, handle, then line 2: the ID first, the worst problem and its one fix, '+N more')", { rows: await seen(pop, "#pagesList .lrow-head") }, {
-    rows: ["Backed Page 100000000000003 Ready IG via page", "Nova Travel Blog @nova.travel 100000000000001 Ready", "Client Fashion House @client.fashion 100000000000008 No access Assign me +1 more", "Harbor Bakery @harbor.bakery 100000000000007 No access Assign me",
-      "Hidden Page 100000000000004 No access Assign me +3 more", "Wingtip Gadgets 100000000000009 No access Assign me +1 more", "Draft Page @draft.page 100000000000005 Unpublished Publish", "Orion Studio @orion.studio 100000000000006 Can't advertise Appeal",
-      "Fresh Page 100000000000002 No Instagram Set “Use Facebook Page”"],
+    { controls: ["Search", "Refresh · updated <age>"], chips: ["Alive 5", "Dead 2", "Hidden 3", "No access 4"], total: "" });
+  golden("Pages tab: every row as it reads (name only, then line 2: the ID first; a problem adds its word, its one fix, '+N more')", { rows: await seen(pop, "#pagesList .lrow-head") }, {
+    rows: ["Backed Page 100000000000003 Alive", "Fresh Page 100000000000002 Alive", "Nova Travel Blog 100000000000001 Alive", "Dead Page 100000000000004 Dead Appeal +2 more", "Orion Studio 100000000000006 Dead Appeal",
+      "Client Fashion House 100000000000008 Hidden Publish +1 more", "Draft Page 100000000000005 Hidden Publish", "Harbor Bakery 100000000000007 No access Assign me", "Wingtip Gadgets 100000000000009 No access Assign me"],
   });
-  await pop.click(`#pagesList .lrow[data-row="${pagesFx.ids.hidden}"] .lrow-title`);
-  golden("Pages tab: an opened row (every problem with its fix, the places)", { body: await one(pop, `#pagesList .lrow[data-row="${pagesFx.ids.hidden}"] .lrow-body`) }, { body: "What to do No access Assign me Unpublished Publish Can't advertise Appeal No Instagram Set “Use Facebook Page” Page · Business Suite" });
+  await pop.click(`#pagesList .lrow[data-row="${pagesFx.ids.dead}"] .lrow-title`);
+  golden("Pages tab: an opened dead page (every problem with its fix, then Graph's reason, Instagram, the places)", { body: await one(pop, `#pagesList .lrow[data-row="${pagesFx.ids.dead}"] .lrow-body`) },
+    { body: "What to do Dead Appeal Hidden Publish No access Assign me Reason Page is not published Instagram none Set up Page · Business Suite" });
+  await pop.click(`#pagesList .lrow[data-row="${pagesFx.ids.orion}"] .lrow-title`);
+  golden("Pages tab: an opened page with one problem (no What to do: its fix is on line 2; Reason, Instagram)", { body: await one(pop, `#pagesList .lrow[data-row="${pagesFx.ids.orion}"] .lrow-body`) }, { body: "Reason This page is restricted from promoting Instagram @orion.studio Page · Business Suite" });
   await pop.click(`#pagesList .lrow[data-row="${pagesFx.ids.nova}"] .lrow-title`);
-  golden("Pages tab: an opened healthy row (Instagram, owner business, my tasks, three places)", { body: await one(pop, `#pagesList .lrow[data-row="${pagesFx.ids.nova}"] .lrow-body`) }, { body: "Instagram Account @nova.travel Business Nova Media Your access Advertise, Manage, Insights Page · Business Suite · Business pages" });
-  await pop.click(`#pagesChips .chip:has-text("No Instagram")`);
-  golden("Pages tab: the No Instagram chip: the count, the written-out fix", { total: await one(pop, "#pagesTotal"), note: await one(pop, "#pagesList .pg-note") }, {
-    total: "3 of 9 found", note: "To fix: in an ad of each of these pages choose “Use Facebook Page” once (Ads Manager → Ad → Identity → Instagram account) — otherwise automated launches to Instagram placements fail.",
-  });
-  await pop.click(`#pagesChips .chip:has-text("No Instagram")`);
+  golden("Pages tab: an opened alive row (Instagram, owner business, two places)", { body: await one(pop, `#pagesList .lrow[data-row="${pagesFx.ids.nova}"] .lrow-body`) }, { body: "Instagram @nova.travel Business Nova Media Page · Business Suite" });
+  await pop.click(`#pagesList .lrow[data-row="${pagesFx.ids.backed}"] .lrow-title`);
+  golden("Pages tab: an opened page that runs Instagram as the Page", { body: await one(pop, `#pagesList .lrow[data-row="${pagesFx.ids.backed}"] .lrow-body`) }, { body: "Instagram runs as the Page Page · Business Suite" });
+  await pop.click(`#pagesChips .chip:has-text("Dead")`);
+  golden("Pages tab: the Dead chip: the count", { total: await one(pop, "#pagesTotal"), note: await one(pop, "#pagesList .pg-note") }, { total: "2 of 9 found", note: null });
+  await pop.click(`#pagesChips .chip:has-text("Dead")`);
   await pop.fill("#pageFilter", "zzz");
   golden("Pages tab: a search that finds nothing", { list: await one(pop, "#pagesList") }, { list: "Nothing found" });
   await resetLocks(pop);

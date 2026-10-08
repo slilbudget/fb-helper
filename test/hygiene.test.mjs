@@ -128,14 +128,15 @@ test("every UI string is shown by something: a literal t(\"key\"), a data-i18n a
   assert.deepEqual(unused, [], "strings nothing refers to (in both languages): delete them");
 });
 
-test("a family of strings is exactly the codes its table knows: bms.ver.<state> = VERIFY_KNOWN, ad.<STATUS> = AD_STATUS, pages.p.<problem> = PRIORITY (a string no code can ask for is dead, a code without a string would print its key)", async () => {
-  const { VERIFY_KNOWN } = await import("../fb-helper/js/bms-model.js"), { AD_STATUS } = await import("../fb-helper/js/accounts-model.js"), { PRIORITY } = await import("../fb-helper/js/pages-model.js");
+test("a family of strings is exactly the codes its table knows: bms.ver.<state> = VERIFY_KNOWN, ad.<STATUS> = AD_STATUS, pages.p.<problem> = PRIORITY, pages.chip.<chip> = CHIPS (a string no code can ask for is dead, a code without a string would print its key)", async () => {
+  const { VERIFY_KNOWN } = await import("../fb-helper/js/bms-model.js"), { AD_STATUS } = await import("../fb-helper/js/accounts-model.js"), { PRIORITY, CHIPS } = await import("../fb-helper/js/pages-model.js");
   const keys = new Set();
   for (const f of jsFiles) if (/\/strings\/|\/i18n\.js$/.test(f)) { const src = code[f], ru = src.slice(src.search(/\bru:\s*\{/), src.search(/\ben:\s*\{/)); for (const m of ru.matchAll(/"([A-Za-z0-9_.]+)"\s*:/g)) keys.add(m[1]); }
   const family = (prefix) => [...keys].filter((k) => k.startsWith(prefix)).map((k) => k.slice(prefix.length)).sort();
   assert.deepEqual(family("bms.ver."), [...VERIFY_KNOWN].sort());
   assert.deepEqual(family("ad."), Object.keys(AD_STATUS).sort());
   assert.deepEqual(family("pages.p."), [...PRIORITY].sort());
+  assert.deepEqual(family("pages.chip."), Object.keys(CHIPS).sort());
 });
 
 // ---------- CSS ----------

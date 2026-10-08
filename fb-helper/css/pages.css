@@ -1,13 +1,12 @@
 /* pages: styles of js/pages.js. The row itself (lines, picture, status, fix, ID, body, dividers) is the shared .lrow of rows.css;
-   only what is specific to a page goes here. */
+   only what is specific to a page goes here. (The muted "some businesses couldn't be read" line under the list is rows.css .pg-foot.) */
 
-/* Lines around the rows: what to do about the filtered problem, "this token can't read pages". (The muted "some businesses couldn't be read" line under
-   the list is rows.css .pg-foot.) */
+/* "Instagram: none" in the body: the word in the warning colour, its fix (Set up) right after it. The link keeps its 24 px hit area through
+   padding that the negative margin takes back, so the pair stays one text line; it sits in the body, not above a row's cover. */
+.pg-none { color: var(--color-warning); }
+a.lrow-fix.pg-ig-fix { padding: 4px 0; margin: -4px 0 -4px var(--spacing-3); z-index: auto; }
 
-/* The Instagram handle at the right of line 1 is a muted 13 px word; a long handle is cut, never allowed to squeeze the name. */
-#pagesList .lrow-value { max-width: min(168px, 34vw); overflow: hidden; text-overflow: ellipsis; }
-
-/* The other problems of a page in the body ("What to do"): each one = its word, then its fix, the fixes in one column. */
+/* The problems of a page in the body ("What to do", only when there are two or more): each one = its word, then its fix, the fixes in one column. */
 .pg-probs { display: grid; grid-template-columns: minmax(0, max-content) max-content; justify-content: start; align-items: center; column-gap: var(--spacing-3); }
 .pg-prob { display: contents; }
 .pg-prob-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

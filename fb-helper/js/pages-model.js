@@ -1,16 +1,17 @@
 // The Pages tab without the screen: which fields are asked for, how a row is reduced, which pages come from where (the
-// profile's own list and every business's owned / client pages), what a page's Instagram / publishing / ad-rights state is, the
-// problems with their fixes, the problem chips, search and order. No DOM, no chrome.*; the only imports are links.js and pure.js (both pure):
+// profile's own list and every business's owned / client pages), what a page's Instagram / ad-rights state is, the problems with their
+// fixes, the chips, search and order. No DOM, no chrome.*; the only imports are links.js and pure.js (both pure):
 // test/pages.test.mjs runs it in plain Node. pages.js draws it.
 //
-// The tab answers one question: is each page ready to run ads (an Instagram identity, published, may advertise, my access)?
+// The tab answers one question: is each page alive or dead for advertising, and can I use it? Dead = Meta does not allow promoting it,
+// hidden = unpublished, no access = I have no Advertise task on it. Instagram is not a problem: its state is only told in the body.
 //
 // Never a Page access token. `me/accounts` hands one out per page by default; the `fields` list below is explicit and
 // never names it, and slimPage keeps a whitelist of keys, so a token Graph sent anyway is gone before it reaches state,
 // storage or the screen. The business edges are read with the same list (minus `tasks`) and the same whitelist.
 
 import { LINKS, imageUrl } from "./links.js";
-import { cleanText, isPermError, humanEnum } from "./pure.js";
+import { cleanText, isPermError } from "./pure.js";
 
 // Fields asked for on top of id and name. Docs are thin and none of this is live-verified, so each one is optional:
 // readPaged drops the one Graph complains about and asks the same page again. { key: expression }.
@@ -134,44 +135,34 @@ export function igOf(p) {
   if (p.connected_page_backed_instagram_account?.id) return { state: "pbia" };
   return { state: unread(p, IG_KEYS) ? "unknown" : "none" };
 }
-// "@handle" of a real Instagram account, else "" (the muted word at the right of the name).
-export const handleOf = (p) => { const ig = igOf(p); return ig.state === "real" && ig.username ? `@${ig.username}` : ""; };
 // Ad rights from `tasks`: ok / none (the list has no ADVERTISE) / unknown (no list, or an empty one: Graph says that for
 // pages it does not describe, and a warning for every such page would be noise).
 export function adRightsOf(p) {
   if (!Array.isArray(p.tasks) || !p.tasks.length) return "unknown";
   return p.tasks.includes("ADVERTISE") ? "ok" : "none";
 }
-// "Your access": a page found only through a business has no task of mine; otherwise the tasks Graph listed (plain-word keys in
-// strings/pages.js, the known ones first, ADVERTISE at the front; an unknown task is shown as plain words).
-const TASK_ORDER = ["ADVERTISE", "MANAGE", "CREATE_CONTENT", "MODERATE", "MESSAGING", "ANALYZE"];
-export const humanTask = humanEnum;
-export function accessOf(p) {
-  if (p._viaBm) return { via: true, ...(p._unsure ? { unsure: true } : {}), tasks: [] };
-  const tasks = Array.isArray(p.tasks) ? [...new Set(p.tasks)] : [];
-  const rank = (x) => { const i = TASK_ORDER.indexOf(x); return i < 0 ? TASK_ORDER.length : i; };
-  return { via: false, tasks: tasks.sort((a, b) => rank(a) - rank(b)) };
-}
 
-// ---------- problems: the chips ----------
-// key → tone of the word / chip. Order = order of the chips = priority: the worst problem is the one the row says.
-//   noAccess     no ADVERTISE task for me, or seen only through a business (nobody assigned me to it) when me/accounts was read completely
-//                (finishPages: otherwise `_unsure`, no verdict)
-//   unpublished  is_published = false
-//   noAdv        Graph says the page cannot be promoted (promotion_eligible = false)
-//   noIg         no Instagram identity at all (not even «Use Facebook Page»), with every Instagram field read
-export const PROBLEMS = { noAccess: "warn", unpublished: "warn", noAdv: "bad", noIg: "warn" };
+// ---------- problems ----------
+// key → tone of the word. Order = priority: the worst problem is the one the row says.
+//   dead      Graph says the page cannot be promoted (promotion_eligible = false): Meta does not allow advertising it
+//   hidden    is_published = false
+//   noAccess  no ADVERTISE task for me, or seen only through a business (nobody assigned me to it) when me/accounts was read completely
+//             (finishPages: otherwise `_unsure`, no verdict)
+// Instagram is NOT a problem: a page with no account still runs ads (igOf tells it in the body).
+export const PROBLEMS = { dead: "bad", hidden: "warn", noAccess: "warn" };
 export const PRIORITY = Object.keys(PROBLEMS);
 const TESTS = {
+  dead: (p) => p.promotion_eligible === false,
+  hidden: (p) => p.is_published === false,
   noAccess: (p) => (!!p._viaBm && !p._unsure) || adRightsOf(p) === "none",
-  unpublished: (p) => p.is_published === false,
-  noAdv: (p) => p.promotion_eligible === false,
-  noIg: (p) => igOf(p).state === "none",
 };
+// The chips: key → tone. "alive" = neither dead nor hidden (no access may overlap with it). One chip filters at a time.
+export const CHIPS = { alive: "ok", dead: "bad", hidden: "warn", noAccess: "warn" };
+const MATCH = { alive: (p) => !TESTS.dead(p) && !TESTS.hidden(p), ...TESTS };
 export const problemsOf = (p) => PRIORITY.filter((k) => TESTS[k](p));
-export function problemCounts(rows) {
-  const counts = Object.fromEntries(PRIORITY.map((k) => [k, 0]));
-  for (const p of rows) for (const k of problemsOf(p)) counts[k]++;
+export function chipCounts(rows) {
+  const counts = Object.fromEntries(Object.keys(CHIPS).map((k) => [k, 0]));
+  for (const p of rows) for (const k of Object.keys(CHIPS)) if (MATCH[k](p)) counts[k]++;
   return counts;
 }
 
@@ -181,21 +172,22 @@ export function problemCounts(rows) {
 // "Assign me" goes to the Pages settings of the business through which the page was found (there I can be assigned), else of its
 // owner, else to the page in Business Suite.
 export const FIXES = {
+  dead: { label: "pages.fix.appeal", tip: "pages.fix.appealTitle", url: () => LINKS.accountQuality() },
+  hidden: { label: "pages.fix.publish", tip: "pages.fix.publishTitle", url: (p) => LINKS.pageSuite(p.id) },
   noAccess: { label: "pages.fix.assign", tip: "pages.fix.assignTitle", url: (p) => LINKS.bmPages(p._viaBm || p.business?.id) || LINKS.pageSuite(p.id) },
-  unpublished: { label: "pages.fix.publish", tip: "pages.fix.publishTitle", url: (p) => LINKS.pageSuite(p.id) },
-  noAdv: { label: "pages.fix.appeal", tip: "pages.fix.appealTitle", url: () => LINKS.accountQuality() },
-  noIg: { label: "pages.fix.ig", tip: "pages.igNoneTitle", url: () => LINKS.adsManagerHome() },
 };
+// The one thing to do about "Instagram: none" (told in the body, never a problem of the row): Ads Manager, where «Use Facebook Page» is chosen.
+export const IG_FIX = { label: "pages.fix.ig", tip: "pages.igNoneTitle", url: () => LINKS.adsManagerHome() };
+const TIPS = { dead: "pages.deadTitle", hidden: "pages.hiddenTitle" };
 // The problems of a page, worst first: [{ key, tone, label (i18n key), tip (i18n key), rawTip (Graph's own words, if any), fix }].
 // fix = { label, tip, url } or null. Nothing wrong = [].
 export function issuesOf(p) {
-  const found = problemsOf(p);
-  return PRIORITY.filter((k) => found.includes(k)).map((key) => {
+  return problemsOf(p).map((key) => {
     const f = FIXES[key], url = f.url(p);
     return {
       key, tone: PROBLEMS[key], label: `pages.p.${key}`,
-      tip: key === "noAccess" ? (p._viaBm ? "pages.noAccessViaTitle" : "pages.noAccessTitle") : key === "unpublished" ? "pages.unpublishedTitle" : key === "noAdv" ? "pages.noAdvTitle" : "pages.igNoneTitle",
-      rawTip: key === "noAdv" ? p.promotion_ineligible_reason : undefined,        // Graph's reason is the tooltip, never a line of its own
+      tip: key === "noAccess" ? (p._viaBm ? "pages.noAccessViaTitle" : "pages.noAccessTitle") : TIPS[key],
+      rawTip: key === "dead" ? p.promotion_ineligible_reason : undefined,        // Graph's reason is the tooltip (and the body's "Reason"), never a line of its own
       fix: url ? { label: f.label, tip: f.tip, url } : null,
     };
   });
@@ -203,15 +195,14 @@ export function issuesOf(p) {
 
 // ---------- list ----------
 // Search matches what the row shows: name, id, owner business.
-// problem = a chip key or null.
-export function filterPages(rows, { q = "", problem = null } = {}) {
+// chip = a key of CHIPS or null.
+export function filterPages(rows, { q = "", chip = null } = {}) {
   const needle = String(q).trim().toLowerCase();
-  return rows.filter((p) => (!problem || TESTS[problem]?.(p))
+  return rows.filter((p) => (!chip || MATCH[chip]?.(p))
     && (!needle || `${p.name} ${p.id} ${p.business?.name || ""}`.toLowerCase().includes(needle)));
 }
 // A readiness board: pages with nothing wrong first (by name, case and accents aside, numbers as numbers, then id), then the pages
-// with problems by their worst problem (No access, Unpublished, Can't advertise, No Instagram), each group by name. A list that
-// does not move between loads.
+// with problems by their worst problem (Dead, Hidden, No access), each group by name. A list that does not move between loads.
 const byName = (a, b) => (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base", numeric: true }) || a.id.localeCompare(b.id);
 export function sortPages(rows) {
   const rank = (p) => PRIORITY.findIndex((k) => TESTS[k](p));            // -1 = healthy
