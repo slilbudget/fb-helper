@@ -83,6 +83,14 @@ export function stateOf(counts, { loaded, truncated = false }) {
   return truncated ? null : counts.total ? "noActive" : "none";
 }
 
+// ---------- a restricted business ----------
+// Graph has no documented field that says "this business is restricted" (checked 2026-10-08). The one sign it gives: an ad account the business
+// OWNS that is disabled with disable_reason 6 = BUSINESS_INTEGRITY_RAR (disabled because of the business, not of the account). One such account
+// is enough. An account only shared with the business (read through it) says nothing about this business: its owner is the restricted one.
+// A business restricted with no owned account disabled for that reason cannot be seen here.
+const BUSINESS_REASON = 6;
+export const restrictedOf = (own) => own.some((a) => a?.account_status === 2 && Number(a?.disable_reason) === BUSINESS_REASON);
+
 // ---------- the rows of the list ----------
 // bms = the slimmed me/businesses rows; accounts = the Ad accounts list (each with business { id, name } or none, and `_bmId` when it was
 // read through a business of the person); loaded = the accounts list has been read; stats(account) → { spend } | null for the selected
@@ -92,7 +100,7 @@ export function stateOf(counts, { loaded, truncated = false }) {
 // business belong to no row: this tab is about businesses, the Ad accounts tab has the rest.
 // Two readings of "belongs" (spend.js, one rule for every tab): COUNTS and STATE use the members (owner or read-through business), so a
 // business that only has shared accounts is not "No ad accounts"; SPEND uses the owner's group only, so no account is added twice.
-// → [{ key, id, name, known, picture, accounts, counts, partial, unread, state, verification, verificationState, spend, issues }]
+// → [{ key, id, name, known, picture, accounts, counts, partial, unread, state, verification, verificationState, restricted, spend, issues }]
 //   accounts = the members; partial = the business's accounts may be incomplete (counts are "at least"): the whole list was cut (truncated: a cap
 //   or a page limit) OR this business's own edge could not be read (failedBms: its id is in there) - and then no verdict about it, but only about it;
 //   unread = the second reason alone (the row says "couldn't read" in its body)
@@ -110,7 +118,7 @@ export function buildRows({ bms = [], accounts = [], loaded = false, truncated =
     const row = {
       key: id, id, name: bm?.name || owned.get(id)?.name || m?.name || "", known: !!bm, picture: bm?.profile_picture_uri,
       accounts: list, counts, partial: loaded && cut, unread, state: stateOf(counts, { loaded, truncated: cut }),
-      verification: badVerification(bm), verificationState: verificationOf(bm),
+      verification: badVerification(bm), verificationState: verificationOf(bm), restricted: restrictedOf(own),
       spend: addUp(own.map((a) => ({ spend: stats(a)?.spend ?? null, currency: a.currency }))),
     };
     row.issues = issuesOf(row);
@@ -124,6 +132,8 @@ export function buildRows({ bms = [], accounts = [], loaded = false, truncated =
 // by opening it. Order = severity. line = the fix goes on line 2 of the collapsed row (only when it is the worst problem);
 // "None active" has no fix there: the way in is the "Show ad accounts" button, the Business Settings link waits in the body.
 export const PROBLEMS = [
+  { id: "restricted", tone: "bad", has: (r) => !!r.restricted, label: "bms.st.restricted", tip: "bms.st.restricted.title", help: "bms.help.restricted", line: true,
+    fix: { label: "bms.fix.review", tip: "bms.fix.reviewTitle", url: () => LINKS.accountQuality() } },
   { id: "verification", tone: "bad", has: (r) => !!r.verification, label: "bms.st.unverified", tip: "bms.verTitle", help: "bms.help.verification", line: true,
     fix: { label: "bms.fix.verify", tip: "bms.fix.verifyTitle", url: (r) => LINKS.bmSecurity(r.id) } },
   { id: "noActive", tone: "bad", has: (r) => r.state === "noActive", label: "bms.st.noActive", tip: "bms.st.noActive.title", help: "bms.help.noActive", line: false,

@@ -27,6 +27,8 @@ import { PERIODS, statsOf as spendStats, periodRange as rangeOf, addUp } from ".
 import { BASE_FIELDS, PERIOD_INSIGHTS, OPTIONAL_FIELDS, AD_ALL, AD_ALL_INSIGHTS, AD_ALIASES, AD_STATUS, slimWith, word, underBmFilter as underFilter, visibleAccounts, chipCounts, chipsInOrder, isLive, liveIds, groupAccounts, valueOf } from "./accounts-model.js";
 import { bindPeriods, fillTotal, refreshTip, isShown } from "./period.js";
 import "./strings/actions.js";
+import "./strings/bms.js";
+import { restrictedOf } from "./bms-model.js";
 import { registerTab, registerRender, registerInit, registerStart } from "./registry.js";
 
 const MIN_REFRESH_MS = 60 * 1000;            // accounts: one attempt per minute (failed attempts count too)
@@ -251,8 +253,10 @@ function groupEl(g, r) {
   const title = [line.title || (line.text !== line.full ? line.full : ""), unknown ? t(line.main ? "acc.notAllTitle" : "acc.noPeriod") : ""].filter(Boolean).join("\n") || null;
   // The business's own picture, wherever it is known: the Businesses list (state.bms: its logo is only a URL imageUrl() accepted) or the pictures read (pictures.js).
   const logo = personal ? null : picturesOf("business", g.id, state.bms?.find((b) => b?.id === g.id)?.profile_picture_uri);
+  // A business Meta restricted (bms-model.js restrictedOf: an account it owns is disabled for "Business integrity") says so after the count.
+  const status = !personal && restrictedOf(g.accounts) ? { text: t("bms.st.restricted"), tone: "bad", title: t("bms.st.restricted.title") } : null;
   const h = groupHeader({ avatar: { kind: personal ? "page" : "business", url: logo }, name: personal ? t("acc.personal") : g.name || g.id,
-    count: g.accounts.length, value, valueTitle: title });
+    count: g.accounts.length, status, value, valueTitle: title });
   if (personal) h.querySelector(".lav .i")?.classList.replace("i-flag", "i-user");
   return h;
 }

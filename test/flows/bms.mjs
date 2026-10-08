@@ -236,7 +236,7 @@ async function bmsSpendFlow() {
   ok("the total of the rows is the sum of the rows: at today's rates $142 + €60 + VND 250 000 = $227.00 (the muted line lists the biggest currencies)", await (async () => {
     await pop.click(PERIOD("today", "#bmsPeriod")); await settle(pop);
     const t = await totalOfTab(pop);
-    return t.value === "≈ $227.00" && /^\$142\.00 \+ €60\.00 \+1 more · rates /.test(t.sub) && has(t.sub, "ExchangeRate-API");
+    return t.value === "≈ $227.00" && /^\$142\.00 \+ €60\.00 \+1 more · rates /.test(t.sub) && !has(t.sub, "ExchangeRate-API");
   })(), JSON.stringify(await totalOfTab(pop)));
   ok("only the total says '≈' for a two-currency sum; a row never does: Alpha stays 'a + b' next to the converted total", (await spends(pop))["Alpha Media"] === "$100.00 + €50.00");
 
@@ -800,4 +800,31 @@ async function bmsUnreadFlow() {
   await done(b);
 }
 
-export const flows = { bms: bmsFlow, bmsUnread: bmsUnreadFlow, bmsSpend: bmsSpendFlow, bmsTruncated: bmsTruncatedFlow, bmsFields: bmsFieldsFlow, bmsPerm: bmsPermFlow, bmsAccounts: bmsAccountsFlow, bmsCache: bmsCacheFlow, bmsLimits: bmsLimitsFlow, bmsPaging: bmsPagingFlow, bmsLang: bmsLangFlow, bmsRows: bmsRowsFlow, bmsLayout: bmsLayoutFlow };
+// ---------- a restricted business ----------
+// No Graph field says so: an account the business owns, disabled (2) for disable_reason 6 (BUSINESS_INTEGRITY_RAR), is the sign. The Businesses row
+// says "Restricted" with Appeal → Account Quality on line 2; the business's group header on the Ad accounts tab says it after the count.
+async function bmsRestrictedFlow() {
+  console.log("\n# bms: a restricted business");
+  const accs = [
+    { account_id: "501", name: "Nova 1", account_status: 2, disable_reason: 6, currency: "USD", timezone_name: "UTC", business: { id: "1001", name: "Nova" } },
+    { account_id: "502", name: "Nova 2", account_status: 1, currency: "USD", timezone_name: "UTC", business: { id: "1001", name: "Nova" } },
+    { account_id: "601", name: "Orbit 1", account_status: 2, disable_reason: 1, currency: "USD", timezone_name: "UTC", business: { id: "1002", name: "Orbit" } },
+  ];
+  const b = await boot({ fb: adsFb(TOK), graph: (u) => u.pathname.endsWith("/me/adaccounts") ? { body: { data: accs } }
+    : u.pathname.endsWith("/me/businesses") ? { body: { data: [{ id: "1001", name: "Nova" }, { id: "1002", name: "Orbit" }] } } : { body: { data: [] } } });
+  await adsPage(b);
+  const pop = await popup(b, "bms");
+  ok("rows", await rowsAre(pop, ROW, 2));
+  await until(pop, () => document.querySelectorAll("#accountsList .lrow").length === 3);
+  const R = (n) => `${ROW}[data-row="bm-${n}"]`;
+  ok("Nova (an owned account disabled for Business integrity): line 2 = ID · Restricted · … · Appeal", new RegExp(`^1001 · ${esc(tr("bms.st.restricted"))} · .*${esc(tr("bms.fix.review"))}$`).test(await lineTwo(pop, R("1001"))), await lineTwo(pop, R("1001")));
+  ok("…the fix opens Account Quality in a new tab", (await pop.getAttribute(`${R("1001")} .lrow-fix`, "href")) === LINKS.accountQuality() && (await pop.getAttribute(`${R("1001")} .lrow-fix`, "target")) === "_blank");
+  ok("Orbit (disabled for another reason): not restricted", !has(await lineTwo(pop, R("1002")), tr("bms.st.restricted")), await lineTwo(pop, R("1002")));
+  await pop.click('[data-tab="accounts"]');
+  const heads = await pop.evaluate(() => [...document.querySelectorAll("#accountsList .lgroup")].map((g) => ({ name: g.querySelector(".lgroup-text").textContent, st: g.querySelector(".lgroup-status")?.textContent ?? null, color: g.querySelector(".lgroup-status") ? getComputedStyle(g.querySelector(".lgroup-status")).color : null })));
+  const nova = heads.find((h) => h.name === "Nova"), orbit = heads.find((h) => h.name === "Orbit");
+  ok("Ad accounts tab: Nova's group header says '· Restricted' in the error colour; Orbit's says nothing", nova?.st === `· ${tr("bms.st.restricted")}` && nova.color === "rgb(207, 33, 39)" && orbit?.st === null, JSON.stringify(heads));
+  await done(b);
+}
+
+export const flows = { bms: bmsFlow, bmsUnread: bmsUnreadFlow, bmsSpend: bmsSpendFlow, bmsTruncated: bmsTruncatedFlow, bmsFields: bmsFieldsFlow, bmsPerm: bmsPermFlow, bmsAccounts: bmsAccountsFlow, bmsCache: bmsCacheFlow, bmsLimits: bmsLimitsFlow, bmsPaging: bmsPagingFlow, bmsLang: bmsLangFlow, bmsRows: bmsRowsFlow, bmsLayout: bmsLayoutFlow, bmsRestricted: bmsRestrictedFlow };

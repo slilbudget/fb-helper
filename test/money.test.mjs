@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { setLang } from "../fb-helper/js/i18n.js";
 import {
   fmtMoney, cleanRates, normalizeRates, readCache, isFresh, isUsable, toUsd, usdEquivalent, totalLine, rowAmount,
-  SRC_ER, SRC_CDN, ATTRIBUTION, FX_FRESH_MS, FX_STALE_OK_MS, FX_FAIL_BACKOFF_MS, SYMBOL_CURRENCIES, ZERO_DECIMAL, plausibleRates,
+  SRC_ER, SRC_CDN, FX_FRESH_MS, FX_STALE_OK_MS, FX_FAIL_BACKOFF_MS, SYMBOL_CURRENCIES, ZERO_DECIMAL, plausibleRates,
 } from "../fb-helper/js/money-core.js";
 
 await setLang("en");
@@ -173,7 +173,7 @@ test("totalLine: one currency is exact, with no breakdown and no tooltip", () =>
   assert.equal(totalLine({ USD: 0 }, TABLE).main, "");
 });
 
-test("totalLine: two currencies → '≈ USD' + the exact breakdown, the date and the attribution", () => {
+test("totalLine: two currencies → '≈ USD' + the exact breakdown and the date (no provider credit)", () => {
   const l = totalLine({ USD: 1695.7, EUR: 20 }, TABLE);
   assert.equal(l.main, "≈ $1,721");
   assert.equal(l.approx, true);
@@ -182,9 +182,8 @@ test("totalLine: two currencies → '≈ USD' + the exact breakdown, the date an
   assert.equal(l.full, "$1,695.70 + €20.00");
   assert.equal(l.note, "rates Oct 8");
   assert.deepEqual([l.date, l.source], ["2026-10-08", SRC_ER]);
-  assert.equal(l.attribution, ATTRIBUTION);
-  assert.equal(ATTRIBUTION.url, "https://www.exchangerate-api.com");
-  assert.ok(l.title.includes("$1,695.70 + €20.00") && l.title.includes("Oct 8, 2026") && l.title.includes("Rates By Exchange Rate API") && /^\$1,695\.70/.test(l.title), l.title);
+  assert.equal("attribution" in l, false);
+  assert.ok(l.title.includes("$1,695.70 + €20.00") && l.title.includes("Oct 8, 2026") && !/Exchange Rate API/i.test(l.title) && /^\$1,695\.70/.test(l.title), l.title);
   assert.deepEqual(l.parts.map((p) => p.cur), ["USD", "EUR"]);
 });
 
@@ -217,10 +216,9 @@ test("totalLine: no rates (null) or a currency without a rate → the exact sum,
   assert.equal(totalLine({ USD: 100, EUR: 20 }, undefined).approx, false);
 });
 
-test("totalLine: the fallback source is credited by date only (no attribution link)", () => {
+test("totalLine: the fallback source: the date only, like the primary", () => {
   const l = totalLine({ USD: 100, EUR: 20 }, { ...TABLE, source: SRC_CDN });
   assert.equal(l.approx, true);
-  assert.equal(l.attribution, null);
   assert.ok(!/Exchange Rate API/i.test(l.title), l.title);
   assert.ok(l.title.includes("Oct 8, 2026"));
 });
@@ -232,7 +230,7 @@ test("totalLine in Russian: the date is '08.10', the line is '≈ 1 770 $'", asy
     assert.equal(flat(l.main), "≈ 1 770 $");
     assert.equal(l.note, "курс 08.10");
     assert.equal(flat(l.breakdown), "1 695,70 $ + 1,2 млн VND");
-    assert.ok(l.title.includes("Примерно") && l.title.includes("Rates By Exchange Rate API"), l.title);
+    assert.ok(l.title.includes("Примерно") && !/Exchange Rate API/i.test(l.title), l.title);
   } finally { await setLang("en"); }
 });
 
@@ -260,7 +258,7 @@ test("rowAmount: one or two currencies are exact, three or more are '≈ USD'", 
   assert.equal(three.main, "≈ $1,770");
   assert.equal(three.approx, true);
   assert.equal(flat(three.full), "$1,695.70 + VND 1,234,567 + €20.00");
-  assert.ok(three.title.includes("Rates By Exchange Rate API"));
+  assert.ok(!/Exchange Rate API/i.test(three.title));
   const noRates = rowAmount({ USD: 5, EUR: 20, VND: 1000 }, null);
   assert.deepEqual([noRates.approx, flat(noRates.main)], [false, "$5.00 + €20.00 + VND 1,000"]);
 });
@@ -476,7 +474,7 @@ test("rates(): never throws — storage that fails, a fetch that throws, junk in
 test("money.js exports the whole surface the tabs use", async () => {
   const m = await world({ answer: answerOk }).popup();
   for (const name of ["fmtMoney", "rates", "toUsd", "totalLine", "rowAmount", "cachedRates", "loadCachedRates"]) assert.ok(name in m, name);
-  for (const gone of ["usdEquivalent", "ATTRIBUTION", "SYMBOL_CURRENCIES"]) assert.ok(!(gone in m), `${gone} lives in money-core.js only`);
+  for (const gone of ["usdEquivalent", "SYMBOL_CURRENCIES"]) assert.ok(!(gone in m), `${gone} lives in money-core.js only`);
   assert.equal(typeof m.rates, "function"); assert.equal(typeof m.totalLine, "function");
 });
 

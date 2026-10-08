@@ -1,6 +1,5 @@
 // Strings of the money lines (js/money-core.js: the tooltip and the rates note of a total that adds up several currencies).
 // Plain data + one addStrings call, so test/pure.test.mjs can load it in Node. Keys: "money.<what>".
-// The attribution text "Rates By Exchange Rate API" is a name, not a sentence: money-core.js appends it as it is, in both languages.
 import { addStrings } from "../i18n.js";
 
 export const STRINGS = {

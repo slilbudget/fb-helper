@@ -71,8 +71,7 @@ function paintTotal(box, { label = t("acc.spend"), labelTitle, metaText, range =
     // The tooltip of the sum: the converted one's breakdown; the exact amounts when the line wrote a million of an ISO-code currency short.
     el("span", { class: "total-value", title: line?.approx ? line.title : line?.main && line.main !== line.full ? line.full : null }, value,
       sum?.unknown && line.main ? el("small", { title: t("acc.notAllTitle") }, t("acc.notAllShort")) : null),
-    line?.approx ? el("span", { class: "total-sub", title: line.title }, parts.join(" · "),
-      line.attribution ? [" · ", el("a", { href: line.attribution.url, target: "_blank", rel: "noopener noreferrer" }, line.attribution.text)] : null) : null);
+    line?.approx ? el("span", { class: "total-sub", title: line.title }, parts.join(" · ")) : null);
 }
 // "updated 3 min ago" lives in the refresh button's tooltip, not on the screen: "Refresh · updated 3 min ago".
 export function refreshTip(btn, base, updatedAt) {

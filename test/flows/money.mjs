@@ -1,5 +1,5 @@
 // Money: the total line of the Ad accounts and Businesses tabs when it adds up several currencies. Rates come from mocks of both
-// origins (never the network): "≈ $…" + the muted breakdown + the tooltip with the date and the attribution; the fallback source;
+// origins (never the network): "≈ $…" + the muted breakdown + the tooltip with the date; the fallback source;
 // both sources down (the per-currency sum, no "≈", no console error, no retry for 20 minutes); the 24 h cache across popups;
 // one currency (no request at all); Russian. Graph is a mock (fictional data).
 import { TOK, ok, has, boot, adsPage, popup, text, until, rowsAre, adsFb, ratesOk, fxEr, fxCdn, FX, ROW, done, agoRe, esc, ratesIdle, tr, trx, useLang, waitFor } from "../harness.mjs";
@@ -42,9 +42,8 @@ async function ratesFlows() {
   const t = await totalOf(pop, "#accountsTotal");
   ok("…label 'Spend · <date>' (no period word), no count while nothing is filtered", new RegExp(`^${esc(tr("acc.spend"))} · ${shortEn}$`).test(t.label) && t.meta === null, JSON.stringify(t));
   ok("…value '≈ $1,770' (no decimals from 1 000 up)", t.value === "≈ $1,770", t.value);
-  ok("…muted line: two biggest currencies (one string, one fraction rule: cents everywhere; a million of VND is short), '+1 more', the date of the rates and the credit", t.sub === `$1,695.70 + VND 1.2M ${tr("money.more", { n: 1 })} · ${tr("money.rates", { d: shortEn })} · ExchangeRate-API`, t.sub);
-  ok("…the credit is a link to the provider (new tab, noopener noreferrer)", t.link?.text === "ExchangeRate-API" && t.link.href === "https://www.exchangerate-api.com/" && t.link.target === "_blank" && has(t.link.rel, "noopener") && has(t.link.rel, "noreferrer"), JSON.stringify(t.link));
-  ok("…tooltip: every currency, 'Approximate', the date, 'Rates By Exchange Rate API'", has(flat(t.valueTitle), "$1,695.70 + VND 1,234,567 + €20.00") && has(t.valueTitle, tr("money.approx", { d: longEn })) && has(t.valueTitle, longEn) && has(t.valueTitle, "Rates By Exchange Rate API") && t.valueTitle === t.subTitle, t.valueTitle);
+  ok("…muted line: two biggest currencies (one string, one fraction rule: cents everywhere; a million of VND is short), '+1 more' and the date of the rates; no provider name, no link", t.sub === `$1,695.70 + VND 1.2M ${tr("money.more", { n: 1 })} · ${tr("money.rates", { d: shortEn })}` && t.link === null, t.sub);
+  ok("…tooltip: every currency, 'Approximate', the date (no provider credit)", has(flat(t.valueTitle), "$1,695.70 + VND 1,234,567 + €20.00") && has(t.valueTitle, tr("money.approx", { d: longEn })) && has(t.valueTitle, longEn) && !has(t.valueTitle, "Exchange Rate API") && t.valueTitle === t.subTitle, t.valueTitle);
   ok("…the refresh button says how old the list is (not the screen)", new RegExp(`^${esc(tr("refresh"))} · ${trx("acc.updated", { t: agoRe() }).source}$`).test(await pop.locator("#loadAccounts").getAttribute("title")), await pop.locator("#loadAccounts").getAttribute("title"));
   ok("…exactly one request to the primary source, none to the fallback", b.rateHits.length === 1 && b.rateHits[0] === ER, b.rateHits.join());
   const fx = await pop.evaluate(() => chrome.storage.local.get(["fx", "fxFail"]));
@@ -63,7 +62,7 @@ async function ratesFlows() {
   await pop.click('[data-tab="accounts"]');
   await pop.fill("#accountFilter", "Alpha");
   ok("a search shows the count on the right ('2 of 3 found') and the sum of those rows ('≈ $1,721')", await until(pop, (found) => (document.querySelector("#accountsTotal .total-meta")?.textContent ?? "").includes(found) && /^≈ \$1,721$/.test(document.querySelector("#accountsTotal .total-value").textContent.trim()), tr("acc.found", { n: 2, all: 3 })), JSON.stringify(await totalOf(pop, "#accountsTotal")));
-  ok("…two currencies → the muted line lists both, no '+N'", (await totalOf(pop, "#accountsTotal")).sub === `$1,695.70 + €20.00 · ${tr("money.rates", { d: shortEn })} · ExchangeRate-API`, (await totalOf(pop, "#accountsTotal")).sub);
+  ok("…two currencies → the muted line lists both, no '+N'", (await totalOf(pop, "#accountsTotal")).sub === `$1,695.70 + €20.00 · ${tr("money.rates", { d: shortEn })}`, (await totalOf(pop, "#accountsTotal")).sub);
   await pop.fill("#accountFilter", "Beta");
   ok("one currency (VND only) → 'VND 1.2M' (a million of an ISO-code currency is short), no '≈', no muted line; the exact amount is its tooltip", await until(pop, () => /^VND\s?1\.2M$/.test(document.querySelector("#accountsTotal .total-value").textContent.trim().replace(/\s/g, " ")) && !document.querySelector("#accountsTotal .total-sub"))
     && flat((await totalOf(pop, "#accountsTotal")).valueTitle) === "VND 1,234,567", JSON.stringify(await totalOf(pop, "#accountsTotal")));
@@ -104,7 +103,7 @@ async function fallbackFlows() {
     ok(`${name}: the total is '≈ $1,770' from the fallback`, await approx(pop), await text(pop, "#accountsTotal .total-value"));
     const t = await totalOf(pop, "#accountsTotal");
     ok(`${name}: the primary was tried first, then the fallback, once each`, b.rateHits.join() === [ER, CDN].join(), b.rateHits.join());
-    ok(`${name}: the line names the date but not ExchangeRate-API, the tooltip has no attribution`, t.sub === `$1,695.70 + VND 1.2M ${tr("money.more", { n: 1 })} · ${tr("money.rates", { d: shortEn })}` && t.link === null && !has(t.valueTitle, "Exchange Rate API") && has(t.valueTitle, longEn), JSON.stringify(t));
+    ok(`${name}: the line names the date, the same as with the primary`, t.sub === `$1,695.70 + VND 1.2M ${tr("money.more", { n: 1 })} · ${tr("money.rates", { d: shortEn })}` && t.link === null && !has(t.valueTitle, "Exchange Rate API") && has(t.valueTitle, longEn), JSON.stringify(t));
     ok(`${name}: the saved table says where it came from`, (await pop.evaluate(() => chrome.storage.local.get("fx"))).fx?.source === "currency-api");
     await done(b);
   }
@@ -162,7 +161,7 @@ async function russianFlow() {
   ok("ru: '≈ 1 770 $', muted line 'курс <dd.mm>' with the credit, tooltip in Russian", await until(pop, ([rates, approx]) => /^≈ 1\s770\s\$$/.test(document.querySelector("#accountsTotal .total-value").textContent.trim()) && (document.querySelector("#accountsTotal .total-sub")?.textContent ?? "").includes(rates) && new RegExp(approx).test(document.querySelector("#accountsTotal .total-value").title), [tr("money.rates", { d: ru }), trx("money.approx").source]), JSON.stringify(await totalOf(pop, "#accountsTotal")));
   const t = await totalOf(pop, "#accountsTotal");
   ok("ru: label 'Спенд · <dd.mm>'", new RegExp(`^${esc(tr("acc.spend"))} · ${ru}$`).test(t.label), t.label);
-  ok("ru: the muted line", flat(t.sub) === `1 695,70 $ + 1,2 млн VND ${tr("money.more", { n: 1 })} · ${tr("money.rates", { d: ru })} · ExchangeRate-API`, t.sub);
+  ok("ru: the muted line", flat(t.sub) === `1 695,70 $ + 1,2 млн VND ${tr("money.more", { n: 1 })} · ${tr("money.rates", { d: ru })}`, t.sub);
   ok("ru: the refresh button tooltip", (await pop.locator("#loadAccounts").getAttribute("title")).startsWith(`${tr("refresh")} · ${tr("acc.updated", { t: "" })}`), await pop.locator("#loadAccounts").getAttribute("title"));
   await useLang(pop, "en");
   ok("back to en", await approx(pop) && (await text(pop, "#accountsTotal .total-value")) === "≈ $1,770");

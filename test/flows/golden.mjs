@@ -202,7 +202,7 @@ async function bmsWords() {
   await captureClipboard(pop);
   golden("Businesses tab: the controls, the periods, the total line", {
     controls: [await pop.getAttribute("#bmFilter", "placeholder"), ages(await pop.getAttribute("#loadBms", "title"))], periods: await seen(pop, "#bmsPeriod .seg-btn"), total: dates(await one(pop, "#bmsTotal")),
-  }, { controls: ["Search", "Refresh businesses and spend · updated <age>"], periods: ["Today", "Yesterday", "7 days", "30 days", "All time"], total: "Spend · <date> ≈ $227.00 $142.00 + €60.00 +1 more · rates <date> · ExchangeRate-API" });
+  }, { controls: ["Search", "Refresh businesses and spend · updated <age>"], periods: ["Today", "Yesterday", "7 days", "30 days", "All time"], total: "Spend · <date> ≈ $227.00 $142.00 + €60.00 +1 more · rates <date>" });
   golden("Businesses tab: every row as it reads (name, the amount, then line 2: the ID first, the one problem word and its fix, '+N more', the counts)", { rows: await seen(pop, "#bmsList .lrow-head") }, {
     rows: ["Alpha Media $100.00 + €50.00 1001 Active 3 ad accounts · 1 disabled", "Delta Co ≈ $47.50 1004 Active 3 ad accounts", "Beta Ads $10.00 1002 Unverified 1 ad account · 1 disabled Verify +1 more", "Partner Agency $7.00 9999 Active 1 ad account",
       "Epsilon Digital $0 1005 None active 2 ad accounts · 1 disabled", "Gamma Group — 1003 No ad accounts Create account"],

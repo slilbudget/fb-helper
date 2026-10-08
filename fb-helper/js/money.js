@@ -2,7 +2,7 @@
 // and the exchange rates they need (rates). The pure half is money-core.js (plain Node, tested); this file only fetches and caches.
 //
 // The ONLY other network use of the extension besides the Graph reads (the manifest CSP lists both origins in connect-src):
-//   primary    GET https://open.er-api.com/v6/latest/USD                  (ExchangeRate-API; its attribution must be shown)
+//   primary    GET https://open.er-api.com/v6/latest/USD                  (ExchangeRate-API)
 //   fallback   GET https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json
 // No parameters, no cookies, no referrer, nothing about the user or the accounts goes out: it is the same public file for everyone.
 // Asked only when a caller asks (period.js and the tabs, when a total or an order with two or more currencies is on a tab that is

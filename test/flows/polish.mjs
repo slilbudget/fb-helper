@@ -2,7 +2,7 @@
 // popup page): the ID first on line 2 under the name, the copy icon on hover / focus only, equal heights, a context that cannot keep ~6 characters is dropped,
 // an open row's name wraps, the link colour rule, weight 500 amounts, the fade-in of a body that was just opened, reduced motion, the contrast
 // tokens, focus rings, the logical properties. Real tabs (Graph is a mock): chips on one scrollable line, five periods in one row at 380 px, the
-// total on one line with its breakdown under it and a quiet attribution, a group header with the business's own picture.
+// total on one line with its breakdown under it, a group header with the business's own picture.
 import { TOK, ok, has, boot, adsPage, popup, until, rowsAre, adsFb, ROW, ratesOk, done, settle, tr, trx, untilText, near, lineTwo } from "../harness.mjs";
 
 const FB = "https://scontent.xx.fbcdn.net/v/t39.30808-1/";
@@ -158,14 +158,12 @@ async function topZoneFlow() {
   const seg = await q(pop, () => { const s = document.querySelector("#periodSeg"), bs = [...s.children], cut = bs.filter((x) => x.scrollWidth > x.clientWidth).length; return { cols: getComputedStyle(s).gridTemplateColumns.split(" ").length, h: Math.round(s.getBoundingClientRect().height), cut, tops: new Set(bs.map((x) => Math.round(x.getBoundingClientRect().top))).size }; });
   ok("at 380 px the five periods are still ONE row of five, none of them cut", seg.cols === 5 && seg.tops === 1 && seg.h <= 40 && seg.cut === 0, JSON.stringify(seg));
   await pop.setViewportSize({ width: 560, height: 700 }); await settle(pop);
-  // the total: label left + amount right on one line, the breakdown under it, quiet attribution
+  // the total: label left + amount right on one line, the breakdown under it, no provider credit
   await until(pop, () => /^≈/.test(document.querySelector("#accountsTotal .total-value")?.textContent ?? ""));
-  const tot = await q(pop, () => { const t = document.querySelector("#accountsTotal"), l = t.querySelector(".total-label").getBoundingClientRect(), v = t.querySelector(".total-value").getBoundingClientRect(), s = t.querySelector(".total-sub").getBoundingClientRect(), a = t.querySelector(".total-sub a");
-    return { sameLine: Math.abs((l.top + l.bottom) / 2 - (v.top + v.bottom) / 2) < 12, valueRight: Math.round(t.getBoundingClientRect().right - v.right), subRight: Math.round(t.getBoundingClientRect().right - s.right), underBelow: s.top >= v.bottom - 2, labelLeft: l.left < v.left, valueSize: getComputedStyle(t.querySelector(".total-value")).fontSize, valueWeight: getComputedStyle(t.querySelector(".total-value")).fontWeight, deco: getComputedStyle(a).textDecorationLine }; });
+  const tot = await q(pop, () => { const t = document.querySelector("#accountsTotal"), l = t.querySelector(".total-label").getBoundingClientRect(), v = t.querySelector(".total-value").getBoundingClientRect(), s = t.querySelector(".total-sub").getBoundingClientRect();
+    return { sameLine: Math.abs((l.top + l.bottom) / 2 - (v.top + v.bottom) / 2) < 12, valueRight: Math.round(t.getBoundingClientRect().right - v.right), subRight: Math.round(t.getBoundingClientRect().right - s.right), underBelow: s.top >= v.bottom - 2, labelLeft: l.left < v.left, valueSize: getComputedStyle(t.querySelector(".total-value")).fontSize, valueWeight: getComputedStyle(t.querySelector(".total-value")).fontWeight, link: !!t.querySelector(".total-sub a") }; });
   ok("the total: label on the left and the amount on the right of ONE line (19 px, weight 500), the breakdown right under the amount, flush right", tot.sameLine && tot.labelLeft && tot.valueRight === 0 && tot.subRight === 0 && tot.underBelow && tot.valueSize === "19px" && tot.valueWeight === "500", JSON.stringify(tot));
-  ok("…the attribution link is not underlined at rest", tot.deco === "none", tot.deco);
-  await pop.hover("#accountsTotal .total-sub a"); await until(pop, () => getComputedStyle(document.querySelector("#accountsTotal .total-sub a")).textDecorationLine === "underline");
-  ok("…it underlines when pointed at", (await q(pop, () => getComputedStyle(document.querySelector("#accountsTotal .total-sub a")).textDecorationLine)) === "underline");
+  ok("…no link under the total (the rates provider is not named on screen)", !tot.link);
   // a filter puts its count in the label, muted, after a dot
   await pop.fill("#accountFilter", "A");
   await untilText(pop, "#accountsTotal .total-meta", trx("acc.found", { n: /\d+/, all: 10 }));

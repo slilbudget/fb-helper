@@ -179,7 +179,8 @@ a.lrow-todo-link.primary { font-weight: 500; }
 }
 .lgroup-name { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .lgroup-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-primary); font-weight: 500; }
-.lgroup-count, .lgroup-value { flex: none; }
+.lgroup-count, .lgroup-value, .lgroup-status { flex: none; }
+.lgroup-status.bad { color: var(--color-error); }
 .lgroup-value { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .lgroup .lav { --lav: 16px; }
 .lgroup .lav .i { --size-icon: 10px; }

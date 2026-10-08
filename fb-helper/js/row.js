@@ -267,12 +267,14 @@ export function row({ key, avatar, name, value, valueTitle, valueMuted = false, 
 // ---------- group header ----------
 // A header above a group of rows ("Ad accounts" grouped by business): [16 px picture] Name · count ........ subtotal. Not clickable.
 // avatar = { kind, url } or null; value / valueTitle as in row(). Sticky below the tabs (rows.css).
-export function groupHeader({ avatar, name, count, value, valueTitle }) {
+// status = { text, tone, title } or null: one problem word of the whole group after the count ("· Restricted"), in its tone.
+export function groupHeader({ avatar, name, count, status, value, valueTitle }) {
   const label = String(name ?? "");
   return el("div", { class: "lgroup", role: "heading", "aria-level": "2" },
     el("span", { class: "lgroup-name", title: label },
       avatar ? avatarEl(avatar.kind, avatar.url) : null,
       el("span", { class: "lgroup-text", dir: "auto" }, label),
-      present(count) ? el("span", { class: "lgroup-count" }, `· ${count}`) : null),
+      present(count) ? el("span", { class: "lgroup-count" }, `· ${count}`) : null,
+      status ? el("span", { class: `lgroup-status ${status.tone || ""}`, title: status.title || null }, `· ${status.text}`) : null),
     present(value) ? el("span", { class: "lgroup-value", title: valueTitle || null }, value) : null);
 }

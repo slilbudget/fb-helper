@@ -5,7 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { setLang } from "../fb-helper/js/i18n.js";
 import {
-  BM_BASE, BM_OPTIONAL, VERIFY_BAD, VERIFY_KNOWN, PROBLEMS, markerOf, slimBm, badVerification, verificationOf, countAccounts, stateOf, buildRows, issuesOf, spendOf,
+  BM_BASE, BM_OPTIONAL, restrictedOf, VERIFY_BAD, VERIFY_KNOWN, PROBLEMS, markerOf, slimBm, badVerification, verificationOf, countAccounts, stateOf, buildRows, issuesOf, spendOf,
   matchRow, filterRows, sortRows, totalOf, isPermError, bmKeysToDrop,
 } from "../fb-helper/js/bms-model.js";
 import { groupByBusiness } from "../fb-helper/js/spend.js";
@@ -269,7 +269,7 @@ const ACTIVE = [A("1", "1001", 1)];
 const FIX = { verification: LINKS.bmSecurity("1001"), noActive: LINKS.bmAdAccounts("1001"), none: LINKS.bmAdAccounts("1001") };
 
 test("every problem has exactly one fix link, to the right page of Business Settings", () => {
-  assert.deepEqual(PROBLEMS.map((p) => p.id), ["verification", "noActive", "none"], "worst first");
+  assert.deepEqual(PROBLEMS.map((p) => p.id), ["restricted", "verification", "noActive", "none"], "worst first");
   for (const status of VERIFY_BAD) {
     const issues = ROWS({ verification_status: status }, ACTIVE).issues;
     assert.deepEqual(issues.map((i) => i.id), ["verification"], status);
@@ -286,6 +286,21 @@ test("every problem has exactly one fix link, to the right page of Business Sett
   assert.equal(FIX.verification, "https://business.facebook.com/settings/security?business_id=1001");
   assert.equal(FIX.none, "https://business.facebook.com/settings/ad-accounts?business_id=1001");
   for (const p of PROBLEMS) assert.ok(p.help && p.tip && p.fix.tip, p.id);
+});
+
+// No Graph field says "restricted": an OWNED account disabled (2) for disable_reason 6 = BUSINESS_INTEGRITY_RAR is the sign.
+test("restricted: an owned account disabled for 'Business integrity' (reason 6) marks the business, worst first, Appeal → Account Quality", () => {
+  const R6 = (id, st = 2, reason = 6) => ({ ...A(id, "1001", st), disable_reason: reason });
+  const r = ROWS({ verification_status: "revoked" }, [R6("1"), A("2", "1001", 1)]);
+  assert.equal(r.restricted, true);
+  assert.deepEqual(r.issues.map((i) => i.id), ["restricted", "verification"], "restricted is the worst: it is the status word of line 2");
+  assert.deepEqual([r.issues[0].label, r.issues[0].tone, r.issues[0].line, r.issues[0].fix.label, r.issues[0].fix.url], ["bms.st.restricted", "bad", true, "bms.fix.review", LINKS.accountQuality()]);
+  assert.equal(restrictedOf([R6("1")]), true);
+  for (const [why, accs] of [["another reason", [R6("1", 2, 1)]], ["reason 6 but not disabled", [R6("1", 1)]], ["no reason", [A("1", "1001", 2)]], ["no accounts", []]])
+    assert.equal(ROWS({}, accs).restricted, false, why);
+  // shared with the business (read through it, owned by another): the OWNER is the restricted one, not this business
+  const shared = { ...A("9", "2002", 2), disable_reason: 6, _bmId: "1001" };
+  assert.equal(ROWS({}, [shared, A("1", "1001", 1)]).restricted, false, "a shared account says nothing about the business it is shared with");
 });
 
 test("problems come in order of severity; a failed verification and no active accounts are both listed, each with its own fix", () => {

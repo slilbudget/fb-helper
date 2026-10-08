@@ -60,8 +60,6 @@ export function fmtMoney(amount, cur, { digits: want, compact = false } = {}) {
 // ---------- rate tables ----------
 // A table = { rates: { EUR: 0.86, VND: 26300, … }, date: "2026-10-08", source } where rates[X] = units of X per 1 USD.
 export const SRC_ER = "exchangerate-api", SRC_CDN = "currency-api";
-// The provider of SRC_ER asks for a visible credit: "Rates By Exchange Rate API" linking to its site (tooltip + a link on the line).
-export const ATTRIBUTION = { text: "ExchangeRate-API", full: "Rates By Exchange Rate API", url: "https://www.exchangerate-api.com" };
 export const FX_FRESH_MS = 24 * 3600e3;                // rates are asked for again after a day
 export const FX_STALE_OK_MS = 7 * 24 * 3600e3;         // …but a table up to a week old still beats no conversion when the refresh fails
 export const FX_FAIL_BACKOFF_MS = 20 * 60e3;           // after a failed (or rejected) attempt: nothing for 20 minutes
@@ -158,8 +156,8 @@ export function usdEquivalent(totals, r) {
 //   breakdown   what it is made of, at most two currencies, biggest first: "$1,696 + VND 1,234,567" ("" when main already says it)
 //   more        how many currencies breakdown leaves out (the caller prints "+N")
 //   full        every currency, exact: "$1,696 + VND 1,234,567 + €20.00" (always filled: the tooltip / expanded body)
-//   title       tooltip: full + "Approximate: converted at the daily rate of Oct 8, 2026. Rates By Exchange Rate API" ("" when exact)
-//   note        "rates Oct 8" ("rates 08.10" in Russian); date, source, attribution (ATTRIBUTION when SRC_ER was used, else null)
+//   title       tooltip: full + "Approximate: converted at the daily rate of Oct 8, 2026." ("" when exact)
+//   note        "rates Oct 8" ("rates 08.10" in Russian); date, source (no provider credit on screen: user decision 2026-10-08)
 //   parts       [{ cur, amount, text (as printed on a line), exact, usd }] in the order of full
 function build(totals, r, approxFrom) {
   const list = Object.entries(totals || {}).filter(([, v]) => Number.isFinite(v) && v !== 0);
@@ -168,7 +166,7 @@ function build(totals, r, approxFrom) {
   const cents = list.some(([cur, v]) => !ZERO_DECIMAL.has(cur) && Math.abs(Math.round(v * 100) / 100) < 1000);
   const digits = cents ? 2 : 0;
   const parts = list.map(([cur, amount]) => ({ cur, amount, text: fmtMoney(amount, cur, { digits, compact: true }), exact: fmtMoney(amount, cur, { digits }), usd: toUsd(amount, cur, r) }));
-  const out = { main: "", text: "", approx: false, breakdown: "", more: 0, full: "", title: "", note: "", date: null, source: null, attribution: null, parts };
+  const out = { main: "", text: "", approx: false, breakdown: "", more: 0, full: "", title: "", note: "", date: null, source: null, parts };
   if (!parts.length) return out;
   const convertible = !!r && parts.every((p) => p.usd !== null);
   if (convertible) parts.sort((a, b) => b.usd - a.usd || (a.cur < b.cur ? -1 : 1));
@@ -181,13 +179,12 @@ function build(totals, r, approxFrom) {
     return out;
   }
   const shown = parts.slice(0, 2);
-  const attribution = r.source === SRC_ER ? ATTRIBUTION : null;
   const main = `≈ ${fmtMoney(parts.reduce((s, p) => s + p.usd, 0), "USD")}`;
   Object.assign(out, {
     main, text: main, approx: true,
     breakdown: shown.map((p) => p.text).join(" + "), more: parts.length - shown.length,
-    date: r.date, source: r.source, attribution, note: t("money.rates", { d: shortDate(r.date) }),
-    title: `${out.full}\n${t("money.approx", { d: longDate(r.date) })}${attribution ? ` ${attribution.full}` : ""}`,
+    date: r.date, source: r.source, note: t("money.rates", { d: shortDate(r.date) }),
+    title: `${out.full}\n${t("money.approx", { d: longDate(r.date) })}`,
   });
   return out;
 }
