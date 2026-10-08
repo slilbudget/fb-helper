@@ -36,27 +36,30 @@ async function actionsFlow() {
   };
 
   // ---- collapsed row ----
-  const review = row(LONG).locator(".act-btn");
-  ok("disabled (reason 1): the collapsed row has one 'Request review' button", (await review.count()) === 1 && (await review.textContent()).trim() === "Request review", await review.allTextContents());
-  const attrs = await review.evaluate((n) => ({ href: n.href, target: n.target, rel: n.rel, tag: n.tagName, cls: n.className, tab: n.tabIndex, focus: n.dataset.focus, aria: n.getAttribute("aria-label"), inHead: !!n.closest(".acc-head") }));
-  ok("…an <a> to Account Quality, new tab, noopener noreferrer, keyboard-focusable, tinted bad", attrs.tag === "A" && attrs.href === LINKS.accountQuality() && attrs.target === "_blank"
-    && attrs.rel === "noopener noreferrer" && attrs.tab === 0 && /\bbad\b/.test(attrs.cls) && attrs.focus === "act:111:review" && attrs.inHead, JSON.stringify(attrs));
+  const review = row(LONG).locator(".act-inline");
+  ok("disabled (reason 1): the collapsed row has one 'Request review' link", (await review.count()) === 1 && (await review.textContent()).trim() === "Request review", await review.allTextContents());
+  const attrs = await review.evaluate((n) => ({ href: n.href, target: n.target, rel: n.rel, tag: n.tagName, cls: n.className, tab: n.tabIndex, focus: n.dataset.focus, aria: n.getAttribute("aria-label"), inHead: !!n.closest(".acc-head"), inMeta: !!n.closest(".acc-meta") }));
+  ok("…an <a> to Account Quality, new tab, noopener noreferrer, keyboard-focusable, red (bad), on the meta line after the reason", attrs.tag === "A" && attrs.href === LINKS.accountQuality() && attrs.target === "_blank"
+    && attrs.rel === "noopener noreferrer" && attrs.tab === 0 && /\bbad\b/.test(attrs.cls) && attrs.focus === "act:111:review" && attrs.inHead && attrs.inMeta, JSON.stringify(attrs));
   ok("…its accessible name carries the account name (many identical 'Request review' links on one list)", attrs.aria === `Request review · ${LONG}`, attrs.aria);
   const opened = await clickOpens(review);
   ok("clicking it opens a new tab on that URL", opened === LINKS.accountQuality(), opened);
   ok("…and does NOT expand the row", (await pop.locator(".acc.open").count()) === 0 && (await pop.locator(".acc-title[aria-expanded=true]").count()) === 0);
   ok("…and sends nothing to Graph", b.hits.length === hits0, b.hits.slice(hits0).join());
 
-  const pay = row("Unpaid B").locator(".act-btn");
+  const pay = row("Unpaid B").locator(".act-inline");
   const payHref = await pay.getAttribute("href");
   ok("unsettled: 'Pay balance' with the billing link of ITS id", (await pay.textContent()).trim() === "Pay balance" && payHref === LINKS.billing("222") && /act=222$/.test(payHref), payHref);
   ok("…tinted warn (amber), like its status pill", /\bwarn\b/.test(await pay.getAttribute("class")));
   const opened2 = await clickOpens(pay);
   ok("…opens the billing page and leaves the row closed", opened2 === LINKS.billing("222") && (await pop.locator(".acc.open").count()) === 0, opened2);
 
-  ok("active account: no button, no 'What to do' block", (await row("Healthy C").locator(".act-btn, .act-box").count()) === 0);
-  ok("permanent close and risk review: nothing to push, so no button in the collapsed row", (await row("Closed D").locator(".act-btn").count()) === 0 && (await row("Risk E").locator(".act-btn").count()) === 0);
-  ok("only the two accounts with a primary step have a button", (await pop.locator(".acc .act-btn").count()) === 2);
+  ok("active account: no button, no 'What to do' block", (await row("Healthy C").locator(".act-inline, .act-box").count()) === 0);
+  // Every problem gets a way out in the collapsed row: with nothing to appeal, the link says where to look instead.
+  ok("permanent close: 'Support'; risk review: 'Account Quality'", (await row("Closed D").locator(".act-inline").textContent()).trim() === "Support"
+    && (await row("Risk E").locator(".act-inline").textContent()).trim() === "Account Quality");
+  ok("every problem account has exactly one link, the healthy one none", (await pop.locator(".acc .act-inline").count()) === 4);
+  ok("no pill-shaped button left in the collapsed rows", (await pop.locator(".acc-ids a:not(.acc-link)").count()) === 0);
 
   // ---- expanded body ----
   await row(LONG).locator(".acc-title").click();
@@ -72,7 +75,7 @@ async function actionsFlow() {
   await pop.click('[data-lang="ru"]');
   ok("…help text in Russian after the language switch", await until(pop, (s) => document.querySelector(".acc.open .act-help")?.textContent === s, STRINGS.ru["next.help.r1"]), await text(pop, ".acc.open .act-help"));
   ok("…buttons and title in Russian", (await text(pop, ".acc.open .act-title")) === "Что делать" && (await box.locator("a").first().textContent()).trim() === "Запросить проверку");
-  ok("…the collapsed button too", (await row(LONG).locator(".act-btn").textContent()).trim() === "Запросить проверку");
+  ok("…the collapsed button too", (await row(LONG).locator(".act-inline").textContent()).trim() === "Запросить проверку");
   await pop.click('[data-lang="en"]');
   await until(pop, () => document.querySelector(".acc.open .act-title")?.textContent === "What to do");
   await row(LONG).locator(".acc-title").click();                          // close again
@@ -120,18 +123,18 @@ async function actionsLayoutFlow() {
     await pop.waitForTimeout(150);
     const m = await pop.evaluate(() => {
       const de = document.documentElement, r = (n) => n.getBoundingClientRect();
-      const heads = [...document.querySelectorAll(".acc-head")].map((h) => ({ h: r(h), btn: h.querySelector(".act-btn") && r(h.querySelector(".act-btn")), ids: r(h.querySelector(".acc-ids")),
+      const heads = [...document.querySelectorAll(".acc-head")].map((h) => ({ h: r(h), btn: h.querySelector(".act-inline") && r(h.querySelector(".act-inline")), ids: r(h.querySelector(".acc-ids")),
         spend: r(h.querySelector(".acc-spend")), name: r(h.querySelector(".acc-name")), pill: r(h.querySelector(".pill")) }));
       const box = document.querySelector(".acc.open .act-box");
       return { sw: de.scrollWidth, cw: de.clientWidth, heads, box: r(box), boxRight: r(box).right,
-        labels: [...document.querySelectorAll(".act-btn .act-label")].map((l) => ({ t: l.textContent, cut: l.scrollWidth > l.clientWidth })) };
+        labels: [...document.querySelectorAll(".act-inline .act-label")].map((l) => ({ t: l.textContent, cut: l.scrollWidth > l.clientWidth })) };
     });
     ok(`${w}px: no horizontal scroll`, m.sw <= m.cw, `${m.sw} > ${m.cw}`);
-    ok(`${w}px: every action button stays inside its row and never overlaps the other cells`, m.heads.every((x) => !x.btn || (x.btn.right <= x.h.right + 0.5
+    ok(`${w}px: every action link stays inside its row and never overlaps the other cells`, m.heads.every((x) => !x.btn || (x.btn.right <= x.h.right + 0.5
       && !(x.btn.left < x.pill.right && x.btn.right > x.pill.left && x.btn.top < x.pill.bottom && x.btn.bottom > x.pill.top))), JSON.stringify(m.heads.map((x) => x.btn)));
-    ok(`${w}px: the button labels are readable (not cut with "…")`, m.labels.length === 2 && m.labels.every((l) => !l.cut), JSON.stringify(m.labels));
+    ok(`${w}px: the link labels are readable (not cut with "…")`, m.labels.length === 4 && m.labels.every((l) => !l.cut), JSON.stringify(m.labels));
     ok(`${w}px: the 'What to do' card is inside the window`, m.box.left >= 0 && m.boxRight <= m.cw + 0.5, JSON.stringify(m.box));
-    ok(`${w}px: button height 24px, the label is one line`, m.heads.every((x) => !x.btn || Math.round(x.btn.height) === 24), JSON.stringify(m.heads.map((x) => x.btn?.height)));
+    ok(`${w}px: the link is one line`, m.heads.every((x) => !x.btn || x.btn.height < 24), JSON.stringify(m.heads.map((x) => x.btn?.height)));
   }
   ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
   await b.ctx.close();

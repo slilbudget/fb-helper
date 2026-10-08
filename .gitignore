@@ -4,3 +4,4 @@
 node_modules/
 chrome-web-store/release/
 chrome-web-store/art/raw/dev/
+.claude/

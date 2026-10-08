@@ -1,27 +1,22 @@
 /* actions: styles of the "next step" links (js/nextsteps.js, drawn by js/accounts.js). Shared look (rows, pills, kv, buttons)
    comes from popup.css; only what is specific goes here. */
 
-/* Tone of a problem: the same two colours as the status pill (bad = red, warn = amber). --act-hover is one step stronger. */
-.act-btn.bad, .act-box.bad { --act-fg: var(--color-error); --act-bg: var(--color-error-muted); --act-hover: #FA383E26; }
-.act-btn.warn, .act-box.warn { --act-fg: var(--color-warning); --act-bg: var(--color-warning-muted); --act-hover: #F7B92845; }
+/* Tone of a problem: the same two colours as the status pill (bad = red, warn = amber). */
+.act-inline.bad, .act-box.bad { --act-fg: var(--color-error); --act-bg: var(--color-error-muted); }
+.act-inline.warn, .act-box.warn { --act-fg: var(--color-warning); --act-bg: var(--color-warning-muted); }
 
-/* Collapsed row: one small tinted button after the ID and the Ads Manager icon. It is a pill-sized link, so a long label
-   ends in "…" (the text lives in .act-label) and the button shrinks before the row can overflow, at 560 px and in a narrow window. */
-.act-btn {
-  display: inline-flex; align-items: center; gap: var(--spacing-1); flex: 0 1 auto; min-width: 0; max-width: 100%;
-  height: 24px; padding: 0 10px; border-radius: var(--radius-full); white-space: nowrap; text-decoration: none;
-  font-size: var(--text-sm); color: var(--act-fg); background: var(--act-bg);
-  transition: background-color .15s ease;
-}
-.act-btn:hover, .act-btn:focus-visible { background: var(--act-hover); }
-.act-btn .act-label, .act-link .act-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.act-btn .i { --size-icon: 12px; }
-.acc-ids .act-btn { max-width: 190px; }
-/* Narrow window: next to the ID the button would be squeezed to "Requ…". It drops to its own line under the ID instead
-   (rows with a button only), so the label stays readable; "…" is for names that really are long. */
-@media (max-width: 460px) {
-  .acc-ids:has(.act-btn) { flex-wrap: wrap; row-gap: var(--spacing-1); }
-}
+/* Collapsed row: the fix sits right after the problem on the meta line ("Ads integrity policy (1)  Request review ↗"),
+   plain text in the status colour with a thin underline, no pill and no fill: the row stays calm, the way out is still
+   one click. The underline is on the label only (the icon stays clean); it firms up on hover / keyboard focus. */
+.act-inline { display: inline-flex; align-items: center; gap: 3px; min-width: 0; max-width: 100%; white-space: nowrap;
+  color: var(--act-fg); text-decoration: none; border-radius: 2px; }
+.act-inline .act-label { min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px;
+  text-decoration-color: color-mix(in srgb, currentColor 45%, transparent); }
+.act-inline:hover .act-label, .act-inline:focus-visible .act-label { text-decoration-color: currentColor; }
+.act-inline:focus-visible { outline: 1.5px solid currentColor; outline-offset: 2px; }
+.act-inline .i { --size-icon: 12px; }
+.act-link .act-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
 /* Expanded row: "What to do" = a tinted card as wide as the ads card (it reaches back over the indent), the help line, then
    every step as a button: the primary one in the accent colour, the others plain (white, so they stay visible on the tint). */

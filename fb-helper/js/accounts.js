@@ -310,7 +310,7 @@ function renderAccount(a, st) {
   const dsl = a.adtrust_dsl;
   const cpc = st?.clicks ? st.spend / st.clicks : null;
   const isOpen = state.open.has(a.account_id);
-  const steps = accountSteps(a), primary = steps.actions.find((x) => x.primary);
+  const steps = accountSteps(a), quick = steps.actions.find((x) => x.primary) || steps.actions[0];
   const card = el("div", { class: `acc${isOpen ? " open" : ""}` });
   const toggle = () => {
     const open = card.classList.toggle("open");
@@ -334,9 +334,7 @@ function renderAccount(a, st) {
       // Open in Ads Manager straight from the collapsed row; must not toggle the row.
       el("a", { class: "acc-link", title: t("acc.openAds"), "aria-label": t("acc.openAds"), target: "_blank", rel: "noopener noreferrer", "data-focus": `link:${a.account_id}`,
                 href: `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${a.account_id}`,
-                onclick: (ev) => ev.stopPropagation() }, el("i", { class: "i i-external" })),
-      // The one next step of a problem account (appeal, pay…), tinted like its status; the help line is its tooltip.
-      primary ? actLink(primary, `act-btn ${steps.tone}`, `act:${a.account_id}:${primary.id}`, { tip: t(steps.help), owner: a.name }) : null),
+                onclick: (ev) => ev.stopPropagation() }, el("i", { class: "i i-external" }))),
     st ? el("div", { class: "acc-spend" }, fmt(st.spend, cur))
        : el("div", { class: "acc-spend muted", title: t("acc.noPeriod") }, "—"),  // .acc-spend uses the number font in CSS
     el("div", { class: "acc-meta" },
@@ -344,7 +342,10 @@ function renderAccount(a, st) {
         ? el("span", { class: "owner", title: t("acc.inBm", { n: a.business.name, id: a.business.id }) }, el("i", { class: "i i-bm" }), el("span", { class: "owner-name" }, t("acc.bm", { n: a.business.name })))
         : el("span", { class: "owner", title: t("acc.personalTitle") }, el("i", { class: "i i-user" }), t("acc.personal")),
       a.timezone_name ? el("span", { title: t("acc.tz", { tz: a.timezone_name }) }, tzLabel(a.timezone_name)) : null,
-      a.disable_reason ? el("span", { class: "err-text" }, `${has(`reason.${a.disable_reason}`) ? t(`reason.${a.disable_reason}`) : t("reason.other")} (${a.disable_reason})`) : null),
+      a.disable_reason ? el("span", { class: "err-text" }, `${has(`reason.${a.disable_reason}`) ? t(`reason.${a.disable_reason}`) : t("reason.other")} (${a.disable_reason})`) : null,
+      // Problem → its fix, right after it: the one next step (appeal, pay…; or where to look when there is nothing to push),
+      // a plain underlined link in the status colour. The help line is its tooltip; the expanded row lists every step.
+      quick ? actLink(quick, `act-inline ${steps.tone}`, `act:${a.account_id}:${quick.id}`, { tip: t(steps.help), owner: a.name }) : null),
     st && st.imp !== null && (st.imp || st.clicks)
       ? el("div", { class: "acc-sub", title: t("acc.imp", { n: numFmt().format(st.imp) }) },
           numEl(numFmt().format(st.clicks)), ` ${tn(st.clicks, "ads.clk")}`, cpc !== null ? [" · CPC ", numEl(fmt(cpc, cur))] : null)
