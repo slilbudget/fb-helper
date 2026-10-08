@@ -106,7 +106,7 @@ async function tabApiFlows() {
     registerTab("zy", { onShow: () => window.__shown.push("zy") });
   });
   const look = () => pop.evaluate(() => ({ tab: document.querySelector(".tab.active")?.dataset.tab, panel: document.querySelector(".panel.active")?.id, tall: document.body.classList.contains("tall"), saved: localStorage.getItem("tab"), shown: window.__shown.join() }));
-  await pop.focus('[data-tab="accounts"]');
+  await pop.focus('[data-tab="pages"]');   // the last real tab: the test tabs come right after it
   await pop.keyboard.press("ArrowRight"); let s = await look();
   ok("a registered tab shows its panel, is remembered, and its onShow runs", s.tab === "zz" && s.panel === "tab-zz" && s.saved === "zz" && s.shown === "zz", JSON.stringify(s));
   ok("tall: true gives the popup full height", s.tall === true, JSON.stringify(s));

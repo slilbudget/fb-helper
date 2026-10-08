@@ -6,6 +6,9 @@
   <title>FB Helper</title>
   <link rel="stylesheet" href="css/fonts.css">
   <link rel="stylesheet" href="css/popup.css">
+  <link rel="stylesheet" href="css/bms.css">
+  <link rel="stylesheet" href="css/pages.css">
+  <link rel="stylesheet" href="css/actions.css">
 </head>
 <body>
   <div class="bar">
@@ -23,6 +26,8 @@
       <button class="tab active" id="tabbtn-token" data-tab="token" role="tab" aria-selected="true" aria-controls="tab-token" data-i18n="tab.token">Token</button>
       <button class="tab" id="tabbtn-cookies" data-tab="cookies" role="tab" aria-selected="false" aria-controls="tab-cookies" data-i18n="tab.cookies">Cookies</button>
       <button class="tab" id="tabbtn-accounts" data-tab="accounts" role="tab" aria-selected="false" aria-controls="tab-accounts" data-i18n="tab.accounts">Ad accounts</button>
+      <button class="tab" id="tabbtn-bms" data-tab="bms" role="tab" aria-selected="false" aria-controls="tab-bms" data-i18n="tab.bms">BM</button>
+      <button class="tab" id="tabbtn-pages" data-tab="pages" role="tab" aria-selected="false" aria-controls="tab-pages" data-i18n="tab.pages">Pages</button>
     </nav>
   </div>
 
@@ -77,6 +82,18 @@
         <div class="chips" id="statusChips"></div>
       </div>
       <div id="accountsList" class="list"></div>
+    </section>
+
+    <!-- BM tab: js/bms.js draws everything inside (controls in #bmsCard, rows in #bmsList). -->
+    <section id="tab-bms" class="panel" role="tabpanel" aria-labelledby="tabbtn-bms">
+      <div class="card" id="bmsCard"></div>
+      <div id="bmsList" class="list"></div>
+    </section>
+
+    <!-- Pages tab: js/pages.js draws everything inside (controls in #pagesCard, rows in #pagesList). -->
+    <section id="tab-pages" class="panel" role="tabpanel" aria-labelledby="tabbtn-pages">
+      <div class="card" id="pagesCard"></div>
+      <div id="pagesList" class="list"></div>
     </section>
 
   </main>

@@ -53,6 +53,7 @@ const AD_STATUS = {
 
 Object.assign(state, {
   accounts: [], fetchedAt: 0, truncated: false, filter: "", statusFilter: null, accLoading: false,
+  bmFilter: null,                                    // { id, name } from the BM tab ("ad accounts of this BM"); not saved
   open: new Set(), ads: {}, adsBusy: new Set(), adsHidden: new Set(),
   statsBusy: new Set(), noStats: new Set(), noAll: new Set(),   // per-ad numbers: being read / refused by Graph for this account / all-time part refused
   period: "today",
@@ -78,7 +79,9 @@ on("generation", () => {
   state.adsBusy = new Set(); state.statsBusy = new Set(); state.noStats = new Set(); state.noAll = new Set();
 });
 // The cached lists belonged to another FB user and are gone: draw the empty list.
-on("cache-dropped", () => renderAccounts());
+on("cache-dropped", () => { state.bmFilter = null; renderAccounts(); });
+// The BM tab asks for the ad accounts of one BM ({ id, name }; null clears). It switches the tab itself (bus "show-tab").
+on("filter-bm", (bm) => { state.bmFilter = bm?.id ? { id: String(bm.id), name: bm.name || "" } : null; renderAccounts(); });
 // Rate slots changed (this window or another): the ads buttons follow.
 on("locks", () => syncAdsButtons());
 // Accounts loaded or dropped in another window of this extension: show the same list.
@@ -183,16 +186,17 @@ function periodRange() {
   for (const a of state.accounts) { const s = statsOf(a); if (s?.from) return s.from === s.to ? shortDate(s.from) : `${shortDate(s.from)}–${shortDate(s.to)}`; }
   return "";
 }
-// Rows matching the search + status filter. The total, the count and "Active IDs" all follow it.
+// Rows matching the search + status filter + BM filter. The total, the count and "Active IDs" all follow it.
 function visibleRows() {
   const q = state.filter.trim().toLowerCase();
   return state.accounts.filter((a) => {
     const [label] = accStatus(a);
     if (state.statusFilter && label !== state.statusFilter) return false;
+    if (state.bmFilter && a.business?.id !== state.bmFilter.id) return false;
     return !q || `${a.name} ${a.account_id} ${label} ${a.business?.name || ""}`.toLowerCase().includes(q);
   });
 }
-const isFiltered = () => !!(state.filter.trim() || state.statusFilter);
+const isFiltered = () => !!(state.filter.trim() || state.statusFilter || state.bmFilter);
 function copyLiveIds() {
   const ids = visibleRows().filter((a) => a.account_status === 1).map((a) => a.account_id);
   if (!ids.length) return toast(t("acc.noLive"), true);
@@ -245,7 +249,11 @@ function drawAccounts() {
   if (state.statusFilter && !counts[state.statusFilter]) state.statusFilter = null;
   // A status filter is only useful when statuses differ; with one status it just repeats the count.
   if (Object.keys(counts).length < 2) { state.statusFilter = null; for (const k of Object.keys(counts)) delete counts[k]; }
-  fill($("#statusChips"), ...Object.entries(counts).map(([label, n]) => {
+  // The BM filter (set from the BM tab) comes first as its own chip; clicking it clears it.
+  const bm = state.bmFilter;
+  fill($("#statusChips"), bm ? el("button", { class: "pill chip on", "aria-pressed": "true", "data-focus": "chip:bm", title: t("acc.bmFilterClear"),
+      onclick: () => { state.bmFilter = null; renderAccounts(); } }, el("i", { class: "i i-bm" }), `${bm.name || bm.id} ✕`) : null,
+    ...Object.entries(counts).map(([label, n]) => {
     const tone = Object.entries(ACCOUNT_STATUS).find(([c]) => t(`status.${c}`) === label)?.[1] || "";
     const on = state.statusFilter === label;
     return el("button", { class: `pill chip ${tone}${on ? " on" : ""}`, "aria-pressed": String(on), "data-focus": `chip:${label}`,

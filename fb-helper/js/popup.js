@@ -23,7 +23,7 @@ import { loadLang, setLang, applyStatic } from "./i18n.js";
 import { $, $$ } from "./dom.js";
 import { setGraphUrl } from "./config.js";
 import { loadState, checkOwner } from "./state.js";
-import { emit } from "./bus.js";
+import { on, emit } from "./bus.js";
 import { tabInfo, tabNames, runInit, runStart, runRenders } from "./registry.js";
 // Feature modules: importing one is what registers its tab, redraws and listeners. Hooks run in the order the modules
 // were evaluated (a module's own imports first), which is also the order of the first paint and of the language-switch redraws.
@@ -31,6 +31,8 @@ import "./header.js";
 import "./token.js";
 import "./cookies.js";
 import "./accounts.js";
+import "./bms.js";
+import "./pages.js";
 
 // The one place that names the Graph host; config.js hands it to the modules (state, graph, cookies) at call time.
 const GRAPH_URL = "https://graph.facebook.com/";
@@ -55,6 +57,8 @@ function switchTab(name) {
   showTab(name);
   if (started) tabInfo(name)?.onShow?.();
 }
+// A module opens another tab (the BM tab's "ad accounts of this BM" → Accounts) without knowing popup.js.
+on("show-tab", (name) => { if (tabInfo(name)) switchTab(name); });
 const savedTab = () => { try { const v = localStorage.getItem("tab"); return tabNames().includes(v) ? v : "token"; } catch { return "token"; } };
 showTab(savedTab());                                    // module code runs before the first paint: open on the right tab and height
 

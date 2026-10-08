@@ -10,6 +10,8 @@
 //   "cache-dropped"  the cached lists belonged to another FB user and are gone  -> modules redraw their lists
 //   "locks"          the rate-limit slots changed (this or another popup window) -> modules refresh disabled buttons
 //   "session"        chrome.storage.session changed [changes object]            -> modules follow another popup window
+//   "show-tab"       open another tab [tab name]                                 -> popup.js switches to it
+//   "filter-bm"      show the ad accounts of one BM [{ id, name } or null]       -> accounts.js filters its list
 
 const handlers = new Map();
 

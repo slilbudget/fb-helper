@@ -20,13 +20,17 @@ async function tabFlows() {
   ok("ArrowRight: Cookies → Ad accounts, at full height", s.tab === "accounts" && s.panel === "tab-accounts" && s.tall, JSON.stringify(s));
   ok("…and the Accounts tab loads its list by itself", (await rowsAre(pop, ".acc", 1)) && reads(b) === 1, String(reads(b)));
   await pop.keyboard.press("ArrowRight"); s = await look(pop);
+  ok("ArrowRight: Ad accounts → BM, at full height", s.tab === "bms" && s.panel === "tab-bms" && s.tall, JSON.stringify(s));
+  await pop.keyboard.press("ArrowRight"); s = await look(pop);
+  ok("ArrowRight: BM → Pages, at full height", s.tab === "pages" && s.panel === "tab-pages" && s.tall, JSON.stringify(s));
+  await pop.keyboard.press("ArrowRight"); s = await look(pop);
   ok("ArrowRight wraps to Token, normal height again", s.tab === "token" && !s.tall, JSON.stringify(s));
-  await pop.keyboard.press("End"); ok("End: the last tab", (await look(pop)).tab === "accounts");
+  await pop.keyboard.press("End"); ok("End: the last tab", (await look(pop)).tab === "pages");
   await pop.keyboard.press("Home"); ok("Home: the first tab", (await look(pop)).tab === "token");
   ok("keyboard focus follows the tab", await pop.evaluate(() => document.activeElement?.dataset.tab === "token"));
 
   // the last tab is remembered (localStorage) and restored with its height
-  for (const [name, tall] of [["cookies", false], ["accounts", true], ["token", false]]) {
+  for (const [name, tall] of [["cookies", false], ["accounts", true], ["bms", true], ["pages", true], ["token", false]]) {
     await pop.click(`[data-tab="${name}"]`);
     pop = await popup(b);
     s = await look(pop);

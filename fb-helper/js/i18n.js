@@ -9,7 +9,7 @@ let lang = "ru";
 const D = {
   ru: {
     "lang.title": "Язык интерфейса",
-    "tab.token": "Токен", "tab.cookies": "Cookie", "tab.accounts": "Кабинеты",
+    "tab.token": "Токен", "tab.cookies": "Cookie", "tab.accounts": "Кабинеты", "tab.bms": "BM", "tab.pages": "Страницы",
     "check": "Проверить", "check.title": "Профиль, приложение и права токена", "check.aria": "Проверить токен",
     "token.refresh": "Прочитать токен из вкладки FB заново", "token.refreshed": "Токен обновлён", "token.retry": "Токен тот же — отметку «сессия закрыта» снял, следующий запрос попробует его ещё раз",
     "copyToken": "Скопировать токен", "copyEnv": "Токен + cookie + UA",
@@ -84,7 +84,7 @@ const D = {
     "acc.found": "найдено {n} из {all}", "acc.count": ["кабинет", "кабинета", "кабинетов"], "acc.notAll": " (не все)",
     "acc.updated": "обновлено {t}", "acc.spend": "Спенд", "acc.refreshDash": "— обнови",
     "acc.notAllTitle": "По части кабинетов нет данных за период — обнови список", "acc.notAllShort": "не по всем",
-    "acc.empty": "Кабинеты не загружены — нажми кнопку обновления сверху", "acc.loading": "Загрузка кабинетов…", "acc.noMatch": "Ничего не найдено", "acc.noName": "Без имени",
+    "acc.empty": "Кабинеты не загружены — нажми кнопку обновления сверху", "acc.loading": "Загрузка кабинетов…", "acc.noMatch": "Ничего не найдено", "acc.bmFilterClear": "Показать кабинеты всех BM", "acc.noName": "Без имени",
     "acc.copyId": "Копировать ID", "acc.idCopied": "ID скопирован", "acc.openAds": "Открыть в Ads Manager",
     "acc.noPeriod": "Нет данных за этот период — обнови список",
     "acc.inBm": "Кабинет в БМ {n} · {id}", "acc.bm": "БМ {n}",
@@ -103,7 +103,7 @@ const D = {
   },
   en: {
     "lang.title": "Interface language",
-    "tab.token": "Token", "tab.cookies": "Cookies", "tab.accounts": "Ad accounts",
+    "tab.token": "Token", "tab.cookies": "Cookies", "tab.accounts": "Ad accounts", "tab.bms": "BM", "tab.pages": "Pages",
     "check": "Check", "check.title": "Profile, app and permissions of the token", "check.aria": "Check token",
     "token.refresh": "Re-read the token from the FB tab", "token.refreshed": "Token refreshed", "token.retry": "Same token — the dead-session mark is cleared, the next request will try it again",
     "copyToken": "Copy token", "copyEnv": "Token + cookies + UA",
@@ -178,7 +178,7 @@ const D = {
     "acc.found": "{n} of {all} found", "acc.count": ["ad account", "ad accounts"], "acc.notAll": " (not all)",
     "acc.updated": "updated {t}", "acc.spend": "Spend", "acc.refreshDash": "— refresh",
     "acc.notAllTitle": "Some accounts have no data for this period — refresh the list", "acc.notAllShort": "not all",
-    "acc.empty": "Ad accounts not loaded — press the refresh button above", "acc.loading": "Loading ad accounts…", "acc.noMatch": "Nothing found", "acc.noName": "Unnamed",
+    "acc.empty": "Ad accounts not loaded — press the refresh button above", "acc.loading": "Loading ad accounts…", "acc.noMatch": "Nothing found", "acc.bmFilterClear": "Show ad accounts of every BM", "acc.noName": "Unnamed",
     "acc.copyId": "Copy ID", "acc.idCopied": "ID copied", "acc.openAds": "Open in Ads Manager",
     "acc.noPeriod": "No data for this period — refresh the list",
     "acc.inBm": "Account in business portfolio {n} · {id}", "acc.bm": "{n}",
