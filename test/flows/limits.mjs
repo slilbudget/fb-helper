@@ -82,8 +82,9 @@ async function cspFlow() {
     out.fbsbxImg = await img("https://platform-lookaside.fbsbx.com/platform/profilepic/ok.png");
     out.evilFetch = await fetch("https://evil.example.com/x").then(() => "sent", () => "blocked");
     out.otherJsdelivr = await fetch("https://cdn.jsdelivr.net/npm/lodash/lodash.js").then(() => "sent", () => "blocked");
+    const refused = new Promise((res) => { document.addEventListener("securitypolicyviolation", (e) => { if (e.effectiveDirective === "base-uri") res(); }); setTimeout(res, 3000); });   // Chrome reports the refusal as an event; 3 s is only the bound if it never comes
     const base = document.createElement("base"); base.href = "https://evil.example.com/"; document.head.append(base);
-    await new Promise((res) => setTimeout(res, 100));
+    await refused;
     out.baseHref = document.baseURI;
     out.violations = seen;
     return out;
