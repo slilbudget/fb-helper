@@ -615,9 +615,9 @@ async function cacheFlow() {
   const b3 = await boot({ fb: adsFb(TOK), graph: mock(FULL) });
   await adsPage(b3);
   const p3 = await popup(b3, "accounts");
-  ok("Ad accounts auto-load took its slot", await rowsAre(p3, ".acc", 1));
+  ok("Ad accounts auto-load took its slot", await rowsAre(p3, "#accountsList .lrow", 1));
   await p3.click('[data-tab="pages"]');
-  ok("…the Pages auto-load still goes out (own slot)", await rowsAre(p3, ".lrow", 9) && reqs(b3).length === 1);
+  ok("…the Pages auto-load still goes out (own slot)", await rowsAre(p3, "#pagesList .lrow", 9) && reqs(b3).length === 1);
   const slots = (await stored(p3, "locks")).slots;
   ok("both slots are held, under their own keys", !!slots.accounts && !!slots.pages && slots.pages - Date.now() <= 60000, JSON.stringify(slots));
   ok("no console errors", b3.errs.length === 0, b3.errs.join(" | "));
