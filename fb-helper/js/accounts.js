@@ -96,6 +96,7 @@ const spendOfRow = (x) => Number(x?.data?.[0]?.spend);
 // Every text Graph sends is cleaned (pure.js cleanText: control and bidi characters): names go to the screen, to storage and into search.
 const slimWith = (skip) => (a) => ({ ...a, _noInsights: skip.has("insights") || undefined,
   name: cleanText(a.name), business_country_code: cleanText(a.business_country_code, 8) || undefined,
+  currency: cleanText(a.currency, 8) || undefined, timezone_name: cleanText(a.timezone_name, 64) || undefined,   // both are printed raw when Intl does not know them
   business: a.business && typeof a.business === "object" ? { id: a.business.id, name: cleanText(a.business.name) } : undefined,
   _floor: skip.has("insights") ? undefined : spendFloor(spendOfRow(a.p_today), spendOfRow(a.p_month)),
   _noPixels: skip.has("adspixels") || undefined,

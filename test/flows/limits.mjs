@@ -52,6 +52,7 @@ async function usageFlow() {
 async function namesFlow() {
   console.log("\n# limits: names are cleaned");
   const acc = { account_id: "111", name: `Acc${RLO}fdp.exe\nsecond`, account_status: 1, currency: "USD", timezone_name: "UTC", amount_spent: "500", business: { id: "9001", name: `Biz${LRI}x` } };
+  acc.currency = `US${RLO}D`; acc.timezone_name = `UT${RLO}C`;                  // printed as they came when Intl does not know them: cleaned like a name
   const b = await boot({ fb: adsFb(TOK), graph: (u) => (/\/ads$/.test(u.pathname) ? { body: { data: [{ id: "1", name: `Ad${RLO}one`, effective_status: "ACTIVE" }] } } : { body: { data: [acc] } }) });
   await adsPage(b);
   const pop = await popup(b, "accounts");
@@ -60,6 +61,7 @@ async function namesFlow() {
   ok("account and business names show without bidi and control characters", has(shown, "Accfdp.exe second") && has(shown, "Bizx") && !BIDI.test(shown) && !shown.includes("\n"), JSON.stringify(shown.slice(0, 120)));
   await pop.click(`${ROW} .lrow-title`); await pop.click(`${ROW}.open [data-ads]`);
   await until(pop, () => /Ad.*one/.test(document.querySelector("#accountsList .lrow.open .ads")?.textContent || ""));
+  ok("a currency or timezone with bidi characters is cleaned and still understood ($, not a broken code)", has(await text(pop, `${ROW} .lrow-value`), "$"), await text(pop, `${ROW} .lrow-value`));
   ok("an ad's name is cleaned too", has(await text(pop, ".ad .ad-name"), "Adone") && !BIDI.test(await text(pop, ".ad .ad-name")));
   const saved = JSON.stringify([await stored(pop, "accounts"), await stored(pop, "ads")]);
   ok("…and so is what is kept in storage", !BIDI.test(saved) && !/\\u202e|\\u2066|\\n/i.test(saved), saved.slice(0, 200));

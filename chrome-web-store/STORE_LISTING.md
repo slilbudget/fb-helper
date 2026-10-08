@@ -106,7 +106,7 @@ Facebook's own domain only: the open Facebook tabs the token is read from, Faceb
 
 ### Remote code
 **Are you using remote code?** No, I am not using remote code.
-(No `<script>` or module from outside the package, no `eval`, no `new Function`; fonts and icons are bundled. The manifest CSP is `script-src 'self'; object-src 'none'; connect-src https://graph.facebook.com`.)
+(No `<script>` or module from outside the package, no `eval`, no `new Function`; fonts and icons are bundled. The manifest CSP is `script-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; img-src 'self' https://*.fbcdn.net https://*.fbsbx.com; connect-src https://graph.facebook.com`.)
 
 ### Data usage
 Tick these:
