@@ -19,6 +19,12 @@ export const LINKS = {
   adsManager: makeAct((a) => `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${a}`),   // VERIFIED
   billing: makeAct((a) => `https://adsmanager.facebook.com/ads/manager/account_settings/account_billing/?act=${a}`),
   accountSettings: makeAct((a) => `https://adsmanager.facebook.com/ads/manager/account_settings/information/?act=${a}`),
+  // One ad in Ads Manager (the ads tab with that ad selected). UNVERIFIED like the rest. Both ids are digits-only; a bad or
+  // missing ad id falls back to the account's own Ads Manager page (never to a half-built URL), a bad account id gives null.
+  adsManagerAd: (acc, ad) => {
+    const a = actId(acc), d = digits(ad);
+    return a ? (d ? `https://adsmanager.facebook.com/adsmanager/manage/ads?act=${a}&selected_ad_ids=${d}` : LINKS.adsManager(a)) : null;
+  },
   // Account Quality: where Meta lists restrictions of the profile, its BMs, ad accounts and pages, with "Request review".
   accountQuality: () => "https://www.facebook.com/accountquality/",
   // ---- business manager ----
