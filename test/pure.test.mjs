@@ -121,15 +121,31 @@ test("profileBlock: English, name (id), BMs with ids; none / not available / mor
   assert.equal(forged.split("\n").length, 2);
 });
 
-test("i18n: every key the popup uses exists in both languages", async () => {
+// Scans EVERY file under fb-helper/js (modules and strings files alike) plus popup.html. Feature modules keep their own
+// strings in js/strings/<feature>.js: `export const STRINGS = { ru: {…}, en: {…} }; addStrings(STRINGS);` — plain data,
+// importable here in Node (the modules that use them touch `document` / `chrome` and cannot be). Loading such a file registers
+// its strings, so the coverage check below sees them like the ones in i18n.js.
+test("i18n: every key the popup uses exists in both languages (all js files; strings added by feature modules included)", async () => {
   const fs = await import("node:fs");
   const { LANGS, setLang, has } = await import("../fb-helper/js/i18n.js");
   const dir = new URL("../fb-helper/", import.meta.url);
-  const js = fs.readFileSync(new URL("js/popup.js", dir), "utf8");
+  const files = fs.readdirSync(new URL("js/", dir), { recursive: true }).map((f) => f.replaceAll("\\", "/")).filter((f) => f.endsWith(".js")).sort();
+  assert.ok(files.length >= 10, `found only ${files.length} js files`);
+  const src = Object.fromEntries(files.map((f) => [f, fs.readFileSync(new URL(`js/${f}`, dir), "utf8")]));
+
+  for (const f of files.filter((f) => f.startsWith("strings/"))) {
+    const mod = await import(new URL(`js/${f}`, dir));
+    assert.ok(mod.STRINGS?.ru && mod.STRINGS?.en, `${f} must export STRINGS = { ru, en }`);
+    assert.deepEqual(Object.keys(mod.STRINGS.ru).sort(), Object.keys(mod.STRINGS.en).sort(), `${f}: ru and en must have the same keys`);
+    for (const k of Object.keys(mod.STRINGS.ru)) assert.ok(has(k), `${f} never called addStrings (${k} is unknown)`);
+    assert.ok(files.some((g) => g !== f && src[g].includes(f)), `${f} is not imported by any module, so its strings never load`);
+  }
+
   const html = fs.readFileSync(new URL("popup.html", dir), "utf8");
+  const code = Object.values(src).join("\n");
   const keys = new Set([
-    ...[...js.matchAll(/\bt\("([\w.]+)"/g)].map((m) => m[1]),
-    ...[...js.matchAll(/\btn\([^,]+,\s*"([\w.]+)"/g)].map((m) => m[1]),
+    ...[...code.matchAll(/\bt\("([\w.]+)"/g)].map((m) => m[1]),
+    ...[...code.matchAll(/\btn\([^,]+,\s*"([\w.]+)"/g)].map((m) => m[1]),
     ...[...html.matchAll(/data-i18n(?:-title|-placeholder|-aria)?="([\w.]+)"/g)].map((m) => m[1]),
   ]);
   assert.ok(keys.size > 50, `found only ${keys.size} keys`);

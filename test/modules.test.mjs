@@ -1,0 +1,269 @@
+// Unit tests of the shared building blocks a new tab uses (bus, registry, addStrings, state caches and rate slots, readPaged).
+// Plain Node: these modules touch neither the DOM nor chrome.* while they load; the few chrome / fetch / navigator.locks calls
+// are replaced by small fakes here. Run: `node --test test/*.test.mjs`
+import test from "node:test";
+import assert from "node:assert/strict";
+import { on, emit } from "../fb-helper/js/bus.js";
+import { registerTab, tabInfo, tabNames, registerRender, registerInit, registerStart, runInit, runStart, runRenders } from "../fb-helper/js/registry.js";
+import { addStrings, setLang, t, tn, has } from "../fb-helper/js/i18n.js";
+import { setGraphUrl } from "../fb-helper/js/config.js";
+import { state, Stale, loadState, onLoad, registerCache, cacheKeys, dropCache, checkOwner, claimSlot, slotLeft, newGeneration, markDead } from "../fb-helper/js/state.js";
+import { readPaged, optionalFieldIn } from "../fb-helper/js/graph.js";
+
+// ---------- fakes ----------
+function fakeChrome({ session = {}, cookies = {} } = {}) {
+  const store = structuredClone(session), calls = { get: [], set: [], remove: [], cookie: 0 };
+  const keysOf = (k) => (typeof k === "string" ? [k] : Array.isArray(k) ? k : Object.keys(k || store));
+  globalThis.chrome = {
+    storage: {
+      session: {
+        get: async (keys) => { calls.get.push(keys); return Object.fromEntries(keysOf(keys).filter((k) => k in store).map((k) => [k, structuredClone(store[k])])); },
+        set: async (patch) => { calls.set.push(patch); Object.assign(store, structuredClone(patch)); },
+        remove: async (keys) => { calls.remove.push(keys); for (const k of keysOf(keys)) delete store[k]; },
+      },
+      local: { get: async () => ({}), set: async () => {} },
+    },
+    cookies: { get: async ({ name }) => { calls.cookie++; return name in cookies ? { value: cookies[name] } : null; } },
+  };
+  return { store, calls, cookies };
+}
+// Web Locks stand-in: runs the callback (one at a time is enough for these tests).
+Object.defineProperty(globalThis, "navigator", { value: { locks: { request: (_name, fn) => fn() } }, configurable: true, writable: true });
+setGraphUrl("https://graph.test/");
+await setLang("en");                                      // messages asserted below are English
+
+// ---------- bus ----------
+test("bus: handlers run in subscription order, can unsubscribe, and one that throws does not stop the others", () => {
+  const seen = [];
+  const off = on("t.order", (p) => seen.push(`a${p}`));
+  on("t.order", () => { throw new Error("boom"); });
+  on("t.order", (p) => seen.push(`c${p}`));
+  const log = console.error; console.error = () => {};
+  try { emit("t.order", 1); } finally { console.error = log; }
+  assert.deepEqual(seen, ["a1", "c1"]);
+  off(); emit("t.order", 2);
+  assert.deepEqual(seen, ["a1", "c1", "c2"], "unsubscribed handler is gone");
+  emit("t.nobody", 1);                                    // no subscribers: nothing happens
+});
+
+// ---------- registry ----------
+test("registry: tabs (names, tall, onShow, no duplicates), render filters, init / start order, a failing hook does not stop the rest", () => {
+  const onShow = () => {};
+  registerTab("t.plain");
+  registerTab("t.tall", { tall: true, onShow });
+  assert.deepEqual(tabNames().filter((n) => n.startsWith("t.")), ["t.plain", "t.tall"]);
+  assert.equal(tabInfo("t.tall").tall, true);
+  assert.equal(tabInfo("t.tall").onShow, onShow);
+  assert.equal(tabInfo("t.plain").tall, false);
+  assert.equal(tabInfo("t.missing"), undefined);
+  assert.throws(() => registerTab("t.plain"), /already registered/);
+
+  const seen = [];
+  registerRender(() => seen.push("lang"));                                    // default: language only
+  registerRender(() => seen.push("tick"), { lang: false, tick: true });
+  registerRender(() => seen.push("both"), { lang: true, tick: true });
+  runRenders("lang"); runRenders("tick");
+  assert.deepEqual(seen, ["lang", "both", "tick", "both"]);
+
+  const order = [];
+  registerInit(() => order.push("init1"));
+  registerInit(() => { throw new Error("broken module"); });
+  registerInit(() => order.push("init2"));
+  registerStart(() => order.push("start1"));
+  const log = console.error; console.error = () => {};
+  try { runInit(); runStart(); } finally { console.error = log; }
+  assert.deepEqual(order, ["init1", "init2", "start1"]);
+});
+
+// ---------- i18n.addStrings ----------
+test("addStrings: merges both languages into the dictionary; a duplicate key throws and merges nothing; a typo'd language throws", async () => {
+  addStrings({ ru: { "zt.hello": "Привет, {n}", "zt.count": ["штука", "штуки", "штук"] }, en: { "zt.hello": "Hello, {n}", "zt.count": ["thing", "things"] } });
+  await setLang("en");
+  assert.ok(has("zt.hello"));
+  assert.equal(t("zt.hello", { n: "Bob" }), "Hello, Bob");
+  assert.equal(tn(1, "zt.count"), "thing"); assert.equal(tn(2, "zt.count"), "things");
+  await setLang("ru");
+  assert.equal(t("zt.hello", { n: "Боб" }), "Привет, Боб");
+  assert.equal(tn(5, "zt.count"), "штук");
+  // existing strings are where they were: a key of the main dictionary cannot be taken over
+  assert.throws(() => addStrings({ ru: { "zt.new": "x", "tab.token": "again" }, en: { "zt.new": "x" } }), /duplicate key "tab.token"/);
+  assert.ok(!has("zt.new"), "nothing of a rejected call is merged");
+  assert.throws(() => addStrings({ ru: { "zt.hello": "second" }, en: {} }), /duplicate key "zt.hello"/);
+  assert.throws(() => addStrings({ de: { "zt.de": "Hallo" } }), /unknown language "de"/);
+  addStrings({}); addStrings(undefined);                  // nothing to add is fine
+  await setLang("en");
+});
+
+// ---------- state: caches per FB user ----------
+test("registerCache: keys are reserved once; dropCache resets every registered cache and removes all their keys", async () => {
+  const fake = fakeChrome({ session: { owner: "1001", ka: [1], kb: [2], other: "keep" } });
+  const reset = [];
+  registerCache(["ka"], () => reset.push("a"));
+  registerCache(["kb", "kc"], () => reset.push("b"));
+  assert.throws(() => registerCache(["kc"], () => {}), /already registered/);
+  assert.throws(() => registerCache(["owner"], () => {}), /already registered/, "owner is the shared FB-user key");
+  assert.ok(["owner", "ka", "kb", "kc"].every((k) => cacheKeys().includes(k)));
+  state.owner = "1001";
+  await dropCache();
+  assert.deepEqual(reset, ["a", "b"]);
+  assert.equal(state.owner, null);
+  assert.deepEqual(Object.keys(fake.store), ["other"], "only cache keys are removed");
+});
+
+test("loadState: one storage read with every registered key; onLoad and registerCache loaders get the session object", async () => {
+  const fake = fakeChrome({ session: { token: "EAABtok", dead: [{ token: "x", code: "190" }], owner: "7", kd: "cached", zz: 5, locks: { slots: { a: 1 } } } });
+  const loaded = [];
+  registerCache(["kd"], () => {}, { load: (ses) => loaded.push(["cache", ses.kd]) });
+  onLoad(["zz"], async (ses) => { await null; loaded.push(["onLoad", ses.zz]); });
+  await loadState();
+  assert.equal(fake.calls.get.length, 1, "a single storage.session.get");
+  assert.ok(["token", "tokenSource", "dead", "checked", "owner", "locks", "kd", "zz"].every((k) => fake.calls.get[0].includes(k)));
+  assert.deepEqual(loaded, [["cache", "cached"], ["onLoad", 5]]);
+  assert.equal(state.token, "EAABtok"); assert.equal(state.owner, "7");
+  assert.deepEqual(state.dead, [{ token: "x", code: "190" }]);
+  assert.deepEqual(state.locks, { slots: { a: 1 } });
+});
+
+test("checkOwner: only compares the FB user while some cache holds data; a foreign owner drops everything", async () => {
+  const fake = fakeChrome({ session: { owner: "1001", kh: [1] }, cookies: { c_user: "1001" } });
+  const held = { v: false };
+  registerCache(["kh"], () => { held.v = false; }, { has: () => held.v });
+  state.owner = "1001";
+  assert.equal(await checkOwner(), false); assert.equal(fake.calls.cookie, 0, "no data cached: the cookie is not even read");
+  held.v = true;
+  assert.equal(await checkOwner(), false, "same user"); assert.equal(fake.calls.cookie, 1);
+  fake.cookies.c_user = "2002";
+  assert.equal(await checkOwner(), true, "another user: dropped");
+  assert.equal(held.v, false, "the cache's reset ran");
+  assert.equal(state.owner, null);
+  assert.ok(!("kh" in fake.store) && !("owner" in fake.store));
+  held.v = true; state.owner = "1001"; delete fake.cookies.c_user;
+  assert.equal(await checkOwner(), true, "logged out counts as another user");
+});
+
+// ---------- state: rate slots ----------
+test("claimSlot: each key has its own interval; a denied claim returns the time left; expired slots free themselves; the old locks shape frees everything", async () => {
+  const fake = fakeChrome();
+  assert.equal(await claimSlot("bms", 5000), 0, "first claim is granted");
+  const left = await claimSlot("bms", 5000);
+  assert.ok(left > 4000 && left <= 5000, `denied with ${left} ms left`);
+  assert.equal(await claimSlot("pages", 1000), 0, "another key is independent");
+  assert.equal(await claimSlot("accounts", 60000), 0); assert.equal(await claimSlot("ads:111", 30000), 0);
+  assert.ok((await claimSlot("accounts", 60000)) > 59000);
+  assert.ok(slotLeft("accounts") > 59000 && slotLeft("ads:222") === 0, "slotLeft reads state.locks");
+  assert.deepEqual(Object.keys(fake.store.locks.slots).sort(), ["accounts", "ads:111", "bms", "pages"]);
+  // a slot whose time ran out is granted again and its stale entry is not kept
+  fake.store.locks.slots.pages = Date.now() - 1;
+  assert.equal(await claimSlot("pages", 1000), 0);
+  // the shape older tests (and older popups) write still reads as "nothing taken"
+  fake.store.locks = { accountsAt: Date.now(), ads: { 111: Date.now() + 99999 } };
+  assert.equal(await claimSlot("accounts", 60000), 0); assert.equal(await claimSlot("bms", 5000), 0);
+  fake.store.locks = { accountsAt: 0, ads: {} };
+  assert.equal(await claimSlot("bms", 5000), 0);
+});
+
+// ---------- state: events ----------
+test("newGeneration and markDead announce themselves on the bus instead of calling the UI", () => {
+  fakeChrome();
+  const seen = [];
+  on("generation", () => seen.push("generation")); on("token-dead", () => seen.push("token-dead"));
+  const gen = state.gen, ctl = state.ctl, skip = state.skip;
+  newGeneration();
+  assert.equal(state.gen, gen + 1); assert.ok(ctl.signal.aborted); assert.notEqual(state.ctl, ctl); assert.notEqual(state.skip, skip);
+  state.dead = [];
+  markDead("EAAB1", "190/463");
+  assert.deepEqual(state.dead, [{ token: "EAAB1", code: "190/463" }]);
+  assert.deepEqual(seen, ["generation", "token-dead"]);
+  for (let i = 0; i < 7; i++) markDead(`EAAB-more-${i}`, "190");
+  assert.equal(state.dead.length, 5, "at most 5 dead marks are kept");
+});
+
+// ---------- graph.readPaged ----------
+// A fake Graph: handler(url) → { status, body }; every url is recorded.
+function fakeGraph(handler) {
+  const urls = [];
+  globalThis.fetch = async (url) => {
+    const u = new URL(url); urls.push(u);
+    const out = handler(u, urls.length) || {};
+    return { ok: (out.status || 200) < 400, status: out.status || 200, headers: new Headers(), json: async () => out.body };
+  };
+  return urls;
+}
+const fieldErr = (name) => ({ status: 400, body: { error: { code: 100, message: `(#100) Tried accessing nonexisting field (${name}) on node type (Page)` } } });
+const prime = () => { fakeChrome(); Object.assign(state, { token: "EAAB" + "x".repeat(70), dead: [], cooldownUntil: 0, gen: state.gen, skip: new Set() }); };
+// key = the field name Graph complains about; value = what goes into `fields`
+const OPT = { picture: "picture{url}", about: "about", fan_count: "fan_count" };
+
+test("readPaged: a field error drops only that field and asks the SAME page again; the drop is remembered for the next pages", async () => {
+  prime();
+  const urls = fakeGraph((u, n) => {
+    if (n === 1) return fieldErr("picture");
+    if (n === 2) return { body: { data: [{ id: "1" }, { id: "2" }], paging: { next: "next-url", cursors: { after: "c1" } } } };
+    return { body: { data: [{ id: "3" }] } };
+  });
+  const { rows, truncated } = await readPaged("me/pages", { base: ["id", "name"], optional: OPT, skip: state.skip, limit: 2 });
+  assert.deepEqual(rows.map((r) => r.id), ["1", "2", "3"]);
+  assert.equal(truncated, false);
+  assert.equal(urls.length, 3);
+  assert.equal(urls[0].searchParams.get("fields"), "id,name,picture{url},about,fan_count");
+  assert.equal(urls[1].searchParams.get("fields"), "id,name,about,fan_count", "same page, without the refused field only");
+  assert.equal(urls[1].searchParams.get("after"), null, "the retry is the same (first) page");
+  assert.equal(urls[2].searchParams.get("fields"), "id,name,about,fan_count", "later pages keep skipping it");
+  assert.equal(urls[2].searchParams.get("after"), "c1");
+  assert.equal(urls[0].searchParams.get("limit"), "2");
+  assert.deepEqual([...state.skip], ["picture"]);
+});
+
+test("readPaged: several optional fields are dropped one at a time; an error about a required field or a non-field error is thrown", async () => {
+  prime();
+  const urls = fakeGraph((u, n) => (n === 1 ? fieldErr("about") : n === 2 ? fieldErr("fan_count") : { body: { data: [{ id: "1" }] } }));
+  const { rows } = await readPaged("me/pages", { base: ["id"], optional: OPT, skip: state.skip });
+  assert.equal(rows.length, 1);
+  assert.deepEqual(urls.map((u) => u.searchParams.get("fields")), ["id,picture{url},about,fan_count", "id,picture{url},fan_count", "id,picture{url}"]);
+  prime();
+  fakeGraph(() => fieldErr("name"));                      // "name" is a base field, not an optional one
+  await assert.rejects(readPaged("me/pages", { base: ["id", "name"], optional: OPT, skip: state.skip }), /nonexisting field \(name\)/);
+  prime();
+  fakeGraph(() => ({ status: 500, body: { error: { code: 1, message: "boom" } } }));
+  await assert.rejects(readPaged("me/pages", { base: ["id"], optional: OPT, skip: state.skip }), /boom/);
+  prime();
+  fakeGraph(() => ({ body: { nope: true } }));
+  await assert.rejects(readPaged("me/pages", { base: ["id"] }), /no data/);
+});
+
+test("readPaged: maxPages cuts the walk and says truncated; params ride on every page; map sees the skip state of its own page", async () => {
+  prime();
+  const urls = fakeGraph((u, n) => ({ body: { data: [{ id: `r${n}` }], paging: { next: "more", cursors: { after: `c${n}` } } } }));
+  const { rows, truncated } = await readPaged("me/pages", { base: ["id"], params: { filter: "x" }, maxPages: 3 });
+  assert.equal(urls.length, 3); assert.equal(truncated, true); assert.equal(rows.length, 3);
+  assert.ok(urls.every((u) => u.searchParams.get("filter") === "x"));
+  assert.deepEqual(urls.map((u) => u.searchParams.get("after")), [null, "c1", "c2"]);
+
+  prime();
+  fakeGraph((u, n) => (n === 2 ? fieldErr("about") : n === 1 ? { body: { data: [{ id: "p1" }], paging: { next: "more", cursors: { after: "c1" } } } } : { body: { data: [{ id: "p2" }] } }));
+  const sk = new Set();
+  const out = await readPaged("me/pages", { base: ["id"], optional: OPT, skip: sk, map: (r) => ({ ...r, noAbout: sk.has("about") }) });
+  assert.deepEqual(out.rows, [{ id: "p1", noAbout: false }, { id: "p2", noAbout: true }]);
+});
+
+test("readPaged: skip may be a function (the set is swapped on a token change); Stale is never mistaken for a field error", async () => {
+  prime();
+  let current = new Set();
+  const urls = fakeGraph((u, n) => (n === 1 ? fieldErr("picture") : { body: { data: [] } }));
+  await readPaged("me/pages", { base: ["id"], optional: OPT, skip: () => current });
+  assert.deepEqual([...current], ["picture"]); assert.equal(urls.length, 2);
+
+  prime();
+  const urls2 = fakeGraph(() => { state.gen++; return fieldErr("picture"); });   // the token changes while the answer is on its way
+  await assert.rejects(readPaged("me/pages", { base: ["id"], optional: OPT, skip: state.skip }), (e) => e instanceof Stale);
+  assert.equal(urls2.length, 1, "no retry for a stale answer"); assert.equal(state.skip.size, 0);
+});
+
+test("optionalFieldIn: only a field complaint that names a not-yet-dropped optional key counts", () => {
+  const e = (code, msg, raw) => Object.assign(new Error(msg), { code, raw: raw ?? msg });
+  assert.equal(optionalFieldIn(e(100, "(#100) nonexisting field (about)"), OPT, new Set()), "about");
+  assert.equal(optionalFieldIn(e(100, "(#100) nonexisting field (about)"), OPT, new Set(["about"])), null, "already dropped");
+  assert.equal(optionalFieldIn(e(1, "Unknown field about"), OPT, new Set()), "about", "any error that talks about a field");
+  assert.equal(optionalFieldIn(e(1, "boom about"), OPT, new Set()), null, "not a field error");
+  assert.equal(optionalFieldIn(e(100, "(#100) something else"), OPT, new Set()), null, "names no optional key");
+});

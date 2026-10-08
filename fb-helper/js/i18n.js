@@ -58,7 +58,7 @@ const D = {
     "err.cooldown": "Пауза после лимита API ещё {n} мин — не трогаем",
     "err.timeout": "Graph не ответил за {n} с", "err.net": "Сеть: {m}",
     "err.limit": "Лимит API ({c}). Пауза 30 мин, повторять нельзя", "err.code": "код {c}",
-    "err.version": "Версия Graph API {v} устарела, а новую Graph не назвал — обнови расширение (API_VERSION в popup.js)",
+    "err.version": "Версия Graph API {v} устарела, а новую Graph не назвал — обнови расширение (API_VERSION в config.js)",
     "err.graph": "Ошибка Graph", "err.empty": "Пустой ответ Graph", "err.noData": "Неожиданный ответ Graph (нет data)",
     "err.slot": "Не удалось занять слот запроса: {m}",
     "err.session": "Сессия недействительна или токен от другого аккаунта (код {c}) — запросы остановлены. Обнови вкладку FB или войди заново",
@@ -152,7 +152,7 @@ const D = {
     "err.cooldown": "API limit hit — hands off for another {n} min",
     "err.timeout": "Graph did not answer in {n} s", "err.net": "Network: {m}",
     "err.limit": "API limit ({c}). Paused 30 min, do not retry", "err.code": "code {c}",
-    "err.version": "Graph API {v} is deprecated and Graph named no newer one — update the extension (API_VERSION in popup.js)",
+    "err.version": "Graph API {v} is deprecated and Graph named no newer one — update the extension (API_VERSION in config.js)",
     "err.graph": "Graph error", "err.empty": "Empty Graph response", "err.noData": "Unexpected Graph response (no data)",
     "err.slot": "Could not claim a request slot: {m}",
     "err.session": "Session is no longer valid, or the token is from another account (code {c}) — requests stopped. Reload the FB tab or log in again",
@@ -196,6 +196,17 @@ const D = {
     "ads.noAll": "Graph did not return all-time metrics (too much data)", "ads.old": "Metrics are out of date — refresh the ads", "ads.stale": "Not refreshed: {m}. Showing the previous list",
   },
 };
+
+// A feature module owns its strings: addStrings({ ru: { "bms.title": "…" }, en: { "bms.title": "…" } }), usually from
+// js/strings/<feature>.js (plain data + this call, so the key-coverage test can load it in Node). The keys join the one flat
+// dictionary above, so name them "<feature>.<what>". A key that already exists is two features fighting over one string:
+// it throws, and nothing from that call is merged. A language other than ru / en is a typo and throws too.
+export function addStrings(strings) {
+  for (const l of Object.keys(strings || {})) if (!LANGS.includes(l)) throw new Error(`i18n: unknown language "${l}"`);
+  for (const l of LANGS) for (const k of Object.keys(strings?.[l] || {}))
+    if (k in D[l]) throw new Error(`i18n: duplicate key "${k}" (${l})`);
+  for (const l of LANGS) Object.assign(D[l], strings?.[l]);
+}
 
 export const getLang = () => lang;
 export const has = (key) => key in D[lang];

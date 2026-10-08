@@ -1,4 +1,4 @@
-// Pure helpers: no DOM, no chrome.*. Split out of popup.js so test/pure.test.mjs can run them in plain Node.
+// Pure helpers: no DOM, no chrome.*. Split out of the popup modules so test/pure.test.mjs can run them in plain Node.
 
 // Graph says "this login / token is dead": code 190 (invalid / expired token; subcodes 458–467 say why — checkpoint,
 // password changed, logged out…) or 102 (API session). Subcodes alone are not trusted: they only mean this under 190.
