@@ -16,7 +16,7 @@ import { el } from "./dom.js";
 import { state, isDead, deadCode } from "./state.js";
 
 // n rows' worth of grey bars while a list is being read. The rows have the height of real ones, so nothing jumps when they arrive.
-export function skeleton(label, n = 5) {
+function skeleton(label, n = 5) {
   return el("div", { class: "lsk-list", "aria-busy": "true" }, el("span", { class: "sr-only" }, label),
     Array.from({ length: n }, () => el("div", { class: "lsk", "aria-hidden": "true" }, el("i"), el("i"), el("i"))));
 }
