@@ -87,16 +87,15 @@ async function errorFlow() {
   b = await boot({ fb: adsFb(TOK), graph: () => ({ delay: 2000, body: accountsJson }) });       // every read takes 2 s (the list, then the business edges): the skeleton stays long enough to be measured
   await adsPage(b);
   pop = await popup(b, "accounts");
-  await until(pop, () => document.querySelectorAll("#accountsList .lsk").length > 0);
-  await until(pop, () => document.querySelector("#loadAccounts").getAttribute("aria-busy") === "true");        // the skeleton shows while the token is read; the read itself starts a moment later
-  const sk = await pop.evaluate(() => ({ rows: document.querySelectorAll("#accountsList .lsk").length, hidden: [...document.querySelectorAll("#accountsList .lsk")].every((r) => r.getAttribute("aria-hidden") === "true"),
-    busy: document.querySelector("#accountsList .lsk-list")?.getAttribute("aria-busy"), sr: document.querySelector("#accountsList .lsk-list .sr-only")?.textContent, h: Math.round(document.querySelector("#accountsList .lsk").getBoundingClientRect().height),
-    spin: getComputedStyle(document.querySelector("#loadAccounts .i")).animationName, btnBusy: document.querySelector("#loadAccounts").getAttribute("aria-busy"), reduced: matchMedia("(prefers-reduced-motion: reduce)").matches }));
-  ok("loading: five skeleton rows (decorative), a busy list with 'Loading ad accounts…' for screen readers", sk.rows === 5 && sk.hidden && sk.busy === "true" && sk.sr === tr("acc.loading"), JSON.stringify(sk));
-  ok("…the refresh icon turns while the button is busy", sk.btnBusy === "true" && sk.spin === "spin", JSON.stringify(sk));
+  await until(pop, () => !!document.querySelector("#accountsList .lsk-list"));
+  await until(pop, () => document.querySelector("#loadAccounts").getAttribute("aria-busy") === "true");        // the loading line shows while the token is read; the read itself starts a moment later
+  const sk = await pop.evaluate(() => { const l = document.querySelector("#accountsList .lsk-list");
+    return { text: l?.textContent, busy: l?.getAttribute("aria-busy"), role: l?.getAttribute("role"), shapes: l?.children.length,
+      anim: getComputedStyle(document.querySelector("#loadAccounts .i")).animationName, btnBusy: document.querySelector("#loadAccounts").getAttribute("aria-busy") }; });
+  ok("loading: one plain 'Loading ad accounts…' line (status, busy), no placeholder shapes", sk.text === tr("acc.loading") && sk.busy === "true" && sk.role === "status" && sk.shapes === 0, JSON.stringify(sk));
+  ok("…nothing moves: the busy refresh icon has no animation", sk.btnBusy === "true" && sk.anim === "none", JSON.stringify(sk));
   ok("…no controls without rows", await hiddenControls(pop, TABS.accounts.hidden));
-  ok("…and when the rows arrive the skeleton is gone, a real row is exactly as high as a skeleton row (nothing jumps), the icon stands still", (await until(pop, ([s, k]) => document.querySelectorAll(s).length === k, [ROW, 1], 25000)) && (await pop.locator("#accountsList .lsk").count()) === 0
-    && near(await pop.evaluate(() => Math.round(document.querySelector("#accountsList .lrow").getBoundingClientRect().height)), sk.h) && (await until(pop, () => getComputedStyle(document.querySelector("#loadAccounts .i")).animationName === "none")), JSON.stringify(sk));
+  ok("…and when the rows arrive the loading line is gone", (await until(pop, ([s, k]) => document.querySelectorAll(s).length === k, [ROW, 1], 25000)) && (await pop.locator("#accountsList .lsk-list").count()) === 0);
   await done(b);
 
   // a refused refresh above old rows is a muted note, the rows stay

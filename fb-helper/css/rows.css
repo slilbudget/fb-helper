@@ -1,5 +1,5 @@
 /* rows: the one list row of the Businesses, Ad accounts and Pages tabs (js/row.js, design.md §1 + §8). Tokens come from popup.css.
-   Class prefix: .lrow = a row, .lgroup = a group header, .lav = a picture, .lsk = a skeleton row, .lempty = an empty / error state.
+   Class prefix: .lrow = a row, .lgroup = a group header, .lav = a picture, .lsk-list = the loading line, .lempty = an empty / error state.
 
    collapsed row = a 2 x 2 grid in .lrow-head (both lines have a minimum height, so every row of every tab is the same height):
      [ name button ............ ]  [ value ]        line 1 (24 px)
@@ -56,7 +56,7 @@
 }
 span.lrow-title { cursor: default; }
 .lrow-title::after { content: ""; position: absolute; inset: 0; }   /* the stretched hit area: the nearest positioned ancestor is .lrow-head */
-.lrow-title .i-chevron { --size-icon: 16px; color: var(--color-icon); flex: none; transition: transform .18s ease, color .15s ease; }
+.lrow-title .i-chevron { --size-icon: 16px; color: var(--color-icon); flex: none; }
 .lrow.open .lrow-title .i-chevron { transform: rotate(180deg); color: var(--color-text-secondary); }
 .lrow-name { min-width: 0; font-size: var(--text-lg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* An open row shows its whole name: it wraps (anywhere: an account name is often one long unbroken token), the chevron and the picture stay on the
@@ -113,7 +113,7 @@ a.lrow-fix:focus-visible { outline-offset: -2px; border-radius: 4px; }          
   display: inline-flex; align-items: center; gap: 4px; padding: 5px 4px; margin: -5px -4px;
   font: var(--text-sm) var(--font); line-height: 1.4; color: var(--color-text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap;
 }
-.lrow-id .i { --size-icon: 14px; opacity: 0; transition: opacity .12s ease; }
+.lrow-id .i { --size-icon: 14px; opacity: 0; }
 .lrow-head:hover .lrow-id .i, .lrow-id:focus-visible .i, .lrow-id .i-tick { opacity: 1; }
 .lrow-id:hover, .lrow-id:focus-visible { color: var(--color-text-primary); }
 .lrow-id:focus-visible { outline-offset: -1px; border-radius: 3px; }
@@ -123,8 +123,6 @@ a.lrow-fix:focus-visible { outline-offset: -2px; border-radius: 4px; }          
   display: grid; gap: var(--spacing-3); min-width: 0;
   padding-block: var(--spacing-1) var(--spacing-4); padding-inline: calc(var(--spacing-4) + var(--lrow-indent)) var(--spacing-4);
 }
-.lrow-body.enter { animation: lrow-in .16s ease-out; }
-@keyframes lrow-in { from { opacity: 0; transform: translateY(-3px); } }
 /* The copy-ID line of the body is for narrow windows only: from 480 px the ID is on the collapsed row, and its copy button is reachable by the
    keyboard once the row is open (row.js). */
 .lrow-idline { display: flex; align-items: center; gap: var(--spacing-2); color: var(--color-text-secondary); }
@@ -158,7 +156,7 @@ a.lrow-todo-link.primary { font-weight: 500; }
 /* the muted row of plain external links: grey, with the ↗ icon */
 .lrow-links { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--spacing-2); font-size: var(--text-sm); color: var(--color-text-secondary); }
 .lrow-link {
-  display: inline-flex; align-items: center; gap: 3px; padding: 5px 0; color: inherit; text-decoration: none; transition: color .15s ease;
+  display: inline-flex; align-items: center; gap: 3px; padding: 5px 0; color: inherit; text-decoration: none;
 }
 .lrow-link:hover, .lrow-link:focus-visible { color: var(--color-text-primary); }
 .lrow-link .i { --size-icon: 12px; }
@@ -186,7 +184,7 @@ a.lrow-todo-link.primary { font-weight: 500; }
   font-size: var(--text-sm); color: var(--color-text-secondary); container-type: scroll-state;
 }
 .lgroup::after {
-  content: ""; position: absolute; inset-inline: 0; top: 100%; height: 6px; pointer-events: none; opacity: 0; transition: opacity .15s ease;
+  content: ""; position: absolute; inset-inline: 0; top: 100%; height: 6px; pointer-events: none; opacity: 0;
   background: linear-gradient(rgba(28, 30, 33, .09), rgba(28, 30, 33, 0));
 }
 @container scroll-state(stuck: top) { .lgroup::after { opacity: 1; } }
@@ -207,18 +205,8 @@ a.lrow-todo-link.primary { font-weight: 500; }
 /* A refresh that was refused, above the old rows. */
 .list-note, .pg-note { padding: var(--spacing-3) var(--spacing-4) 0; }
 
-/* Skeleton rows: the shape of the rows that are coming (grey bars; the shimmer is switched off for reduced motion below). */
-.lsk-list { display: grid; }
-.lsk { display: grid; grid-template-columns: minmax(0, 1fr) minmax(var(--lrow-right), auto); grid-template-rows: 24px 17px; column-gap: var(--spacing-3); row-gap: 2px; align-items: center;
-  padding: var(--spacing-3) var(--spacing-4); position: relative; }
-.lsk:not(:last-child)::after { content: ""; position: absolute; inset-inline: var(--spacing-4); bottom: 0; height: 1px; background: var(--color-border); }
-.lsk i { display: block; height: 12px; border-radius: var(--radius-full); background: linear-gradient(90deg, var(--color-background-muted) 30%, var(--color-hover-fill) 50%, var(--color-background-muted) 70%) 100% 0 / 300% 100%; animation: lsk 1.4s ease-in-out infinite; }
-.lsk i:nth-child(1) { grid-area: 1 / 1; width: 46%; margin-inline-start: 22px; }
-.lsk i:nth-child(2) { grid-area: 1 / 2; justify-self: end; width: 64px; }
-.lsk i:nth-child(3) { grid-area: 2 / 1; width: 24%; height: 10px; margin-inline-start: 22px; }
-.lsk:nth-child(2n) i:nth-child(1) { width: 36%; }
-.lsk:nth-child(3n) i:nth-child(1) { width: 56%; }
-@keyframes lsk { to { background-position: 0 0; } }
+/* Loading: one plain muted line, like the empty states (no placeholder shapes, no motion). */
+.lsk-list { padding: var(--spacing-6, 24px) var(--spacing-4); color: var(--color-text-secondary); text-align: center; }
 
 /* A muted line under a list ("some businesses couldn't be read…"). */
 .pg-foot, .acc-foot { padding: var(--spacing-3) var(--spacing-4) var(--spacing-4); color: var(--color-text-secondary); font-size: var(--text-sm); text-align: center; }
@@ -232,9 +220,4 @@ a.lrow-todo-link.primary { font-weight: 500; }
 }
 @media (min-width: 480px) {
   .lrow-idline { display: none; }                   /* the ID is on the collapsed row (its copy button is reachable once the row is open) */
-}
-
-/* ---------- motion: nothing moves for a person who asked for less ---------- */
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }

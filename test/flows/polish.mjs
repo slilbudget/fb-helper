@@ -80,14 +80,10 @@ async function rowLabFlow() {
   ok("collapsed: one line with an ellipsis; open: the name wraps (all of it is readable), the row grows, the amount stays on the first line", closed.cut && closed.ws === "nowrap" && opened.open && !opened.cut && opened.ws === "normal" && opened.h > closed.h && opened.valueTop < 20, JSON.stringify([closed, opened]));
   await pop.click(`${R("longname")} .lrow-title`);
 
-  // ---- the fade-in only for a row the person just opened ----
-  ok("a row that starts open has no fade-in class (a redraw must not replay it); one opened by a click has", await q(pop, () => !document.querySelector('#lab .lrow[data-row="startsopen"] .lrow-body').classList.contains("enter")) && (await (async () => { await pop.click(`${R("plain")} .lrow-title`); return q(pop, () => document.querySelector('#lab .lrow[data-row="plain"] .lrow-body').classList.contains("enter")); })()));
-  const mo = await q(pop, () => ({ chev: getComputedStyle(document.querySelector('#lab .lrow[data-row="plain"] .lrow-title .i-chevron')).transitionProperty, anim: getComputedStyle(document.querySelector('#lab .lrow[data-row="plain"] .lrow-body')).animationName }));
-  ok("the chevron turns with a transition and the body fades in (css animation lrow-in)", has(mo.chev, "transform") && mo.anim === "lrow-in", JSON.stringify(mo));
-  await pop.emulateMedia({ reducedMotion: "reduce" });
-  const rm = await q(pop, () => ({ chev: getComputedStyle(document.querySelector('#lab .lrow[data-row="plain"] .lrow-title .i-chevron')).transitionDuration, anim: getComputedStyle(document.querySelector('#lab .lrow[data-row="plain"] .lrow-body')).animationName }));
-  ok("with prefers-reduced-motion nothing moves: no transition, no animation", rm.chev === "0s" && rm.anim === "none", JSON.stringify(rm));
-  await pop.emulateMedia({ reducedMotion: "no-preference" });
+  // ---- no motion anywhere (user decision): opening a row is instant, nothing has a transition or an animation ----
+  await pop.click(`${R("plain")} .lrow-title`);
+  const mo = await q(pop, () => [...document.querySelectorAll("*")].filter((n) => { const c = getComputedStyle(n); return c.animationName !== "none" || !/^0s(, 0s)*$/.test(c.transitionDuration); }).map((n) => n.className || n.tagName));
+  ok("no element has an animation or a transition (open row included)", mo.length === 0, JSON.stringify(mo.slice(0, 5)));
   await pop.click(`${R("plain")} .lrow-title`);
 
   // ---- the link colour rule: tone for a fix, grey for a plain link, accent only inside the extension ----

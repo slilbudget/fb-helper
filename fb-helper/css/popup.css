@@ -32,7 +32,9 @@
   --font: "Golos Text", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   }
 
-* { box-sizing: border-box; }
+/* No motion anywhere (user decision 2026-10-08): no transitions, no animations, no smooth scrolling — states switch instantly. */
+*, *::before, *::after { box-sizing: border-box; animation: none !important; transition: none !important; }
+html { scroll-behavior: auto; }
 html, body { margin: 0; }
 html { scroll-padding-top: 64px; }                 /* a focused or scrolled-to row stays clear of the sticky tabs and a group header */
 body {
@@ -151,14 +153,11 @@ main { padding-bottom: 0; }
 .icon-btn:hover:not(:disabled), .icon-btn:focus-visible { color: var(--color-text-primary); }
 .icon-btn:disabled { color: var(--color-text-disabled); cursor: default; }
 /* A refresh in progress: the arrows turn (the list loader sets aria-busy on the button while it reads). */
-.icon-btn[aria-busy="true"] .i-refresh { animation: spin .9s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
 /* One quiet hover everywhere: grey text/icons turn near-black, a filled control steps one shade darker. Keyboard focus is NOT hover: it is a
    2 px accent ring (WCAG 2.4.7), drawn only for the keyboard (:focus-visible). Controls inside a tight or clipping box ring inside it. */
 :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; border-radius: 2px; }
 .tab:focus-visible, .seg-btn:focus-visible, .chip:focus-visible, .field:focus-visible, .btn:focus-visible, .icon-btn:focus-visible { outline-offset: -2px; border-radius: inherit; }
 .tab, .seg-btn, .btn, .icon-btn, .field, .more summary, .kind-ads a, .guide-row a, .lang-btn {
-  transition: color .15s ease, background-color .15s ease;
 }
 
 .field {

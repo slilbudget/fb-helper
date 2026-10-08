@@ -1,5 +1,5 @@
 // What a list tab (Businesses, Ad accounts, Pages) shows when it has no rows: the same calm states, the same phrases, on every tab.
-//   loading     skeleton rows (the shape of the rows that are coming), "Loading…" for screen readers
+//   loading     one plain line "Loading…" (no placeholder shapes, no motion)
 //   no token    the Token tab's own reason ("Open Facebook in this profile") + one button
 //   dead        the session message + one button
 //   permission  "This token can't read the list …" (Graph codes 10 / 283 / 200–299, pure.js isPermError) + one button
@@ -15,10 +15,9 @@ import "./strings/list.js";
 import { el } from "./dom.js";
 import { state, isDead, deadCode } from "./state.js";
 
-// n rows' worth of grey bars while a list is being read. The rows have the height of real ones, so nothing jumps when they arrive.
-function skeleton(label, n = 5) {
-  return el("div", { class: "lsk-list", "aria-busy": "true" }, el("span", { class: "sr-only" }, label),
-    Array.from({ length: n }, () => el("div", { class: "lsk", "aria-hidden": "true" }, el("i"), el("i"), el("i"))));
+// While a list is being read: one muted line (screen readers hear it through role=status).
+function skeleton(label) {
+  return el("div", { class: "lsk-list", role: "status", "aria-busy": "true" }, label);
 }
 
 const view = ({ icon, text, detail, action, onAction, kind }) => el("div", { class: "lempty", "data-state": kind },

@@ -215,13 +215,12 @@ export function row({ key, avatar, name, value, valueTitle, valueMuted = false, 
     return !!s && !s.isCollapsed && s.toString().trim() !== "" && (head.contains(s.anchorNode) || head.contains(s.focusNode));
   }
   let bodyEl = null;
-  // animate = the person opened it just now (a redraw that keeps an open row open must not replay the fade-in).
-  function setOpen(next, animate = false) {
+  function setOpen(next) {
     card.classList.toggle("open", next);
     title.setAttribute("aria-expanded", String(next));
     if (idHead) idHead.tabIndex = next ? 0 : -1;       // from 480 px the ID is on the collapsed row: its copy button is for the keyboard once the row is open
     if (next && !bodyEl) {
-      bodyEl = el("div", { class: `lrow-body${animate ? " enter" : ""}`, id: bodyId },
+      bodyEl = el("div", { class: "lrow-body", id: bodyId },
         id ? el("div", { class: "lrow-idline" }, el("span", { class: "lrow-idlabel" }, "ID"), idButton(id, { focus: `rowid2:${k}` })) : null,
         (body() || []).filter(Boolean));
       card.append(bodyEl);
@@ -229,7 +228,7 @@ export function row({ key, avatar, name, value, valueTitle, valueMuted = false, 
   }
   function toggle() {
     const next = !card.classList.contains("open");
-    setOpen(next, true);
+    setOpen(next);
     onToggle?.(next);
   }
   if (expandable && open) setOpen(true);

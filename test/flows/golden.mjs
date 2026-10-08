@@ -183,7 +183,7 @@ async function stateWords(tab, want) {
   got.errorToast = await toast(pop);
   mode = "slow"; await resetLocks(pop);
   await pop.click(`${T.list} .lempty .btn`); await until(pop, (l) => !!document.querySelector(`${l} .lsk-list`), T.list);
-  got.loading = await pop.$eval(`${T.list} .lsk-list .sr-only`, (n) => n.textContent);
+  got.loading = await pop.$eval(`${T.list} .lsk-list`, (n) => n.textContent);
   golden(`${tab}: the empty states (not loaded, nothing there, no permission, a failure, loading)`, got, want ?? WANT_STATES[tab]);
   await done(b);
 }
