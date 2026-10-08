@@ -3,17 +3,18 @@
 //
 //   collapsed row = two lines, two columns:
 //     line 1   › [24 px picture] Name (ellipsis)                                       value (amount, right-aligned, tabular digits)
-//     line 2        ● Problem · Fix verb  +N                                    ⧉ 1864109161555839   (ID: muted, hidden below 480 px; ⧉ on hover only)
-//   A healthy row is silent: a status with tone "ok" prints nothing (a screen-reader-only word instead), so the list shows only what
-//   needs a look. A problem row says the problem ONCE (the status word is the problem) and puts its fix, an underlined link without
-//   an icon, right after it; "+2 more" / "ещё 2" = further problems (all of them are in the expanded body).
-//   Stretched-button pattern: the name is the one real <button aria-expanded aria-controls aria-describedby=value + line 2>; its ::after
+//     line 2    ⧉ 1864109161555839 · ● Problem · Fix verb  +N         (ID first, muted, at every width; ⧉ sits in the indent, on hover / focus only)
+//   A healthy row is silent: a status with tone "ok" prints nothing (a screen-reader-only word instead), so line 2 is just the ID (and the
+//   context, if any) and the list shows only what needs a look. A problem row says the problem ONCE (the status word is the problem) and
+//   puts its fix, an underlined link without an icon, right after it; "+2 more" / "ещё 2" = further problems (all of them are in the
+//   expanded body).
+//   Stretched-button pattern: the name is the one real <button aria-expanded aria-controls aria-describedby=value + line 2 without the ID>; its ::after
 //   covers the whole row, so the whole row clicks like a button while the fix link and the copy button sit above it (z-index), no
 //   stopPropagation anywhere. The status, the value and "+N" sit above the cover too (tooltips, selectable text) and toggle on click via one
 //   listener on the head. A mouse click that ends a text selection inside the head does not toggle the row.
 //   Lazy body: the expanded body is built when the row opens and thrown away when it closes (100+ rows stay cheap); `open` lets the
-//   caller redraw an open row open. The body starts with an "ID ⧉" line that shows below 480 px only (there the collapsed row has no ID);
-//   from 480 px the collapsed row's copy button is the one, tabindex -1 while the row is closed (mouse) and tabbable once it is open.
+//   caller redraw an open row open. The body has no ID line: the copy button of line 2 is the one, tabindex -1 while the row is closed
+//   (mouse) and tabbable once it is open.
 
 import { t } from "./i18n.js";
 import "./strings/row.js";
@@ -116,12 +117,13 @@ export function whatToDo({ help, actions = [], skip = [], tone = "", owner, focu
 }
 
 // ---------- ID + copy ----------
-// id = { value, copiedMsg? }. Click copies and never toggles a row (the button sits above the row's covering ::after). The icon (LEFT of the
-// digits, so they end where the amount above them ends; shown on hover / focus only) turns into a ✓ for 1.5 s and the message goes to a live
-// region instead of a toast. tabbable = false on the collapsed row (mouse only; row() makes it tabbable while the row is open).
+// id = { value, copiedMsg? }. Click copies and never toggles a row (the button sits above the row's covering ::after). The icon (in the indent
+// left of the digits, css; shown on hover / focus only) turns into a ✓ for 1.5 s and the message goes to a live region instead of a toast.
+// tabbable = false on the collapsed row (mouse only; row() makes it tabbable while the row is open). The button's name is "Copy ID <id>".
 function idButton(id, { focus, tabbable = true }) {
   const icon = el("i", { class: "i i-copy", "aria-hidden": "true" });
-  const btn = el("button", { type: "button", class: "lrow-id", title: t("acc.copyId"), "aria-label": `${t("acc.copyId")} ${id.value}`,
+  const name = `${t("acc.copyId")} ${id.value}`;       // also the tooltip: in the tightest line the digits may end in an ellipsis (css), the tooltip has them all
+  const btn = el("button", { type: "button", class: "lrow-id", title: name, "aria-label": name,
     tabindex: tabbable ? null : "-1", "data-focus": focus,
     onclick: async () => {
       try { await navigator.clipboard.writeText(id.value); } catch { toast(t("copyFail"), true); return; }
@@ -135,16 +137,28 @@ function idButton(id, { focus, tabbable = true }) {
 }
 
 // ---------- line 2 fits its width ----------
-// The context item of line 2 ("3 ad accounts · 1 disabled") is the first to give way: it shrinks with an ellipsis (css), and when fewer than ~6
-// characters of it would be left it is dropped whole: "3…" says nothing and the problem word and its fix beside it are worth more. Measured
-// whenever the line has, or changes, its width (a ResizeObserver: a hidden tab has no width yet), all rows of one batch in three steps
-// (show every context, read, hide) so a long list costs one layout, not one per row.
-const MIN_CTX_PX = 44;
+// Line 2 never wraps and the fix and "+N" are never cut, so the others give way, in this order: the context, then the status word (both shrink
+// with an ellipsis, css; when fewer than ~6 characters of the context, or ~3 of the status word, would be left the item is dropped whole: "3…"
+// says nothing, and the fix beside it is worth more), and only then the ID, whose digits end in an ellipsis (css; its tooltip has them all).
+// A dropped item stays in the accessibility tree (rows.css hides it visually only: the description of the name button still reads it) and
+// takes its "·" with it. Measured whenever the line has, or changes, its width (a ResizeObserver: a hidden tab has no width yet), all rows of
+// one batch together (a few reads, then a few writes), so a long list costs a few layouts, not one per row.
+const MIN_CTX_PX = 44, MIN_STS_PX = 24;
 function fitSubs(subs) {
-  const items = subs.flatMap((s) => [...s.querySelectorAll(".lrow-it.ctx")]);
-  for (const it of items) it.hidden = false;
-  const cut = items.filter((it) => { const c = it.firstElementChild; return c.scrollWidth > c.clientWidth + 1 && c.clientWidth < MIN_CTX_PX; });
-  for (const it of cut) it.hidden = true;
+  const all = (cls) => subs.flatMap((s) => [...s.querySelectorAll(`.lrow-it.${cls}`)]);
+  const ctx = all("ctx"), sts = all("sts"), ids = subs.map((s) => s.querySelector(".lrow-idit"));
+  for (const it of [...ctx, ...sts]) it.hidden = false;
+  for (const it of ids) it?.classList.remove("cut");
+  const tight = (it, min, sel) => { const c = sel ? it.querySelector(sel) : it.firstElementChild; return c.scrollWidth > c.clientWidth + 1 && c.clientWidth < min; };
+  const cutCtx = ctx.filter((it) => tight(it, MIN_CTX_PX));
+  for (const it of cutCtx) it.hidden = true;                    // the context goes first: the status word may then have room again
+  const cutSts = sts.filter((it) => tight(it, MIN_STS_PX, ".lrow-status-text"));
+  for (const it of cutSts) it.hidden = true;
+  // The ID's own "·" is there only while something visible follows it.
+  subs.forEach((s, i) => ids[i]?.classList.toggle("dot", !!s.querySelector(".lrow-desc .lrow-it:not([hidden])")));
+  // The ID gives way last: only when nothing else can and the line still sticks out at its end.
+  const over = subs.map((s) => { const end = s.getBoundingClientRect().right + 0.5; return [...s.querySelectorAll(".lrow-it:not([hidden])")].some((it) => it.getBoundingClientRect().right > end); });
+  subs.forEach((s, i) => { if (over[i]) ids[i]?.classList.add("cut"); });
 }
 const fitter = typeof ResizeObserver === "function" ? new ResizeObserver((entries) => fitSubs(entries.map((e) => e.target))) : null;
 // A font that arrives after the first layout changes the width of every text without changing the width of the line: measure again then.
@@ -160,47 +174,50 @@ globalThis.document?.fonts?.addEventListener?.("loadingdone", () => fitSubs([...
 //   context  [string | Node]  muted items after the status, separated by "·" (Businesses: "3 ad accounts")
 //   fix      { label (i18n key), url, tip? }  the problem's fix, an underlined link after the status
 //   more     number of further problems → "+N"
-//   id       { value, copiedMsg? }  the ID (full, right of line 2, hidden below 480 px) + copy icon
+//   id       { value, copiedMsg? }  the ID + copy icon, first on line 2 (under the name, at every width)
 //   open     start open (the caller keeps state.open); onToggle(open) is called after a click
 //   body     () => Node[]  the expanded body, called each time the row opens (never while it is closed)
 // }) → the row element. Without `body` the row is flat: no chevron, no button.
 export function row({ key, avatar, name, value, valueTitle, valueMuted = false, status, context = [], fix, more = 0, id, open = false, onToggle, body }) {
   const k = String(key), n = ++uid, label = String(name ?? "");
   const expandable = typeof body === "function";
-  const subId = `lrow-sub-${n}`, valId = `lrow-val-${n}`, bodyId = `lrow-body-${n}`;
+  const descId = `lrow-desc-${n}`, valId = `lrow-val-${n}`, bodyId = `lrow-body-${n}`;
   const card = el("div", { class: `lrow${avatar ? " has-av" : ""}${expandable ? "" : " flat"}`, "data-row": k });
 
-  // line 2, left: status · context… · fix +N. Every item is one flex child, so only the status and the context ever shrink (ellipsis).
+  // line 2: ID · status · context… · fix +N. Every item is one flex child; the status and the context shrink first (ellipsis), see fitSubs.
   const tone = status?.tone || "";
-  const items = [];                                    // [node, isContext]
+  const items = [];                                    // [node, "sts" | "ctx"]: the two items that give way when line 2 is tight
   const silent = status && tone === "ok" ? el("span", { class: "sr-only" }, status.text) : null;   // a healthy row says nothing on screen
   if (status && !silent) items.push([el("span", { class: `lrow-status ${tone}`, title: status.title || null },
-    el("i", { class: "lrow-dot", "aria-hidden": "true" }), el("span", { class: "lrow-status-text" }, status.text)), false]);
-  for (const c of context || []) if (present(c)) items.push([c instanceof Node ? c : el("span", { class: "lrow-ctx" }, c), true]);
+    el("i", { class: "lrow-dot", "aria-hidden": "true" }), el("span", { class: "lrow-status-text" }, status.text)), "sts"]);
+  for (const c of context || []) if (present(c)) items.push([c instanceof Node ? c : el("span", { class: "lrow-ctx" }, c), "ctx"]);
   const fixEl = fix ? fixLink(fix, { tone: fix.tone || tone, focus: `rowfix:${k}`, owner: label }) : null;
   const moreEl = more > 0 ? el("span", { class: "lrow-more", title: t("row.moreTitle", { n: more }) }, t("row.more", { n: more })) : null;
-  const sub = items.length || fixEl || moreEl || silent
-    ? el("div", { class: "lrow-sub", id: subId }, silent, items.map(([i, ctx]) => el("span", { class: `lrow-it${ctx ? " ctx" : ""}` }, i)),
+  // The ID opens line 2 (under the name); the status, context and fix follow it, each after a "·" (the ID's own "·" only when something visible
+  // follows: a healthy row with no context is the ID alone). The ID is NOT part of the name button's description: that is the value + the rest
+  // of line 2 (.lrow-desc, display: contents, so its items are still flex items of line 2); otherwise a screen reader reads "111222333444555Ads policyAppeal".
+  const idHead = id ? idButton(id, { focus: `rowid:${k}`, tabbable: false }) : null;
+  const visible = items.length > 0 || !!fixEl || !!moreEl;
+  const desc = silent || visible
+    ? el("span", { class: "lrow-desc", id: descId }, silent, items.map(([i, kind]) => el("span", { class: `lrow-it ${kind}` }, i)),
       fixEl || moreEl ? el("span", { class: "lrow-it fixed" }, fixEl, moreEl) : null)
+    : null;
+  const sub = idHead || desc
+    ? el("div", { class: "lrow-sub" }, idHead ? el("span", { class: `lrow-it fixed lrow-idit${visible ? " dot" : ""}` }, idHead) : null, desc)
     : null;
 
   // The name button comes first in the DOM (tab order, reading order); everything else above it is positioned over its ::after.
   const nameEl = el("span", { class: "lrow-name", dir: "auto" }, label);
   const title = expandable
-    ? el("button", { type: "button", class: "lrow-title", title: label, "aria-expanded": String(!!open), "aria-controls": bodyId, "aria-describedby": [present(value) ? valId : null, sub ? subId : null].filter(Boolean).join(" ") || null,
+    ? el("button", { type: "button", class: "lrow-title", title: label, "aria-expanded": String(!!open), "aria-controls": bodyId, "aria-describedby": [present(value) ? valId : null, desc ? descId : null].filter(Boolean).join(" ") || null,
       "data-focus": `row:${k}`, onclick: (ev) => { if (ev.detail > 0 && selectedInHead()) return; toggle(); } },
     el("i", { class: "i i-chevron", "aria-hidden": "true" }), avatar ? avatarEl(avatar.kind, avatar.url) : null, nameEl)
     : el("span", { class: "lrow-title", title: label }, avatar ? avatarEl(avatar.kind, avatar.url) : null, nameEl);
-  const idHead = id ? idButton(id, { focus: `rowid:${k}`, tabbable: false }) : null;
-  // Nothing visible on line 2 (a healthy row: only the screen-reader word): below 480 px, where the ID is not there either, the name sits in the
-  // middle of the row's 68 px instead of at the top of an empty one (css .lrow-head.bare).
-  const bare = !(items.length || fixEl || moreEl);
-  const head = el("div", { class: `lrow-head${bare ? " bare" : ""}` }, title,
+  const head = el("div", { class: "lrow-head" }, title,
     present(value) ? el("span", { class: `lrow-value${valueMuted ? " muted" : ""}`, id: valId, title: valueTitle || null }, value) : null,
-    sub,
-    idHead ? el("span", { class: "lrow-idc" }, idHead) : null);
+    sub);
   card.append(head);
-  if (sub && fitter && sub.querySelector(".ctx")) fitter.observe(sub);
+  if (sub && fitter && visible) fitter.observe(sub);
   // The status, the value and "+N" sit above the covering ::after (so their tooltips and text selection work); a click on one of them
   // toggles like a click anywhere else on the row. The name button, the fix link and the copy button have their own behaviour.
   head.addEventListener("click", (ev) => {
@@ -218,11 +235,9 @@ export function row({ key, avatar, name, value, valueTitle, valueMuted = false, 
   function setOpen(next) {
     card.classList.toggle("open", next);
     title.setAttribute("aria-expanded", String(next));
-    if (idHead) idHead.tabIndex = next ? 0 : -1;       // from 480 px the ID is on the collapsed row: its copy button is for the keyboard once the row is open
+    if (idHead) idHead.tabIndex = next ? 0 : -1;       // the ID's copy button is for the keyboard once the row is open
     if (next && !bodyEl) {
-      bodyEl = el("div", { class: "lrow-body", id: bodyId },
-        id ? el("div", { class: "lrow-idline" }, el("span", { class: "lrow-idlabel" }, "ID"), idButton(id, { focus: `rowid2:${k}` })) : null,
-        (body() || []).filter(Boolean));
+      bodyEl = el("div", { class: "lrow-body", id: bodyId }, (body() || []).filter(Boolean));
       card.append(bodyEl);
     } else if (!next && bodyEl) { bodyEl.remove(); bodyEl = null; }
   }

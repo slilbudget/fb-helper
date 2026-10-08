@@ -2,7 +2,7 @@
    is specific to a business goes here. */
 
 /* Line 2: "3 ad accounts · 1 disabled": the disabled count is red, the rest muted. (When the line is too narrow the context gives way first,
-   on every tab: rows.css .lrow-it.ctx.) */
+   then the status word, on every tab: rows.css .lrow-it.ctx, row.js fitSubs.) */
 .lbm-dis { color: var(--color-error); }
 .lbm-sep { padding: 0 3px; }
 

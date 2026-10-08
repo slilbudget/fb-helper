@@ -1,9 +1,9 @@
 // Review round 1, "Fix B": the polish of the shared row and of the top zone, measured in the real popup. Row lab (a few rows built by row.js in the
-// popup page): ID aligned with the amounts, the copy icon on hover / focus only, equal heights, a context that cannot keep ~6 characters is dropped,
+// popup page): the ID first on line 2 under the name, the copy icon on hover / focus only, equal heights, a context that cannot keep ~6 characters is dropped,
 // an open row's name wraps, the link colour rule, weight 500 amounts, the fade-in of a body that was just opened, reduced motion, the contrast
 // tokens, focus rings, the logical properties. Real tabs (Graph is a mock): chips on one scrollable line, five periods in one row at 380 px, the
 // total on one line with its breakdown under it and a quiet attribution, a group header with the business's own picture.
-import { TOK, ok, has, boot, adsPage, popup, until, rowsAre, adsFb, ROW, ratesOk, done, settle, tr, trx, untilText, near } from "../harness.mjs";
+import { TOK, ok, has, boot, adsPage, popup, until, rowsAre, adsFb, ROW, ratesOk, done, settle, tr, trx, untilText, near, lineTwo } from "../harness.mjs";
 
 const FB = "https://scontent.xx.fbcdn.net/v/t39.30808-1/";
 const URL_REVIEW = "https://www.facebook.com/accountquality/", URL_ADS = "https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=111";
@@ -37,9 +37,9 @@ async function rowLabFlow() {
   await buildLab(pop);
   await until(pop, () => !!document.querySelector('#lab .lrow[data-row="pic"] .lav.ok'));
 
-  // ---- the ID ends where the amount ends; the copy icon is for hover / focus ----
-  const al = await q(pop, () => ["plain", "pic", "problem"].map((k) => { const v = document.querySelector(`#lab .lrow[data-row="${k}"] .lrow-value`).getBoundingClientRect(), t = document.querySelector(`#lab .lrow[data-row="${k}"] .lrow-head .lrow-idtext`).getBoundingClientRect(); return Math.abs(Math.round(v.right) - Math.round(t.right)); }));
-  ok("the ID digits end exactly where the amount above them ends (the copy icon is left of the digits, not right)", al.every((d) => d === 0), JSON.stringify(al));
+  // ---- the ID starts under the name; the copy icon is for hover / focus ----
+  const al = await q(pop, () => ["plain", "pic", "problem"].map((k) => { const n = document.querySelector(`#lab .lrow[data-row="${k}"] .lrow-name`).getBoundingClientRect(), t = document.querySelector(`#lab .lrow[data-row="${k}"] .lrow-head .lrow-idtext`).getBoundingClientRect(); return Math.round(t.left) - Math.round(n.left); }));
+  ok("the ID digits start exactly where the name's text starts, under it (with or without a picture); the copy icon is in the indent left of them, not on the line", al.every((d) => d === 0), JSON.stringify(al));
   const order = await q(pop, () => [...document.querySelector('#lab .lrow[data-row="plain"] .lrow-head .lrow-id').children].map((c) => c.className.split(" ")[0]));
   ok("…DOM order: icon first, digits second", order.join() === "i,lrow-idtext", order.join());
   const opIs = (k, want) => until(pop, ([sel, v]) => Number(getComputedStyle(document.querySelector(`${sel} .lrow-head .lrow-id .i`)).opacity) === v, [R(k), want]);       // the fade of the copy icon has ended
@@ -62,12 +62,16 @@ async function rowLabFlow() {
   // ---- the context that cannot keep ~6 characters is dropped ----
   await pop.setViewportSize({ width: 380, height: 900 }); await settle(pop);
   const fit = await q(pop, () => Object.fromEntries(["tight", "roomy", "pic"].map((k) => { const it = document.querySelector(`#lab .lrow[data-row="${k}"] .lrow-it.ctx`), c = it.firstElementChild;
-    return [k, { hidden: it.hidden, shown: getComputedStyle(it).display !== "none", w: Math.round(c.clientWidth), cut: c.scrollWidth > c.clientWidth }]; })));
-  const mid = await q(pop, () => { const r = document.querySelector('#lab .lrow[data-row="plain"]'), hd = r.querySelector(".lrow-head").getBoundingClientRect(), n = r.querySelector(".lrow-name").getBoundingClientRect(); return { h: Math.round(hd.height), above: Math.round(n.top - hd.top), below: Math.round(hd.bottom - n.bottom) }; });
-  ok("below 480 px a row with nothing on line 2 is still 68 px high, its name in the middle of it (not at the top of an empty row)", near(mid.h, 68) && Math.abs(mid.above - mid.below) <= 2, JSON.stringify(mid));
+    return [k, { hidden: it.hidden, shown: it.getBoundingClientRect().width > 1, w: Math.round(c.clientWidth), cut: c.scrollWidth > c.clientWidth }]; })));
+  const quiet = await q(pop, () => { const at = (k) => { const r = document.querySelector(`#lab .lrow[data-row="${k}"]`), hd = r.querySelector(".lrow-head").getBoundingClientRect(), n = r.querySelector(".lrow-name").getBoundingClientRect(), t = r.querySelector(".lrow-idtext").getBoundingClientRect(); return { h: Math.round(hd.height), nameTop: Math.round(n.top - hd.top), idTop: Math.round(t.top - hd.top), items: [...r.querySelectorAll(".lrow-sub .lrow-it")].length }; };
+    return { plain: at("plain"), problem: at("problem") }; });
+  ok("below 480 px a healthy row has the ID on line 2 and nothing else (one item): 68 px high like the others, its name at the top and the ID on the second line at the same y as on a problem row (no centring, no hidden ID)",
+    quiet.plain.items === 1 && near(quiet.plain.h, 68) && quiet.plain.nameTop === quiet.problem.nameTop && quiet.plain.idTop === quiet.problem.idTop && quiet.plain.idTop > quiet.plain.nameTop + 12, JSON.stringify(quiet));
   ok("a long problem word + its fix leave the context less than ~6 characters: it is dropped whole (no '12…')", fit.tight.hidden && !fit.tight.shown, JSON.stringify(fit.tight));
   ok("…a context with room stays (cut by an ellipsis if need be, never below ~6 characters); a short one stays whole", !fit.roomy.hidden && fit.roomy.w >= 44 && !fit.pic.hidden && !fit.pic.cut, JSON.stringify(fit));
-  ok("…its '·' goes with it: line 2 of the tight row is 'status · fix' (no dangling separator)", await q(pop, () => { const sub = document.querySelector('#lab .lrow[data-row="tight"] .lrow-sub'); const visible = [...sub.querySelectorAll(".lrow-it")].filter((i) => getComputedStyle(i).display !== "none"); return visible.length === 2 && getComputedStyle(visible.at(-1), "::after").content === "none"; }));
+  ok("…its '·' goes with it: line 2 of the tight row is 'ID · status · fix' (no dangling separator); the roomy one keeps its context: 'ID · status · context · fix'",
+    (await lineTwo(pop, R("tight"))) === `9 · Verification rejected by the platform · ${tr("next.review")}` && (await lineTwo(pop, R("roomy"))) === `8 · Rejected · 12 ad accounts · 4 disabled · ${tr("next.review")}`, `${await lineTwo(pop, R("tight"))} // ${await lineTwo(pop, R("roomy"))}`);
+  ok("…the dropped context stays in the accessibility tree (visually hidden, not display: none): the row's description still reads it", await q(pop, () => { const r = document.querySelector('#lab .lrow[data-row="tight"]'); const d = document.getElementById(r.querySelector(".lrow-title").getAttribute("aria-describedby").split(" ").at(-1)); return d.textContent.includes("12 ad accounts") && getComputedStyle(r.querySelector(".lrow-it.ctx")).display !== "none"; }));
   await pop.setViewportSize({ width: 560, height: 900 }); await settle(pop);
   ok("…widen the window and it comes back (the line is measured again)", await q(pop, () => !document.querySelector('#lab .lrow[data-row="tight"] .lrow-it.ctx').hidden));
 

@@ -1,7 +1,9 @@
 // Ad accounts tab: API version, the account cache per FB user, dead sessions, ads, automatic load, all-time spend, layout.
-import { GRAPH, TOK, TOK2, ok, has, boot, adsPage, popup, text, until, rowsAre, resetLocks, clickToast, accountsJson, isAds, adsFb, boxWait, GONE, loadAccounts, openAds, stored, ROW, ratesOk, captureClipboard, clip, done, ACC, tr, PERIOD, adsLoadingRe, agoRe, idle, settle, trVar, trn, trx, untilText, useLang, waitFor, near } from "../harness.mjs";
+import { GRAPH, TOK, TOK2, ok, has, boot, adsPage, popup, text, until, rowsAre, resetLocks, clickToast, accountsJson, isAds, adsFb, boxWait, GONE, loadAccounts, openAds, stored, ROW, ratesOk, captureClipboard, clip, done, ACC, tr, PERIOD, adsLoadingRe, agoRe, idle, settle, trVar, trn, trx, untilText, useLang, waitFor, near, lineTwo } from "../harness.mjs";
 import { LINKS } from "../../fb-helper/js/links.js";
+import path from "node:path";
 
+const SHOT = process.env.ROWS_SHOT_DIR || "";                    // when set, screenshots of the list (Russian, 560 and 380 px) go there
 const SESSION = (c) => tr("err.session", { c });                    // the dead-session sentence as the popup writes it
 const KV = (...keys) => keys.map((k) => tr(k)).join();                // the labels of a row body, in order
 
@@ -685,10 +687,13 @@ async function listFlow() {
   for (const id of ["1001", "1002", "2001", "3001", "4001"]) {
     ok(`${R(id).name}: healthy = silent (no dot, no word, no link; 'Active' only for screen readers)`, R(id).status === null && R(id).sr === tr("status.1") && R(id).fix === null && R(id).more === null, JSON.stringify(R(id)));
   }
-  ok("the right column: amount on line 1, the full ID on line 2", R("1001").value === "$1,241" && R("1001").id2 === "1001" && R("1002").value === "$215.30" && R("2001").value === "€680.40" && R("3001").value === "VND 25M", JSON.stringify([R("1001").value, R("1002").value, R("2001").value, R("3001").value]));
+  ok("the amount on line 1 (right), the full ID first on line 2 (left, under the name)", R("1001").value === "$1,241" && R("1001").id2 === "1001" && R("1002").value === "$215.30" && R("2001").value === "€680.40" && R("3001").value === "VND 25M", JSON.stringify([R("1001").value, R("1002").value, R("2001").value, R("3001").value]));
   ok("zero spend is muted, spend is not", R("1003").value === "$0" && R("1003").muted && !R("1001").muted);
   ok("a non-USD amount says its USD value in the tooltip (rates known; a million of VND is short on the row, so its exact amount comes first), a USD one has none", R("3001").valueTitle.replace(/\s+/g, " ") === "VND 25,000,000 ≈ $1,000" && R("2001").valueTitle === "≈ $850.50" && R("1001").valueTitle === null, JSON.stringify([R("3001").valueTitle, R("2001").valueTitle, R("1001").valueTitle]));
 
+  ok("line 2 as it is drawn: a healthy row is the ID alone (no '·' after it); a problem row is 'ID · word · fix', with '+N' after the fix",
+    (await lineTwo(pop, `${ROW}[data-row="1001"]`)) === "1001" && (await lineTwo(pop, `${ROW}[data-row="1003"]`)) === `1003 · ${tr("reason.1")} · ${tr("next.review")}`
+    && (await lineTwo(pop, `${ROW}[data-row="2003"]`)) === `2003 · ${tr("reason.15")} · ${tr("next.secure")}${tr("row.more", { n: 1 })}`, `${await lineTwo(pop, `${ROW}[data-row="1001"]`)} // ${await lineTwo(pop, `${ROW}[data-row="1003"]`)} // ${await lineTwo(pop, `${ROW}[data-row="2003"]`)}`);
   // problem words + ONE fix link each
   const FIX = { "1003": [tr("reason.1"), "bad", tr("next.review"), "https://www.facebook.com/accountquality/"], "2002": [tr("status.3"), "warn", tr("next.pay"), LINKS.billing("2002")],
     "2003": [tr("reason.15"), "bad", tr("next.secure"), LINKS.hacked()], "2004": [tr("status.restricted"), "warn", tr("next.requestReview"), LINKS.accountQuality()],
@@ -783,6 +788,8 @@ async function listRuFlow() {
   ok("RU: the tab is 'Кабинеты'", await until(pop, (s) => document.querySelector("#tabbtn-accounts").textContent.trim() === s, tr("tab.accounts")));
   const d = await dump(pop);
   const R = (id) => d.find((x) => x.id === id);
+  if (SHOT) for (const w of [560, 380]) { await pop.setViewportSize({ width: w, height: 900 }); await settle(pop); await pop.screenshot({ path: path.join(SHOT, `accounts-ru-${w}.png`), fullPage: true }); }
+  await pop.setViewportSize({ width: 560, height: 900 }); await settle(pop);
   ok("RU: group 'Личные кабинеты', words and fix verbs (Правила рекламы · Апелляция, Долг · Оплатить, Взлом · Защитить ещё 1, Нет доступа · Назначить себя, Ограничен · Запросить проверку, На проверке, Отсрочка, Закрыт, Закрыт навсегда)",
     d.some((x) => x.g === tr("acc.personal")) && JSON.stringify([R("1003"), R("2002"), R("2003"), R("3003"), R("2004"), R("3002"), R("4002"), R("1004"), R("3004")].map((x) => [x.status, x.fix, x.more]))
       === JSON.stringify([[tr("reason.1"), tr("next.review"), null], [tr("status.3"), tr("next.pay"), null], [tr("reason.15"), tr("next.secure"), tr("row.more", { n: 1 })], [tr("acc.noAccess"), tr("next.assign"), null], [tr("status.restricted"), tr("next.requestReview"), null], [tr("status.7"), tr("next.quality"), null], [tr("status.9"), tr("next.pay"), null], [tr("status.101"), null, null], [tr("reason.7"), null, null]]), JSON.stringify(d.map((x) => x.status)));
@@ -813,12 +820,12 @@ async function bodyFlow() {
     return { children: [...bd.children].map((c) => c.className.split(" ")[0]), kvs, cols: bd.querySelector(".lrow-kv") && getComputedStyle(bd.querySelector(".lrow-kv")).gridTemplateColumns.split(" ").length,
       todo: todo && { title: todo.querySelector(".lrow-todo-title").textContent, cls: todo.className, help: todo.querySelector(".lrow-todo-help")?.textContent ?? null, links: [...todo.querySelectorAll("a")].map((a) => [a.textContent.trim(), a.href]) },
       meta: bd.querySelector(".lrow-meta")?.textContent.trim() ?? null,
-      links: [...bd.querySelectorAll(".lrow-links a")].map((a) => [a.textContent.trim(), a.href, !!a.querySelector(".i-external")]), idline: bd.querySelector(".lrow-idline")?.textContent.replace(/\s+/g, " ").trim(), ads: !!bd.querySelector(".ads-sec .ads-toggle") };
+      links: [...bd.querySelectorAll(".lrow-links a")].map((a) => [a.textContent.trim(), a.href, !!a.querySelector(".i-external")]), idIn: !!bd.querySelector(".lrow-idline, .lrow-id"), ads: !!bd.querySelector(".ads-sec .ads-toggle") };
   }, rowSel(id));
 
   await open("1001");
   let bd = await body("1001");
-  ok("a full account: ID line, the facts, ONE muted line of small facts, the two places, then the Ads section (no 'What to do' for a healthy one)", JSON.stringify(bd.children) === JSON.stringify(["lrow-idline", "lrow-kv", "lrow-meta", "lrow-links", "ads-sec"]) && bd.todo === null && bd.ads, JSON.stringify(bd.children));
+  ok("a full account: the facts, ONE muted line of small facts, the two places, then the Ads section (no ID line: the ID is on line 2; no 'What to do' for a healthy one)", JSON.stringify(bd.children) === JSON.stringify(["lrow-kv", "lrow-meta", "lrow-links", "ads-sec"]) && !bd.idIn && bd.todo === null && bd.ads, JSON.stringify(bd.children));
   ok("…Clicks · CPC · Spent · To pay · Billing threshold · Daily limit · Payment · Pixels (Spend cap only when one is set: none here; timezone, country and creation date are the muted line)", bd.kvs.map((x) => x[0]).join() === KV("acc.clicksCpc", "acc.spent", "acc.balance", "acc.threshold", "acc.daily", "acc.funding", "acc.pixels"), bd.kvs.map((x) => x[0]).join());
   const kv = Object.fromEntries(bd.kvs);
   ok("…with the values: 310 clicks · $4.00 per click, spent $11,165, to pay $120.00, threshold $250.00, limit $2,500, Visa, the pixel",
@@ -826,7 +833,7 @@ async function bodyFlow() {
     && kv[tr("acc.funding")] === "Visa ·· 4242" && kv[tr("acc.pixels")] === "Main pixel · 55501", JSON.stringify(kv));
   ok("…the muted line: 'UTC+3 <city> · US · created Mar 4, 2025' (one line, 12 px, secondary grey)", new RegExp(`^UTC\\+3 \\S.* · US · ${trx("acc.createdOn", { d: "Mar 4, 2025" }).source}$`).test(bd.meta), String(bd.meta));
   ok("…and not one value is a dash", bd.kvs.every((x) => x[1] && x[1] !== "—"));
-  ok("the body starts with the ID and its copy button, 'Ads Manager ↗ · Billing ↗' keep their icons and go to this account", bd.idline === "ID1001" && JSON.stringify(bd.links) === JSON.stringify([[tr("next.adsManager"), LINKS.adsManager("1001"), true], [tr("next.billing"), LINKS.billing("1001"), true]]), JSON.stringify(bd.links));
+  ok("the body has no ID line (the ID with its copy button is first on line 2 of the row); 'Ads Manager ↗ · Billing ↗' keep their icons and go to this account", !bd.idIn && JSON.stringify(bd.links) === JSON.stringify([[tr("next.adsManager"), LINKS.adsManager("1001"), true], [tr("next.billing"), LINKS.billing("1001"), true]]), JSON.stringify(bd.links));
   ok("two columns at 560 px", bd.cols === 2, String(bd.cols));
   await pop.setViewportSize({ width: 380, height: 900 });
   ok("one column at 380 px", (await body("1001")).cols === 1);
@@ -884,12 +891,14 @@ async function listLayoutFlow() {
     const m = await pop.evaluate(() => {
       const de = document.documentElement;
       const rows = [...document.querySelectorAll("#accountsList .lrow")].sort((a, b) => a.dataset.row - b.dataset.row).map((r) => { const hd = r.querySelector(".lrow-head").getBoundingClientRect(), sub = r.querySelector(".lrow-sub"), nm = r.querySelector(".lrow-name"), fix = r.querySelector(".lrow-fix"), val = r.querySelector(".lrow-value");
-        return { h: Math.round(hd.height), subH: sub ? Math.round(sub.getBoundingClientRect().height) : 0, cut: nm.scrollWidth > nm.clientWidth, fixOk: !fix || fix.getBoundingClientRect().right <= sub.getBoundingClientRect().right + 1, valRight: Math.round(hd.right - val.getBoundingClientRect().right) }; });
+        return { h: Math.round(hd.height), subH: sub ? Math.round(sub.getBoundingClientRect().height) : 0, cut: nm.scrollWidth > nm.clientWidth, fixOk: !fix || fix.getBoundingClientRect().right <= sub.getBoundingClientRect().right + 1, valRight: Math.round(hd.right - val.getBoundingClientRect().right),
+          idX: Math.round(r.querySelector(".lrow-idtext").getBoundingClientRect().left - nm.getBoundingClientRect().left), idCut: r.querySelector(".lrow-idtext").scrollWidth > r.querySelector(".lrow-idtext").clientWidth }; });
       const groups = [...document.querySelectorAll("#accountsList .lgroup")].map((g) => { const t = g.querySelector(".lgroup-text"); return { cut: t.scrollWidth > t.clientWidth, over: g.scrollWidth > g.clientWidth + 1 }; });
       return { sw: de.scrollWidth, cw: de.clientWidth, rows, groups };
     });
     ok(`${w}px: no horizontal scroll`, m.sw <= m.cw, JSON.stringify([m.sw, m.cw]));
     ok(`${w}px: every row is two lines (all the same height: 68 px), line 2 never wraps (≤ 24 px), the amount is 16 px from the edge`, m.rows.every((r) => near(r.h, 68) && r.subH <= 24 && r.valRight === 16), JSON.stringify(m.rows));
+    ok(`${w}px: the full ID is the first thing on line 2 of every row, starting under the name (no hidden ID at any width)`, m.rows.every((r) => r.idX === 0 && !r.idCut), JSON.stringify(m.rows));
     ok(`${w}px: long names end in an ellipsis; the fix link stays inside line 2; long business names are cut, not wrapped`, m.rows[0].cut && m.rows.every((r) => r.fixOk) && m.groups.every((g) => !g.over) && m.groups[0].cut, JSON.stringify([m.rows.map((r) => r.cut), m.groups]));
   }
   await pop.setViewportSize({ width: 560, height: 300 });

@@ -249,6 +249,13 @@ export const captureClipboard = (p) => p.evaluate(() => { window.__clip = []; na
 // The clipboard refuses (permission, no focus): every writeText rejects. For the "could not copy" paths.
 export const failClipboard = (p) => p.evaluate(() => { window.__clip = []; navigator.clipboard.writeText = async () => { throw new DOMException("denied", "NotAllowedError"); }; });
 export const clip = (p) => p.evaluate(() => window.__clip);
+// Line 2 of a list row (the first element matching rowSel) as it is DRAWN: its visible items in order, each with the "·" that rows.css puts before or after it
+// (generated content is not in the DOM text): "1864109161555839 · 3 ad accounts", "1001 · Ads policy · Appeal+2 more". An item the line had no room for is left out.
+export const lineTwo = (p, rowSel) => p.evaluate((sel) => {
+  const sub = document.querySelector(`${sel} .lrow-sub`);
+  const gen = (el, pseudo) => { const c = getComputedStyle(el, pseudo).content; return c === "none" || c === "normal" ? "" : c.replace(/^"|"$/g, ""); };
+  return [...sub.querySelectorAll(".lrow-it")].filter((i) => !i.hidden).map((i) => [gen(i, "::before"), i.textContent.trim(), gen(i, "::after")].filter(Boolean).join(" ")).join(" ");
+}, rowSel);
 export const accountsJson = { data: [{ account_id: "111", name: "Acc A", account_status: 1, currency: "USD", timezone_name: "UTC", amount_spent: "500" }] };
 export const isAds = (u) => /\/act_\d+\/ads$/.test(u.pathname);
 export const adsFb = (tok) => (u) => u.hostname.startsWith("adsmanager") && tok ? `<script>window.__accessToken=${JSON.stringify(tok)}</script>ads` : "<p>feed</p>";

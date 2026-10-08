@@ -133,9 +133,9 @@ async function accountWords() {
     periods: ["Today", "Yesterday", "7 days", "30 days", "All time"], controls: ["Search", "Active IDs", "Refresh · updated <age>"], total: "Spend $8,000",
     chips: ["Active 1", "Disabled 2", "Unpaid 1", "Restricted 1", "No access 1", "In review 1", "Closed 1"],
   });
-  golden("Ad accounts tab: the groups and every row as it reads (name, amount, the problem word, its one fix, '+N more', the ID)", { groups: await seen(pop, "#accountsList .lgroup"), rows: await seen(pop, "#accountsList .lrow-head") }, {
+  golden("Ad accounts tab: the groups and every row as it reads (name, amount, then line 2: the ID first, the problem word, its one fix, '+N more')", { groups: await seen(pop, "#accountsList .lgroup"), rows: await seen(pop, "#accountsList .lrow-head") }, {
     groups: ["Tailspin Toys · 3 $3,000", "Contoso Ads · 1 $1,000", "Personal ad accounts · 4 $4,000"],
-    rows: ["A healthy one $1,000 Active 1", "A disabled one $1,000 Ads policy Appeal 2", "An unpaid one $1,000 Unpaid Pay 3", "Not assigned $1,000 No access Assign me 8", "A compromised one $1,000 Compromised Secure +1 more 6", "A restricted one $1,000 Restricted Request review 4", "One in review $1,000 In review Account Quality 5", "A closed one $1,000 Closed 7"],
+    rows: ["A healthy one $1,000 1 Active", "A disabled one $1,000 2 Ads policy Appeal", "An unpaid one $1,000 3 Unpaid Pay", "Not assigned $1,000 8 No access Assign me", "A compromised one $1,000 6 Compromised Secure +1 more", "A restricted one $1,000 4 Restricted Request review", "One in review $1,000 5 In review Account Quality", "A closed one $1,000 7 Closed"],
   });
   // the body of a row with a problem, and its ads
   await pop.click(`${ROW}[data-row="2"] .lrow-title`);
@@ -203,9 +203,9 @@ async function bmsWords() {
   golden("Businesses tab: the controls, the periods, the total line", {
     controls: [await pop.getAttribute("#bmFilter", "placeholder"), ages(await pop.getAttribute("#loadBms", "title"))], periods: await seen(pop, "#bmsPeriod .seg-btn"), total: dates(await one(pop, "#bmsTotal")),
   }, { controls: ["Search", "Refresh businesses and spend · updated <age>"], periods: ["Today", "Yesterday", "7 days", "30 days", "All time"], total: "Spend · <date> ≈ $227.00 $142.00 + €60.00 +1 more · rates <date> · ExchangeRate-API" });
-  golden("Businesses tab: every row as it reads (name, the one problem word and its fix, '+N more', the counts, the amount, the ID)", { rows: await seen(pop, "#bmsList .lrow-head") }, {
-    rows: ["Alpha Media $100.00 + €50.00 Active 3 ad accounts · 1 disabled 1001", "Delta Co ≈ $47.50 Active 3 ad accounts 1004", "Beta Ads $10.00 Unverified 1 ad account · 1 disabled Verify +1 more 1002", "Partner Agency $7.00 Active 1 ad account 9999",
-      "Epsilon Digital $0 None active 2 ad accounts · 1 disabled 1005", "Gamma Group — No ad accounts Create account 1003"],
+  golden("Businesses tab: every row as it reads (name, the amount, then line 2: the ID first, the one problem word and its fix, '+N more', the counts)", { rows: await seen(pop, "#bmsList .lrow-head") }, {
+    rows: ["Alpha Media $100.00 + €50.00 1001 Active 3 ad accounts · 1 disabled", "Delta Co ≈ $47.50 1004 Active 3 ad accounts", "Beta Ads $10.00 1002 Unverified 1 ad account · 1 disabled Verify +1 more", "Partner Agency $7.00 9999 Active 1 ad account",
+      "Epsilon Digital $0 1005 None active 2 ad accounts · 1 disabled", "Gamma Group — 1003 No ad accounts Create account"],
   });
   await pop.click('#bmsList .lrow:has(.lrow-name:text-is("Beta Ads")) .lrow-title');
   golden("Businesses tab: an opened row (the counts, the jump button, verification, What to do with both helps and every step, the places)", { body: await one(pop, "#bmsList .lrow.open .lrow-body") }, {
@@ -228,10 +228,10 @@ async function pagesWords() {
   await rowsAre(pop, "#pagesList .lrow", 9); await idle(pop, "#tab-pages");
   golden("Pages tab: the controls, the chips, the count", { controls: [await pop.getAttribute("#pageFilter", "placeholder"), ages(await pop.getAttribute("#loadPages", "title"))], chips: await seen(pop, "#pagesChips .chip"), total: await one(pop, "#pagesTotal") },
     { controls: ["Search", "Refresh · updated <age>"], chips: ["No access 4", "Unpublished 3", "Can't advertise 2", "No Instagram 3"], total: "" });
-  golden("Pages tab: every row as it reads (name, handle, the worst problem and its one fix, '+N more', the ID)", { rows: await seen(pop, "#pagesList .lrow-head") }, {
-    rows: ["Backed Page Ready IG via page 100000000000003", "Nova Travel Blog @nova.travel Ready 100000000000001", "Client Fashion House @client.fashion No access Assign me +1 more 100000000000008", "Harbor Bakery @harbor.bakery No access Assign me 100000000000007",
-      "Hidden Page No access Assign me +3 more 100000000000004", "Wingtip Gadgets No access Assign me +1 more 100000000000009", "Draft Page @draft.page Unpublished Publish 100000000000005", "Orion Studio @orion.studio Can't advertise Appeal 100000000000006",
-      "Fresh Page No Instagram Set “Use Facebook Page” 100000000000002"],
+  golden("Pages tab: every row as it reads (name, handle, then line 2: the ID first, the worst problem and its one fix, '+N more')", { rows: await seen(pop, "#pagesList .lrow-head") }, {
+    rows: ["Backed Page 100000000000003 Ready IG via page", "Nova Travel Blog @nova.travel 100000000000001 Ready", "Client Fashion House @client.fashion 100000000000008 No access Assign me +1 more", "Harbor Bakery @harbor.bakery 100000000000007 No access Assign me",
+      "Hidden Page 100000000000004 No access Assign me +3 more", "Wingtip Gadgets 100000000000009 No access Assign me +1 more", "Draft Page @draft.page 100000000000005 Unpublished Publish", "Orion Studio @orion.studio 100000000000006 Can't advertise Appeal",
+      "Fresh Page 100000000000002 No Instagram Set “Use Facebook Page”"],
   });
   await pop.click(`#pagesList .lrow[data-row="${pagesFx.ids.hidden}"] .lrow-title`);
   golden("Pages tab: an opened row (every problem with its fix, the places)", { body: await one(pop, `#pagesList .lrow[data-row="${pagesFx.ids.hidden}"] .lrow-body`) }, { body: "What to do No access Assign me Unpublished Publish Can't advertise Appeal No Instagram Set “Use Facebook Page” Page · Business Suite" });

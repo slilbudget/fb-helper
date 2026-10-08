@@ -129,14 +129,14 @@ async function actionsLayoutFlow() {
     await settle(pop);
     const m = await pop.evaluate(() => {
       const de = document.documentElement, r = (n) => n.getBoundingClientRect();
-      const heads = [...document.querySelectorAll("#accountsList .lrow-head")].map((h) => { const fix = h.querySelector(".lrow-fix"), sub = h.querySelector(".lrow-sub"), idc = h.querySelector(".lrow-idc");
-        return { h: r(h), fix: fix && r(fix), sub: sub && r(sub), idc: idc && getComputedStyle(idc).display !== "none" ? r(idc) : null, value: r(h.querySelector(".lrow-value")), name: r(h.querySelector(".lrow-name")) }; });
+      const heads = [...document.querySelectorAll("#accountsList .lrow-head")].map((h) => { const fix = h.querySelector(".lrow-fix"), sub = h.querySelector(".lrow-sub"), id = h.querySelector(".lrow-id");
+        return { h: r(h), fix: fix && r(fix), sub: sub && r(sub), id: id && r(id), value: r(h.querySelector(".lrow-value")), name: r(h.querySelector(".lrow-name")) }; });
       const box = document.querySelector("#accountsList .lrow.open .lrow-todo");
       return { sw: de.scrollWidth, cw: de.clientWidth, heads, box: r(box), labels: [...document.querySelectorAll("#accountsList .lrow-head .lrow-fix .act-label")].map((l) => ({ t: l.textContent, cut: l.scrollWidth > l.clientWidth })) };
     });
     const touch = (a, c) => a.left < c.right && a.right > c.left && a.top < c.bottom && a.bottom > c.top;
     ok(`${w}px: no horizontal scroll`, m.sw <= m.cw, `${m.sw} > ${m.cw}`);
-    ok(`${w}px: every fix link stays inside line 2 of its row and never overlaps the ID or the amount`, m.heads.every((x) => !x.fix || (x.fix.right <= x.sub.right + 1 && x.fix.right <= x.h.right + 0.5 && !(x.idc && touch(x.fix, x.idc)) && !touch(x.fix, x.value))), JSON.stringify(m.heads.map((x) => x.fix)));
+    ok(`${w}px: every fix link stays inside line 2 of its row and never overlaps the ID or the amount`, m.heads.every((x) => !x.fix || (x.fix.right <= x.sub.right + 1 && x.fix.right <= x.h.right + 0.5 && !(x.id && touch(x.fix, x.id)) && !touch(x.fix, x.value))), JSON.stringify(m.heads.map((x) => x.fix)));
     ok(`${w}px: the link labels are readable (not cut with "…")`, m.labels.length === 3 && m.labels.every((l) => !l.cut), JSON.stringify(m.labels));
     ok(`${w}px: the 'What to do' block is inside the window`, m.box.left >= 0 && m.box.right <= m.cw + 0.5, JSON.stringify(m.box));
     ok(`${w}px: line 2 is one line`, m.heads.every((x) => !x.sub || x.sub.height <= 24), JSON.stringify(m.heads.map((x) => x.sub?.height)));

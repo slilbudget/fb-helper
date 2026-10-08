@@ -5,7 +5,7 @@
 // session / API pause / no token, paging, RU / EN, layout. Graph is a mock (fictional data); every /me/businesses request is checked to
 // be a GET that never asks for a token field.
 import path from "node:path";
-import { GRAPH, TOK, TOK2, ok, has, boot, adsPage, popup, text, until, rowsAre, resetLocks, clickToast, captureClipboard, clip, accountsJson, adsFb, stored, boxWait, ratesOk, done, PERIOD, esc, idle, settle, tr, trVar, trn, trx, untilText, waitFor, autoDone, useLang } from "../harness.mjs";
+import { GRAPH, TOK, TOK2, ok, has, boot, adsPage, popup, text, until, rowsAre, resetLocks, clickToast, captureClipboard, clip, accountsJson, adsFb, stored, boxWait, ratesOk, done, PERIOD, esc, idle, settle, tr, trVar, trn, trx, untilText, waitFor, autoDone, useLang, lineTwo } from "../harness.mjs";
 import { LINKS } from "../../fb-helper/js/links.js";
 
 const SHOT = process.env.BMS_SHOT_DIR || "";               // when set, screenshots of the tab go there
@@ -76,7 +76,9 @@ const rowOf = (p, name) => p.evaluate(([sel, n]) => {
     ctx: [...r.querySelectorAll(".lrow-ctx")].map((x) => clean(x.textContent)), disabled: [...r.querySelectorAll(".lrow-ctx .lbm-dis")].map((x) => ({ text: clean(x.textContent), color: getComputedStyle(x).color })),
     fix: link(r.querySelector(".lrow-sub .lrow-fix")), fixes: r.querySelectorAll(".lrow-sub .lrow-fix").length, more: r.querySelector(".lrow-more")?.textContent ?? null,
     value: val ? clean(val.textContent) : null, valueMuted: !!val?.classList.contains("muted"), valueTitle: val?.title ?? null,
-    id: r.querySelector(".lrow-head .lrow-id")?.textContent.trim() ?? null, sub: sub ? clean(sub.textContent) : "",
+    id: r.querySelector(".lrow-head .lrow-id")?.textContent.trim() ?? null, sub: sub ? clean(sub.textContent) : "", desc: clean(r.querySelector(".lrow-desc")?.textContent ?? ""),
+    idFirst: !!sub?.firstElementChild?.querySelector(".lrow-id"), idNameX: Math.round(r.querySelector(".lrow-idtext").getBoundingClientRect().left - r.querySelector(".lrow-name").getBoundingClientRect().left),
+    sep: ((i) => i && getComputedStyle(i, "::after").content)(sub?.querySelector(".lrow-idit")),
     pills: r.querySelectorAll(".pill").length, boxed: r.querySelectorAll(".btn").length,
   };
 }, [ROW, name]);
@@ -94,7 +96,7 @@ const bodyOf = (p, name) => p.evaluate(([sel, n]) => {
     kvTitles: Object.fromEntries([...bd.querySelectorAll(".lrow-pair")].map((x) => [clean(x.querySelector("dt").textContent), x.querySelector("dd").title])),
     todo: todo && { title: todo.querySelector(".lrow-todo-title").textContent, help: clean(todo.querySelector(".lrow-todo-help")?.textContent ?? ""), links: [...todo.querySelectorAll("a")].map(link), tone: ["bad", "warn"].find((c) => todo.classList.contains(c)) || "", bg: getComputedStyle(todo).backgroundColor },
     links: [...bd.querySelectorAll(".lrow-links a")].map(link),
-    go: go && { text: go.textContent.trim(), tag: go.tagName, focus: go.dataset.focus, title: go.title }, idline: clean(bd.querySelector(".lrow-idline")?.textContent ?? ""),
+    go: go && { text: go.textContent.trim(), tag: go.tagName, focus: go.dataset.focus, title: go.title }, idIn: !!bd.querySelector(".lrow-idline, .lrow-id"), first: bd.firstElementChild?.className,
   };
 }, [ROW, name]);
 const row = (p, name) => p.locator(ROW).filter({ has: p.locator(".lrow-name", { hasText: name }) });
@@ -135,7 +137,8 @@ async function bmsFlow() {
 
   // a healthy row is silent
   const alpha = await rowOf(pop, "Alpha Media");
-  ok("Alpha (3 ad accounts, one disabled): nothing on screen but the context; the state word is there for screen readers only", alpha.status === null && alpha.sr === tr("bms.st.active") && alpha.fixes === 0 && alpha.more === null && alpha.sub === `${tr("bms.st.active")}${ctxText(3, 1)}`, JSON.stringify(alpha));
+  ok("Alpha (3 ad accounts, one disabled): line 2 is the ID, then the context; the state word is there for screen readers only", alpha.status === null && alpha.sr === tr("bms.st.active") && alpha.fixes === 0 && alpha.more === null && alpha.id === "1001" && alpha.sub === `1001${tr("bms.st.active")}${ctxText(3, 1)}`, JSON.stringify(alpha));
+  ok("…the ID comes first, starts under the name, and has its '·' (the context follows it); the button's description is the amount + the state word + the context, without the ID", alpha.idFirst && alpha.idNameX === 0 && alpha.sep === '"·"' && alpha.desc === `${tr("bms.st.active")}${ctxText(3, 1)}`, JSON.stringify(alpha));
   ok("…'3 ad accounts · 1 disabled': the disabled count in red, the rest muted", alpha.ctx.join("|") === ctxText(3, 1) && alpha.disabled.length === 1 && alpha.disabled[0].text === `1 ${trn(1, "bms.disabledWord")}` && alpha.disabled[0].color === "rgb(207, 33, 39)", JSON.stringify([alpha.ctx, alpha.disabled]));
   ok("…the amount of today on the right (exact, two currencies), the ID under it, no pill", alpha.value === TODAY.Alpha && !alpha.valueMuted && alpha.id === "1001" && alpha.pills === 0, JSON.stringify(alpha));
   // problems: one word, one fix
@@ -151,6 +154,10 @@ async function bmsFlow() {
   const eps = await rowOf(pop, "Epsilon Digital");
   ok("Epsilon (a disabled and a closed account): 'None active' (red), no fix on the line, '2 ad accounts · 1 disabled', '$0' muted (zero spend, not a dash)", eps.status?.text === tr("bms.st.noActive") && eps.status.tone === "bad" && eps.fixes === 0 && eps.more === null
     && eps.ctx.join("|") === ctxText(2, 1) && eps.value === "$0" && eps.valueMuted, JSON.stringify(eps));
+  const drawn = {}; for (const r of [alpha, beta, gamma, eps]) drawn[r.key] = await lineTwo(pop, `${ROW}[data-row="${r.key}"]`);
+  ok("line 2 as it is drawn: 'ID · context' (healthy), 'ID · word · context · fix+N', 'ID · word · fix' (no context), 'ID · word · context' (no fix): one '·' between visible parts, none dangling",
+    drawn[alpha.key] === `1001 · ${ctxText(3, 1)}` && drawn[beta.key] === `1002 · ${tr("bms.st.unverified")} · ${ctxText(1, 1)} · ${tr("bms.fix.verify")}${tr("row.more", { n: 1 })}`
+    && drawn[gamma.key] === `1003 · ${tr("bms.st.none")} · ${tr("bms.fix.create")}` && drawn[eps.key] === `1005 · ${tr("bms.st.noActive")} · ${ctxText(2, 1)}`, JSON.stringify(drawn));
   const partner = await rowOf(pop, "Partner Agency");
   ok("Partner (named by a client account, not a business of the profile): silent, exact spend, its one account", partner.status === null && partner.sr === tr("bms.st.active") && partner.value === TODAY.Partner && partner.ctx.join("|") === ctxText(1), JSON.stringify(partner));
   const delta = await rowOf(pop, "Delta Co");
@@ -399,7 +406,7 @@ async function bmsAccountsFlow() {
   await toggle(pop, "Alpha Media");
   const a = await bodyOf(pop, "Alpha Media");
   ok("Alpha: 'Ad accounts: 3 · 2 active · 1 disabled' + the 'Show ad accounts →' button (a real <button>), 'Verification: Verified'", a.kv.map((x) => x.join(": ")).join("|") === `${accLine(counts(3, 2, 1))}|${tr("bms.kv.verification")}: ${tr("bms.ver.verified")}` && a.go?.tag === "BUTTON" && a.go.text === tr("bms.show") && a.go.focus === "bm-go:1001", JSON.stringify(a));
-  ok("…no 'What to do' on a healthy row; the links row has Business settings only (↗, new tab, owner in its name); the ID line comes first with its copy button", a.todo === null && a.links.length === 1 && a.links[0].text === tr("bms.settings") && a.links[0].href === LINKS.bmSettings("1001") && a.links[0].icon && a.links[0].target === "_blank" && a.links[0].rel === "noopener noreferrer" && a.links[0].aria === `${tr("bms.settings")}: Alpha Media` && a.idline === "ID1001", JSON.stringify(a));
+  ok("…no 'What to do' on a healthy row; the links row has Business settings only (↗, new tab, owner in its name); no ID line in the body (the ID is on line 2)", a.todo === null && a.links.length === 1 && a.links[0].text === tr("bms.settings") && a.links[0].href === LINKS.bmSettings("1001") && a.links[0].icon && a.links[0].target === "_blank" && a.links[0].rel === "noopener noreferrer" && a.links[0].aria === `${tr("bms.settings")}: Alpha Media` && !a.idIn && a.first === "lrow-kv", JSON.stringify(a));
   ok("…the open state is kept across a redraw (period switch) and the body is rebuilt", await (async () => { await pop.click(PERIOD("yesterday", "#bmsPeriod")); return (await rowOf(pop, "Alpha Media")).open && !!(await bodyOf(pop, "Alpha Media")) && (await rowOf(pop, "Alpha Media")).value === "$80.00 + €40.00"; })());
   await pop.click(PERIOD("today", "#bmsPeriod"));
   // Beta: both problems in the body, the fix on line 2 is not repeated
@@ -707,15 +714,15 @@ async function bmsLayoutFlow() {
       const m = await pop.evaluate(() => {
         const de = document.documentElement, r = (n) => n.getBoundingClientRect(), rows = [...document.querySelectorAll("#bmsList .lrow")];
         return { sw: de.scrollWidth, cw: de.clientWidth, rowsOver: rows.filter((x) => x.scrollWidth > x.clientWidth + 0.5).length,
-          outside: rows.flatMap((x) => [...x.querySelectorAll(".lrow-head .lrow-fix, .lrow-value, .lrow-idc, .lav")].filter((n) => n.offsetWidth > 0 && (r(n).right > r(x).right - 15.5 || r(n).left < r(x).left + 15.5))).length,
+          outside: rows.flatMap((x) => [...x.querySelectorAll(".lrow-head .lrow-fix, .lrow-value, .lrow-id, .lav")].filter((n) => n.offsetWidth > 0 && (r(n).right > r(x).right - 15.5 || r(n).left < r(x).left + 15.5))).length,
           subWrap: rows.filter((x) => { const s = x.querySelector(".lrow-sub"); return s && r(s).height > 24; }).length, subCut: rows.filter((x) => { const s = x.querySelector(".lrow-sub"); return s && s.scrollWidth > s.clientWidth + 1; }).length,
           cut: [...document.querySelectorAll("#bmsList .lrow-fix .act-label")].filter((l) => l.scrollWidth > l.clientWidth).length,
           bodyOver: [...document.querySelectorAll("#bmsList .lrow-body")].filter((x) => x.scrollWidth > x.clientWidth + 0.5).length, tabsCut: [...document.querySelectorAll(".tab")].filter((t) => t.scrollWidth > t.clientWidth).length,
-          idHidden: getComputedStyle(document.querySelector("#bmsList .lrow-idc")).display === "none", heights: [...new Set(rows.map((x) => Math.round(r(x.querySelector(".lrow-head")).height)))].sort() };
+          idShown: rows.every((x) => { const t = x.querySelector(".lrow-idtext"), nm = x.querySelector(".lrow-name"); return r(t).width > 0 && Math.abs(r(t).left - r(nm).left) <= 1 && r(t).top >= r(nm).bottom - 4 && t.scrollWidth <= t.clientWidth; }), heights: [...new Set(rows.map((x) => Math.round(r(x.querySelector(".lrow-head")).height)))].sort() };
       });
       ok(`${lang} ${w}px: no horizontal scroll, no row or body wider than the window`, m.sw <= m.cw && m.rowsOver === 0 && m.bodyOver === 0, JSON.stringify(m));
       ok(`${lang} ${w}px: every fix, amount, ID and picture stays inside the 16 px gutters; line 2 never wraps or clips; no fix label is cut; no tab label is cut`, m.outside === 0 && m.subWrap === 0 && m.subCut === 0 && m.cut === 0 && m.tabsCut === 0, JSON.stringify(m));
-      ok(`${lang} ${w}px: the ID ${w < 480 ? "is hidden on collapsed rows" : "is shown on collapsed rows"}; collapsed rows are two lines (≤ 68 px)`, m.idHidden === (w < 480) && m.heights.every((h) => h <= 68), JSON.stringify(m));
+      ok(`${lang} ${w}px: the ID is whole and first on line 2 of every collapsed row, under the name, at every width; collapsed rows are two lines (≤ 68 px)`, m.idShown && m.heights.every((h) => h <= 68), JSON.stringify(m));
       if (SHOT) await pop.screenshot({ path: path.join(SHOT, `p4-bms-${lang}${w === 380 ? "-380" : ""}.png`), fullPage: true });
     }
   }

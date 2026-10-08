@@ -14,8 +14,7 @@
 .pg-prob-text.warn { color: var(--color-warning); }
 .pg-prob-text.bad { color: var(--color-error); }
 
-/* Below 480 px the problems in the body stand one per line, the fix wrapping under its word when the pair does not fit. (Line 2 spanning the
-   whole width there is rows.css's, for every list tab.) */
+/* Below 480 px the problems in the body stand one per line, the fix wrapping under its word when the pair does not fit. */
 @media (max-width: 479.98px) {
   .pg-probs { grid-template-columns: minmax(0, 1fr); }
   .pg-prob { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--spacing-3); }

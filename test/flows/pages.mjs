@@ -5,8 +5,11 @@
 // must never be kept (me/accounts AND business edges), problem chips, search, the shared row (silent healthy rows, the worst problem + one fix +
 // "+N", ID + copy, lazy body: other problems, Instagram, business, my access, links), avatars, no Copy IDs, language, per-user cache, layout.
 // Fictional data.
-import { GRAPH, TOK, ok, has, boot, adsPage, popup, text, until, rowsAre, resetLocks, clickToast, captureClipboard, clip, accountsJson, adsFb, boxWait, GONE, stored, done, PGS, tr, autoDone, idle, settle, trVar, trx, useLang, waitFor } from "../harness.mjs";
+import { GRAPH, TOK, ok, has, boot, adsPage, popup, text, until, rowsAre, resetLocks, clickToast, captureClipboard, clip, accountsJson, adsFb, boxWait, GONE, stored, done, PGS, tr, autoDone, idle, settle, trVar, trx, useLang, waitFor, lineTwo } from "../harness.mjs";
 import { LINKS } from "../../fb-helper/js/links.js";
+import path from "node:path";
+
+const SHOT = process.env.ROWS_SHOT_DIR || "";                    // when set, screenshots of the list (both languages, 560 and 380 px) go there
 
 const LEAK = "EAAPageSECRET" + "q".repeat(50);                   // a Page access token as Graph would hand it out by default
 const ids = { nova: "100000000000001", fresh: "100000000000002", backed: "100000000000003", hidden: "100000000000004", draft: "100000000000005", orion: "100000000000006",
@@ -102,7 +105,7 @@ const bodyOf = (p, id) => p.evaluate((pid) => {
   const link = (a) => ({ text: a.textContent.trim(), href: a.href, target: a.target, rel: a.rel, title: a.title, aria: a.getAttribute("aria-label"), focus: a.dataset.focus, tab: a.tabIndex });
   const b = document.querySelector(`#pagesList .lrow[data-row="${pid}"] .lrow-body`);
   if (!b) return null;
-  return { idline: b.querySelector(".lrow-idline")?.innerText.replace(/\s+/g, " ").trim() ?? null, todo: !!b.querySelector(".lrow-todo"), todoTitle: b.querySelector(".lrow-todo-title")?.textContent ?? null,
+  return { idIn: !!b.querySelector(".lrow-idline, .lrow-id"), todo: !!b.querySelector(".lrow-todo"), todoTitle: b.querySelector(".lrow-todo-title")?.textContent ?? null,
     probs: [...b.querySelectorAll(".pg-prob")].map((x) => ({ key: x.dataset.problem, text: x.querySelector(".pg-prob-text").textContent, tone: x.querySelector(".pg-prob-text").className.replace("pg-prob-text", "").trim(),
       title: x.querySelector(".pg-prob-text").title, fixes: [...x.querySelectorAll("a")].map(link) })),
     kv: [...b.querySelectorAll(".lrow-pair")].map((x) => [x.querySelector("dt").textContent, x.querySelector("dd").textContent]), links: [...b.querySelectorAll(".lrow-link")].map(link),
@@ -164,6 +167,9 @@ async function pagesFlow() {
   const hidden = await rowOf(pop, ids.hidden);
   ok("Hidden (tasks without ADVERTISE, unpublished, can't advertise, no Instagram): the WORST problem only — 'No access' → 'Assign me' (Business Suite: owner unknown) '+3 more'",
     hidden.status?.text === tr("pages.p.noAccess") && hidden.status.tone === "warn" && hidden.fixes === 1 && hidden.fix.text === tr("pages.fix.assign") && hidden.fix.href === LINKS.pageSuite(ids.hidden) && hidden.more === tr("row.more", { n: 3 }), JSON.stringify(hidden));
+  const drawn = {}; for (const k of ["nova", "backed", "fresh", "hidden"]) drawn[k] = await lineTwo(pop, `${PGS} .lrow[data-row="${ids[k]}"]`);
+  ok("line 2 as it is drawn: a healthy row is the ID alone, or 'ID · identity' when it has one (no dangling '·'); a problem row is 'ID · word · fix', with '+N' after the fix",
+    drawn.nova === ids.nova && drawn.backed === `${ids.backed} · ${tr("pages.igPbia")}` && drawn.fresh === `${ids.fresh} · ${tr("pages.p.noIg")} · ${tr("pages.fix.ig")}` && drawn.hidden === `${ids.hidden} · ${tr("pages.p.noAccess")} · ${tr("pages.fix.assign")}${tr("row.more", { n: 3 })}`, JSON.stringify(drawn));
   const orion = await rowOf(pop, ids.orion);
   ok("Orion (Can't advertise): the word in red, Graph's reason is its tooltip (never a line of its own), the fix is 'Appeal' → Account Quality",
     orion.status?.text === tr("pages.p.noAdv") && orion.status.tone === "bad" && orion.status.title === "This page is restricted from promoting" && orion.fix.text === tr("pages.fix.appeal") && orion.fix.href === LINKS.accountQuality() && orion.more === null && orion.value === "@orion.studio", JSON.stringify(orion));
@@ -193,8 +199,8 @@ async function pagesFlow() {
   ok("…key–value: no pair at all — 'Instagram: None' and 'Your access: …' only say again what the problems above say, and the business is unknown", hb.kv.length === 0, JSON.stringify(hb.kv));
   ok("…links: Page, Business Suite (no Portfolio: no owner business known), new tab, noopener noreferrer, ids in the URLs", hb.links.map((l) => l.text).join() === [tr("pages.linkPage"), tr("pages.linkSuite")].join() && hb.links.every((l) => l.target === "_blank" && l.rel === "noopener noreferrer")
     && hb.links[0].href === `https://www.facebook.com/${ids.hidden}` && hb.links[1].href === `https://business.facebook.com/latest/home?asset_id=${ids.hidden}`, JSON.stringify(hb.links));
-  ok("…the body starts with the ID line (for narrow windows: from 480 px the ID is on the collapsed row and its copy button is tabbable once the row is open), no boxes or pills", /^ID\s?\d+$/.test(hb.idline) && hb.boxes === 0
-    && (await pop.locator(`${PGS} .lrow[data-row="${ids.hidden}"] .lrow-idline`).evaluate((n) => getComputedStyle(n).display)) === "none" && (await pop.locator(`${PGS} .lrow[data-row="${ids.hidden}"] .lrow-head .lrow-id`).evaluate((n) => n.tabIndex)) === 0, JSON.stringify(hb));
+  ok("…the body has no ID line (the ID is first on line 2 of the row, at every width; its copy button is tabbable once the row is open), no boxes or pills", !hb.idIn && hb.boxes === 0
+    && (await pop.locator(`${PGS} .lrow[data-row="${ids.hidden}"] .lrow-head .lrow-id`).evaluate((n) => n.tabIndex)) === 0, JSON.stringify(hb));
   await openRow(pop, ids.nova); await openRow(pop, ids.harbor); await openRow(pop, ids.client); await openRow(pop, ids.fresh);
   const nb = await bodyOf(pop, ids.nova), hrb = await bodyOf(pop, ids.harbor), cb = await bodyOf(pop, ids.client), fb = await bodyOf(pop, ids.fresh);
   ok("Nova, opened: no 'What to do' (nothing wrong); Instagram account, owner business, my tasks; three links, Business pages → business 555", !nb.todo && nb.kv.map((x) => x.join("=")).join("|") === `${tr("pages.kv.ig")}=${tr("pages.ig.real", { u: "nova.travel" })}|${tr("pages.kv.business")}=Nova Media|${tr("pages.kv.access")}=${["ADVERTISE", "MANAGE", "ANALYZE"].map((k) => tr(`pages.task.${k}`)).join(", ")}`
@@ -246,7 +252,7 @@ async function pagesFlow() {
   ok("the copy icon copies the page's ID, the row does not toggle, and there is no toast (a live region says it)", (await clip(pop)).at(-1) === ids.nova && !(await rowOf(pop, ids.nova)).open && (await toastOf(pop)) === ""
     && (await until(pop, (s) => document.querySelector('.sr-only[aria-live]')?.textContent === s, tr("acc.idCopied"))));
   await pop.focus(`[data-focus="rowid:${ids.hidden}"]`); await pop.keyboard.press("Enter");
-  ok("the copy button of an OPEN row's head is a tab stop and copies by keyboard (the body's own copy line is for narrow windows)", (await clip(pop)).at(-1) === ids.hidden, JSON.stringify(await clip(pop)));
+  ok("the copy button of an OPEN row's line 2 is a tab stop and copies by keyboard", (await clip(pop)).at(-1) === ids.hidden, JSON.stringify(await clip(pop)));
   ok("…and the copy icon of the collapsed row is not a tab stop", await pop.locator(`${PGS} .lrow[data-row="${ids.nova}"] .lrow-head .lrow-id`).evaluate((n) => n.tabIndex === -1));
 
   // the minute: the auto-load took the slot, which covers the whole refresh
@@ -703,13 +709,21 @@ async function rowsFlow() {
       const m = await pop.evaluate(() => {
         const de = document.documentElement, r = (n) => n.getBoundingClientRect(), rows = [...document.querySelectorAll("#pagesList .lrow")];
         return { sw: de.scrollWidth, cw: de.clientWidth, rowsOver: rows.filter((x) => x.scrollWidth > x.clientWidth + 0.5).length,
-          outside: rows.flatMap((x) => [...x.querySelectorAll(".lrow-fix .act-label, .lrow-more, .lrow-value, .lrow-idc, .lav, .lrow-pair, .lrow-link, .lrow-todo")].filter((n) => r(n).width && (r(n).right > r(x).right - 15.5 || r(n).left < r(x).left + 15.5)).map((n) => n.className)),
+          outside: rows.flatMap((x) => [...x.querySelectorAll(".lrow-fix .act-label, .lrow-more, .lrow-value, .lrow-id, .lav, .lrow-pair, .lrow-link, .lrow-todo")].filter((n) => r(n).width && (r(n).right > r(x).right - 15.5 || r(n).left < r(x).left + 15.5)).map((n) => `${n.className}:${n.textContent.trim().slice(0, 24)}:${Math.round(r(n).right - r(n.closest(".lrow")).right)}`)),
           oneLine: rows.every((x) => r(x.querySelector(".lrow-sub") || x).height <= 22 || !x.querySelector(".lrow-sub")), cut: [...document.querySelectorAll("#pagesList .lrow-fix .act-label")].filter((l) => l.scrollWidth > l.clientWidth).length,
-          cutProb: [...document.querySelectorAll("#pagesList .pg-prob-text")].filter((l) => l.scrollWidth > l.clientWidth).length, idHidden: [...document.querySelectorAll("#pagesList .lrow-head .lrow-idc")].every((n) => getComputedStyle(n).display === "none") };
+          cutProb: [...document.querySelectorAll("#pagesList .pg-prob-text")].filter((l) => l.scrollWidth > l.clientWidth).length,
+          // the ID: the first thing on line 2, under the name, at every width
+          idShown: rows.every((x) => { const t = x.querySelector(".lrow-idtext"), nm = x.querySelector(".lrow-name"); return !!t && r(t).width > 0 && Math.abs(r(t).left - r(nm).left) <= 1 && r(t).top >= r(nm).bottom - 4 && x.querySelector(".lrow-sub .lrow-it:not([hidden])").contains(t); }),
+          idCut: rows.filter((x) => { const t = x.querySelector(".lrow-idtext"); return t.scrollWidth > t.clientWidth + 0.5; }).map((x) => ({ full: x.querySelector(".lrow-id").getAttribute("aria-label"), title: x.querySelector(".lrow-id").title, status: !!x.querySelector(".lrow-it.sts:not([hidden])") })) };
       });
+      if (SHOT) await pop.screenshot({ path: path.join(SHOT, `pages-${lang}-${w}.png`), fullPage: true });
       ok(`${lang} ${w}px: no horizontal scroll, no row wider than the window`, m.sw <= m.cw && m.rowsOver === 0, JSON.stringify(m));
       ok(`${lang} ${w}px: every link, word, picture and body part stays inside the row's 16 px gutters; line 2 is one line; no fix label and no problem word is cut`, m.outside.length === 0 && m.oneLine && m.cut === 0 && m.cutProb === 0, JSON.stringify(m));
-      ok(`${lang} ${w}px: the ID is shown on the collapsed row from 480 px, hidden below`, w >= 480 ? !m.idHidden : m.idHidden, JSON.stringify(m));
+      ok(`${lang} ${w}px: the ID is first on line 2 of every collapsed row, under the name, whatever the width (no hidden ID)`, m.idShown, JSON.stringify(m));
+      // The ID gives way last: only the longest Russian fix at 380 px ('Выбрать «Use Facebook Page»', 177 px) leaves it no room; then its digits end in an
+      // ellipsis, the status word is already gone, and the tooltip / accessible name keep every digit.
+      ok(`${lang} ${w}px: the ID is whole${lang === "ru" && w === 380 ? " (but on the row with the longest fix: cut after the status word is dropped, full digits in its tooltip)" : ""}`,
+        lang === "ru" && w === 380 ? m.idCut.length <= 1 && m.idCut.every((c) => !c.status && c.title === c.full && /\d{15}/.test(c.full)) : m.idCut.length === 0, JSON.stringify(m.idCut));
     }
   }
   await done(b);
