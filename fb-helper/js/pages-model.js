@@ -34,7 +34,6 @@ export const BASE = ["id", "name"];
 // every edge is best effort (an edge that errors is skipped, the rest stays).
 export const BIZ_OPTIONAL = Object.fromEntries(Object.entries(OPTIONAL).filter(([k]) => k !== "tasks"));
 export const BIZ_EDGES = ["owned_pages", "client_pages"];
-export const MAX_BUSINESSES = 50;
 // A complaint can name a field INSIDE one of the expressions above. Then the parents are dropped, not everything.
 const NESTED = { username: ["instagram_business_account", "connected_instagram_account"], url: ["picture"] };
 const IG_KEYS = ["connected_page_backed_instagram_account", "instagram_business_account", "connected_instagram_account"];
@@ -68,10 +67,11 @@ export function keysToDrop(e, skipped) {
 }
 
 // ---------- a row ----------
-// Keys a stored row may have: Graph's own names, nested objects cut to what is read from them, plus two of ours: `_skip` (the
-// optional fields that were NOT asked for when this row's page arrived: "absent" must not be read as "none") and `_viaBm` (the id
-// of the business through which a page that me/accounts did not list was found).
-export const ROW_KEYS = ["id", "name", ...Object.keys(OPTIONAL), "_skip", "_viaBm"];
+// Keys a stored row may have: Graph's own names, nested objects cut to what is read from them, plus three of ours: `_skip` (the
+// optional fields that were NOT asked for when this row's page arrived: "absent" must not be read as "none"), `_viaBm` (the id
+// of the business through which a page that me/accounts did not list was found) and `_unsure` (set by finishPages: no verdict about the
+// person's access to a page seen only through a business, because me/accounts was not read completely).
+export const ROW_KEYS = ["id", "name", ...Object.keys(OPTIONAL), "_skip", "_viaBm", "_unsure"];
 const bool = (v) => (typeof v === "boolean" ? v : undefined);
 const text = (v, max = 200) => cleanText(v, max) || undefined;           // control and bidi characters out (pure.js cleanText)
 const idOf = (v) => ((typeof v === "string" || typeof v === "number") && /^\d{1,25}$/.test(String(v)) ? String(v) : undefined);
@@ -100,16 +100,7 @@ export function slimPage(raw, skipped = []) {
 }
 
 // ---------- the businesses and their pages ----------
-// me/businesses answer → { list: [{ id, name? }], more }: ids digits-only (anything else could not go into a URL), each once, at most
-// MAX_BUSINESSES; more = there were further businesses that were not read.
-export function businessList(rows, more = false) {
-  const seen = new Set(), all = [];
-  for (const b of Array.isArray(rows) ? rows : []) {
-    const id = idOf(b?.id);
-    if (id && !seen.has(id)) { seen.add(id); all.push(def({ id, name: text(b.name, 200) })); }
-  }
-  return { list: all.slice(0, MAX_BUSINESSES), more: !!more || all.length > MAX_BUSINESSES };
-}
+// (The list of businesses and the walk over their edges are biz-edges.js, shared with the Ad accounts tab.)
 // A page found through a business: marked with that business. A business edge has no `tasks`, so the profile has no known access
 // to such a page ("No access"). owned = the edge was owned_pages: the page belongs to that business, which fills the owner when the
 // page did not say. null stays null (a row that is not a page).
@@ -121,10 +112,17 @@ export function viaBusiness(row, bm, owned = false) {
 }
 // The whole answer: rows that are not pages dropped, one row per id; the FIRST row of an id wins. Pass me/accounts first (it carries
 // the tasks), then the business edges (owned before client): a page me/accounts lists is never replaced by a business's view of it.
-export function finishPages(rows) {
+// "No access" for a page seen only through a business means "me/accounts does not list it, so I have no task on it". That is a verdict only
+// when me/accounts was read completely and answered: when it stopped at its page limit the page may be in the part that was not read, and
+// when it came back empty while the business edges had rows the token may simply not be able to read it (a field or permission it lacks).
+// Then (verdict = false) such a row is marked `_unsure` and says nothing about access: no problem, no "Assign me", just "via a business".
+export function finishPages(rows, { verdict = true } = {}) {
   const seen = new Set();
-  return rows.filter((p) => p && !seen.has(p.id) && seen.add(p.id));
+  const all = rows.filter((p) => p && !seen.has(p.id) && seen.add(p.id));
+  return verdict ? all : all.map((p) => (p._viaBm ? { ...p, _unsure: true } : p));
 }
+// Is "not in me/accounts" a fact? mine = readPaged's { rows, truncated } of me/accounts, biz = what the business edges returned.
+export const accessVerdict = (mine, biz) => !mine.truncated && !(mine.rows.length === 0 && biz.rows.length > 0);
 
 // ---------- what a row says ----------
 const unread = (p, keys) => keys.some((k) => p._skip?.includes(k));
@@ -153,7 +151,7 @@ export function adRightsOf(p) {
 const TASK_ORDER = ["ADVERTISE", "MANAGE", "CREATE_CONTENT", "MODERATE", "MESSAGING", "ANALYZE"];
 export const humanTask = (s) => { const w = String(s).toLowerCase().replace(/_+/g, " ").trim(); return w ? w[0].toUpperCase() + w.slice(1) : ""; };
 export function accessOf(p) {
-  if (p._viaBm) return { via: true, tasks: [] };
+  if (p._viaBm) return { via: true, ...(p._unsure ? { unsure: true } : {}), tasks: [] };
   const tasks = Array.isArray(p.tasks) ? [...new Set(p.tasks)] : [];
   const rank = (x) => { const i = TASK_ORDER.indexOf(x); return i < 0 ? TASK_ORDER.length : i; };
   return { via: false, tasks: tasks.sort((a, b) => rank(a) - rank(b)) };
@@ -161,14 +159,15 @@ export function accessOf(p) {
 
 // ---------- problems: the chips ----------
 // key → tone of the word / chip. Order = order of the chips = priority: the worst problem is the one the row says.
-//   noAccess     no ADVERTISE task for me, or seen only through a business (nobody assigned me to it)
+//   noAccess     no ADVERTISE task for me, or seen only through a business (nobody assigned me to it) when me/accounts was read completely
+//                (finishPages: otherwise `_unsure`, no verdict)
 //   unpublished  is_published = false
 //   noAdv        Graph says the page cannot be promoted (promotion_eligible = false)
 //   noIg         no Instagram identity at all (not even «Use Facebook Page»), with every Instagram field read
 export const PROBLEMS = { noAccess: "warn", unpublished: "warn", noAdv: "bad", noIg: "warn" };
 export const PRIORITY = Object.keys(PROBLEMS);
 const TESTS = {
-  noAccess: (p) => !!p._viaBm || adRightsOf(p) === "none",
+  noAccess: (p) => (!!p._viaBm && !p._unsure) || adRightsOf(p) === "none",
   unpublished: (p) => p.is_published === false,
   noAdv: (p) => p.promotion_eligible === false,
   noIg: (p) => igOf(p).state === "none",

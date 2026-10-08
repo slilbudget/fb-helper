@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { setLang } from "../fb-helper/js/i18n.js";
 import {
   BM_BASE, BM_OPTIONAL, VERIFY_BAD, VERIFY_KNOWN, PROBLEMS, markerOf, slimBm, badVerification, verificationOf, countAccounts, stateOf, buildRows, issuesOf, spendOf,
-  matchRow, filterRows, sortRows, totalOf, isPermError,
+  matchRow, filterRows, sortRows, totalOf, isPermError, bmKeysToDrop,
 } from "../fb-helper/js/bms-model.js";
 import { groupByBusiness } from "../fb-helper/js/spend.js";
 import { LINKS } from "../fb-helper/js/links.js";
@@ -372,4 +372,17 @@ test("buildRows: a business whose accounts are all shared with it is not 'No ad 
   const [row] = buildRows({ bms: [slimBm({ id: "10", name: "Mine" })], accounts, loaded: true, stats: () => ({ spend: 0 }) }).filter((r) => r.id === "10");
   assert.equal(row.state, "noActive", "it has an account, none active");
   assert.deepEqual(row.issues.map((i) => i.id), ["noActive"]);
+});
+
+test("bmKeysToDrop (C8): a permission error gives the extra fields up one tier at a time — verification first, then the logo — and then nothing is left; other errors give nothing up", () => {
+  const perm = (code, raw = "") => ({ code, raw, message: raw });
+  const skipped = new Set();
+  assert.deepEqual(bmKeysToDrop(perm(10), skipped), ["verification_status"]);
+  skipped.add("verification_status");
+  assert.deepEqual(bmKeysToDrop(perm(200, "(#200) Requires business_management"), skipped), ["profile_picture_uri"]);
+  skipped.add("profile_picture_uri");
+  assert.deepEqual(bmKeysToDrop(perm(10), skipped), [], "id and name only: a token that fails even that cannot read businesses");
+  assert.deepEqual(bmKeysToDrop(perm(100, "(#100) Unsupported get request, missing permissions"), new Set()), ["verification_status"], "a #100 that names no field is a permission error too");
+  for (const e of [perm(1, "boom"), perm(2, "temporary"), perm(100, "(#100) Tried accessing nonexisting field (x)"), perm(undefined, "network down"), null, undefined])
+    assert.deepEqual(bmKeysToDrop(e, new Set()), [], JSON.stringify(e));
 });

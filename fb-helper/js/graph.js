@@ -77,7 +77,10 @@ export function budgetLeft(now = Date.now()) {
   if (live.reduce((n, [, c]) => n + c, 0) < BUDGET_PER_HOUR) return 0;
   return Math.max(1, live[0][0] + WINDOW_MS - now);                  // the oldest bucket leaving the hour frees room
 }
+let sentCount = 0;                                                   // requests this popup has started (in memory): "did a request go out?"
+export const requestsSent = () => sentCount;
 function budgetTake(now = Date.now()) {
+  sentCount++;
   const live = liveBuckets(now), at = now - (now % BUCKET_MS), last = live[live.length - 1];
   if (last && last[0] === at) last[1]++; else live.push([at, 1]);
   state.budget = live;

@@ -11,9 +11,11 @@ import { t, tn, getLang } from "./i18n.js";
 import { AD_PROBLEMS, adRank, reviewLines, spendFloor, insightRow, cleanText, digitsId } from "./pure.js";
 import { $, $$, el, fill, toast, copy, keepFocus } from "./dom.js";
 import { numFmt, ago, sameDay, tzLabel, major } from "./format.js";
-import { state, Stale, saveSession, fbUser, claimSlot, slotLeft, registerCache, isDead, deadCode } from "./state.js";
-import { graph, readPaged } from "./graph.js";
-import { settledGrab, grabToken, tokenReady } from "./token.js";
+import { state, Stale, saveSession, claimSlot, slotLeft, onLoad, isDead, deadCode } from "./state.js";
+import { graph, readPaged, pauseNote } from "./graph.js";
+import { readBusinessEdges } from "./biz-edges.js";
+import { listLoader } from "./list-loader.js";
+import { settledGrab, grabToken } from "./token.js";
 import { on, emit } from "./bus.js";
 import { accountState, adSteps } from "./nextsteps.js";
 import { LINKS } from "./links.js";
@@ -55,25 +57,23 @@ const AD_STATUS = {
 
 Object.assign(state, {
   accounts: [], fetchedAt: 0, truncated: false, filter: "", statusFilter: null, accLoading: false,
+  autoPage: null,                                    // the FB page load the list was last loaded for (the automatic refresh on a new page load)
   bmFilter: null,                                    // { id, name } from the Businesses tab ("ad accounts of this business"); not saved
   open: new Set(), ads: {}, adsBusy: new Set(), adsHidden: new Set(),
   statsBusy: new Set(), noStats: new Set(), noAll: new Set(),   // per-ad numbers: being read / refused by Graph for this account / all-time part refused
 });                                                  // (state.period, the spend period, is period.js's: the Businesses tab shares it)
 
 // ---------- storage ----------
-// Accounts, ads and which rows are open: kept across popup reopen and token changes, dropped when the FB user changes.
-registerCache(["accounts", "fetchedAt", "truncated", "ads", "view"],
-  () => Object.assign(state, { accounts: [], fetchedAt: 0, truncated: false, open: new Set(), ads: {}, adsHidden: new Set() }),
-  {
-    load: (ses) => Object.assign(state, {
-      accounts: ses.accounts || [], fetchedAt: ses.fetchedAt || 0, truncated: !!ses.truncated,
-      ads: ses.ads || {}, open: new Set(ses.view?.open), adsHidden: new Set(ses.view?.hidden),
-    }),
-    has: () => !!state.fetchedAt,
-  });
+// Accounts, ads and which rows are open: kept across popup reopen and token changes, dropped when the FB user changes. The cache is
+// registered by the shared loader (list-loader.js, below), which also takes over what another window of the extension loaded.
 const saveView = () => saveSession({ view: { open: [...state.open], hidden: [...state.adsHidden] } });
 // One account's ads share a rate slot (claimSlot); the account list has its own, "accounts".
 const adsKey = (id) => `ads:${id}`;
+// Accounts whose ads are being read by THIS window (the list, then the numbers): another window's copy of the saved ads must not replace an
+// entry that is still being worked on (loadAdStats checks that the entry in state is the one it started with).
+const flight = new Set();
+const ownFlight = () => Object.fromEntries([...flight].filter((id) => state.ads[id]).map((id) => [id, state.ads[id]]));
+onLoad(["autoPage"], (ses) => { state.autoPage = ses.autoPage || null; });
 
 // Token changed: the per-token sets of the rows start empty (the account cache itself stays).
 on("generation", () => {
@@ -87,17 +87,6 @@ on("filter-bm", (bm) => { state.bmFilter = bm?.id ? { id: String(bm.id), name: b
 on("period", () => renderAccounts());
 // Rate slots changed (this window or another): the ads buttons follow.
 on("locks", () => syncAdsButtons());
-// Accounts loaded or dropped in another window of this extension: show the same list.
-on("session", (ch) => {
-  if (ch.fetchedAt && (ch.fetchedAt.newValue || 0) !== state.fetchedAt) {
-    chrome.storage.session.get(["accounts", "fetchedAt", "truncated", "owner", "ads"]).then((c) => {
-      Object.assign(state, { accounts: c.accounts || [], fetchedAt: c.fetchedAt || 0, truncated: !!c.truncated,
-        owner: c.owner || null, ads: c.ads || {} });
-      renderAccounts();
-      emit("accounts");
-    });
-  }
-});
 
 // ---------- accounts ----------
 // Mark rows fetched without an optional field (spend = unknown, not 0; pixels = unknown, not none)
@@ -116,102 +105,81 @@ const slim = (a) => slimWith(state.skip)(a);
 
 // me/adaccounts lists only the accounts assigned to the person. A BM admin also reads every account of the BM
 // (owned + client) without being assigned to it (live-checked 2026-10-08: 20 BM accounts, 7 of them assigned), so the
-// list adds those. Best effort: a BM or an edge this token can't read is skipped, the rest of the list stays.
-// Own skip set per edge read: a field refused on an unassigned account must not drop it for the assigned list too.
-// These rows are marked _viaBm (not assigned to the person: "No access" + "Assign me" in the list); _bmId is the business they were
+// list adds those. Best effort: a business or an edge this token can't read is skipped, the rest of the list stays - and the answer
+// says it is not whole (a partial list is never "complete": truncated = a cap was hit or ANY read failed). The walk is biz-edges.js: at
+// most 50 businesses, 3 pages per edge, owned edges before client edges, over as soon as nothing more may go out, one skip set for the whole
+// walk (a field one edge refused is not asked for again on the next: it is a copy of the assigned list's set, so what an unassigned account
+// refuses never drops the field for the assigned list).
+// These rows are marked _viaBm (not assigned to the person: "No access" + "Assign me" in the list); _bmId / _bmName is the business they were
 // read through, whose settings page is where the person assigns themselves (for a client account that is not the owner business).
 const BM_EDGES = ["owned_ad_accounts", "client_ad_accounts"];
-async function readBmAccounts(have) {
-  let bms;
-  try { bms = await graph("me/businesses", { fields: "id,name", limit: "100" }); }
-  catch (e) { if (e instanceof Stale) throw e; return { rows: [], truncated: false }; }
-  const rows = [];
-  let truncated = false;
-  for (const bm of Array.isArray(bms?.data) ? bms.data.filter((b) => /^\d{1,25}$/.test(String(b?.id ?? ""))) : []) {
-    for (const edge of BM_EDGES) {
-      const skip = new Set(state.skip);
-      try {
-        const r = await readPaged(`${bm.id}/${edge}`, { base: BASE_FIELDS, optional: OPTIONAL_FIELDS, skip, map: slimWith(skip) });
-        for (const a of r.rows) if (a.account_id && !have.has(a.account_id)) { have.add(a.account_id); rows.push({ ...a, _viaBm: true, _bmId: String(bm.id) }); }
-        truncated ||= r.truncated;
-      } catch (e) { if (e instanceof Stale) throw e; }
-    }
-  }
-  return { rows, truncated };
+const BM_EDGE_PAGES = 3;
+async function readBmAccounts(gen, have) {
+  const skip = new Set(state.skip);
+  return readBusinessEdges({
+    gen, edges: BM_EDGES,
+    readEdge: async (path, bm) => {
+      const r = await readPaged(path, { base: BASE_FIELDS, optional: OPTIONAL_FIELDS, skip, map: slimWith(skip), maxPages: BM_EDGE_PAGES });
+      const rows = [];
+      for (const a of r.rows) if (a.account_id && !have.has(a.account_id)) { have.add(a.account_id); rows.push({ ...a, _viaBm: true, _bmId: bm.id, _bmName: bm.name }); }
+      return { rows, truncated: r.truncated };
+    },
+  });
 }
 
-// auto: started by opening the Accounts tab, not by a click. Same limits as a click, but silent where a click
-// would only complain (no token, dead session, the one-minute slot): the empty list explains itself.
 // The list is loading / has finished: draw it, and tell the Businesses tab (its spend and counts come from this list; bus "accounts").
 function setLoading(on) { state.accLoading = on; renderAccounts(); emit("accounts"); }
-let accBusy = false;                                    // one list load at a time: a click during an automatic load is a no-op
-async function fetchAccounts(opts) {
-  if (accBusy) return;
-  accBusy = true;
-  try { await loadAccountsNow(opts); } finally { accBusy = false; }
-}
-async function loadAccountsNow({ auto = false } = {}) {
-  await settledGrab();
-  if (!state.token && !(await grabToken({ toClipboard: false, silent: auto }))) return;   // no token: grabToken says why
-  if (isDead()) return auto ? undefined : toast(t("err.session", { c: deadCode() }), true);   // before the slot: costs nothing
-  const gen = state.gen;                              // fixed before waiting for the lock
-  let wait;
-  try { wait = await claimSlot("accounts", MIN_REFRESH_MS); }        // before sending: a failed attempt counts too
-  catch (e) { return auto ? undefined : toast(t("err.slot", { m: e.message }), true); }
-  if (gen !== state.gen) return;                      // new token while waiting
-  if (wait > 0) return auto ? undefined : toast(t("acc.wait", { n: Math.ceil(wait / 1000) }), true);
-  // The request goes out now (a failure counts too): this FB page load has had its list.
-  saveSession({ autoPage: state.tokenSource?.page || null });
-  const btn = $("#loadAccounts");
-  btn.disabled = true; btn.setAttribute("aria-busy", "true");
-  setLoading(true);
-  try {
+// The Accounts tab loads the list by itself when there is nothing loaded yet, or when the FB page the token came from was reloaded since
+// the last load AND the list is older than 10 minutes (a reload of the page alone is no reason to spend a request). Reopening the popup or
+// switching tabs alone never sends a request. At most one try per popup open; the limits are a click's (the one-minute slot, the API pause,
+// a dead session).
+const REFRESH_AFTER_MS = 10 * 60 * 1000;
+const loader = listLoader({
+  name: "accounts", button: "#loadAccounts", slotMs: MIN_REFRESH_MS, waitKey: "acc.wait",
+  keys: ["accounts", "fetchedAt", "truncated", "ads", "view"],
+  reset: () => Object.assign(state, { accounts: [], fetchedAt: 0, truncated: false, open: new Set(), ads: {}, adsHidden: new Set() }),
+  load: (ses, { live = false } = {}) => Object.assign(state, {
+    accounts: ses.accounts || [], fetchedAt: ses.fetchedAt || 0, truncated: !!ses.truncated,
+    // another window's saved ads, except what this window is still reading itself; the open rows are this window's own view
+    ads: { ...(ses.ads || {}), ...(live ? ownFlight() : {}) },
+    ...(live ? {} : { open: new Set(ses.view?.open), adsHidden: new Set(ses.view?.hidden) }),
+  }),
+  has: () => !!state.fetchedAt,
+  atKey: "fetchedAt", at: () => state.fetchedAt,
+  followed: () => { renderAccounts(); emit("accounts"); },
+  loading: setLoading,
+  empty: () => !state.accounts.length,
+  due: () => {
+    if (!state.fetchedAt) return true;
+    const page = state.tokenSource?.page || null;
+    return !!page && page !== state.autoPage && Date.now() - state.fetchedAt > REFRESH_AFTER_MS;
+  },
+  read: async ({ gen }) => {
     // skip as a function: a token change swaps state.skip while the pages are still coming in.
     const mine = await readPaged("me/adaccounts", { base: BASE_FIELDS, optional: OPTIONAL_FIELDS, skip: () => state.skip, map: slim });
-    if (gen !== state.gen) return;
-    const viaBm = await readBmAccounts(new Set(mine.rows.map((a) => a.account_id)));
-    if (gen !== state.gen) return;
-    const rows = [...mine.rows, ...viaBm.rows], truncated = mine.truncated || viaBm.truncated;
-    const owner = await fbUser();
-    if (gen !== state.gen) return;
+    if (gen !== state.gen) throw new Stale();
+    const viaBm = await readBmAccounts(gen, new Set(mine.rows.map((a) => a.account_id)));
+    return { rows: [...mine.rows, ...viaBm.rows], truncated: mine.truncated || viaBm.truncated, failed: viaBm.failed };
+  },
+  commit: async ({ rows, truncated, failed }, { auto, owner }) => {
     // Another user's list: their ads and open rows don't belong to this one.
     if (owner !== state.owner) Object.assign(state, { open: new Set(), ads: {}, adsHidden: new Set() });
+    // A partial list is never "complete": a business or an edge that could not be read counts like a cut-off page.
+    truncated = truncated || failed;
     Object.assign(state, { accounts: rows, fetchedAt: Date.now(), truncated, owner });
-    await saveSession({ accounts: rows, fetchedAt: state.fetchedAt, truncated: state.truncated, owner, ads: adsToSave() });
-    saveView();
-    if (!auto || truncated) toast(t("acc.loaded", { n: rows.length }) + (truncated ? t("acc.truncated") : ""));   // the list itself is the answer to an automatic load
-  } catch (e) {
-    if (!(e instanceof Stale)) toast(e.message, true);
-  } finally {
-    btn.disabled = false; btn.removeAttribute("aria-busy");
-    setLoading(false);
-  }
-}
-// The Accounts tab loads the list by itself when there is nothing loaded yet, or when the FB page the token came
-// from was reloaded since the last load. Reopening the popup or switching tabs alone never sends a request.
-// At most one try per popup open; the limits are a click's (the one-minute slot, the API pause, a dead session).
-let autoTried = false;
-// Exported: the Businesses tab asks for the same list on its first visit (same rule, same limits, same one try per popup open).
-export async function ensureAccounts() {
-  if (autoTried) return;
-  autoTried = true;
-  const placeholder = !state.accounts.length;           // "Loading…" at once, not "press refresh" and then "Loading…"
-  if (placeholder) setLoading(true);
-  try {
-    // Without the silent token read the request could go out with a stale token. Not forever, though.
-    await Promise.race([tokenReady, new Promise((resolve) => setTimeout(resolve, 15000))]);
-    if (!state.token || isDead() || state.cooldownUntil > Date.now()) return;
-    const page = state.tokenSource?.page || null;
-    const { autoPage } = await chrome.storage.session.get("autoPage");
-    if (state.fetchedAt && (!page || page === autoPage)) return;   // loaded before, same FB page load: keep the list
-    await fetchAccounts({ auto: true });
-  } finally {
-    if (placeholder && !accBusy) setLoading(false);
-  }
-}
-// The Businesses tab's refresh button also refreshes this list (its spend and counts come from it). Silent where a click on this
-// tab would complain (the one-minute slot, no token…): the Businesses tab has its own message for its own refresh.
-export const reloadAccounts = () => fetchAccounts({ auto: true });
+    await saveSession({ accounts: rows, fetchedAt: state.fetchedAt, truncated, owner, ads: adsToSave() });
+    await saveView();
+    // The list itself is the answer to an automatic load; it only speaks up for a cut-off one. A failed read is not announced by an automatic
+    // load (the reason, a dead session or a refused edge, has its own message; "(not all)" stays on the list).
+    return !auto || (truncated && !failed) ? t("acc.loaded", { n: rows.length }) + (failed ? t("acc.readFail") : truncated ? t("acc.truncated") : "") : null;
+  },
+  // A request went out: this FB page load has had its list (never written for a refusal made before the network).
+  sent: ({ gen }) => { if (gen === state.gen) { state.autoPage = state.tokenSource?.page || null; saveSession({ autoPage: state.autoPage }); } },
+});
+export const ensureAccounts = loader.ensure;               // the Businesses tab asks for the same list on its first visit (same rule and limits)
+// The Businesses tab's refresh button also refreshes this list (its spend and counts come from it). Silent where a click on this tab would
+// complain; → { wait } when the one-minute slot is taken, so the Businesses tab can say so in its own words.
+export const reloadAccounts = () => loader.load({ auto: true });
 
 // ---------- what a row says ----------
 // Spend for the selected period (spend.js: the Businesses tab reads the same numbers the same way). null = unknown.
@@ -512,15 +480,17 @@ async function loadAdStats(id, gen, entry) {
   }
   state.statsBusy.delete(id);
   if (gen === state.gen && state.ads[id] === entry) state.ads[id] = { ...entry, ...patch };
-  saveSession({ ads: adsToSave() });
+  await saveSession({ ads: adsToSave() });
   renderAccounts();
 }
 // The list on screen stays while it is re-read (nothing jumps); the icon is disabled meanwhile.
 async function loadAds(id) {
-  if (state.adsBusy.has(id)) return;
+  if (!digitsId(id) || state.adsBusy.has(id)) return;  // an id that is not digits never goes into a path
   await settledGrab();
   if (!state.token && !(await grabToken({ toClipboard: false }))) return;
   if (isDead()) return toast(t("err.session", { c: deadCode() }), true);
+  const pause = pauseNote();
+  if (pause) return toast(pause, true);                // before the slot: a refused attempt must not burn the 30 s
   if (state.adsBusy.has(id)) return;                  // a second click that waited for the same grab
   const gen = state.gen, busy = state.adsBusy;        // fixed before waiting for the lock
   busy.add(id);
@@ -535,6 +505,10 @@ async function loadAds(id) {
   }
   syncAdsButtons();
   setTimeout(syncAdsButtons, ADS_LOCK_MS + 50);
+  flight.add(id);                                     // until the numbers are in: another window's saved ads must not replace this entry
+  try { await readAndShowAds(id, gen, busy); } finally { flight.delete(id); }
+}
+async function readAndShowAds(id, gen, busy) {
   const box = adsBox(id);
   if (box && (!state.ads[id] || state.ads[id].error)) fill(box, el("div", { class: "hint" }, t("ads.loading")));
   let entry = null;
@@ -567,7 +541,7 @@ async function loadAds(id) {
     syncAdsButtons();
   }
   state.adsHidden.delete(id);                           // a fresh load is shown expanded
-  saveSession({ ads: adsToSave() }); saveView();
+  await Promise.all([saveSession({ ads: adsToSave() }), saveView()]);   // never rejects (state.js); awaited so the next step sees it stored
   renderAccounts();
   if (entry) await loadAdStats(id, gen, entry);        // the list is on screen; the numbers follow
 }
@@ -590,7 +564,7 @@ registerRender(() => {
 }, { lang: false, tick: true });
 registerInit(() => {
   bindPeriods($("#periodSeg"));                           // the saved period was read by period.js's own init, which ran first
-  $("#loadAccounts").addEventListener("click", () => fetchAccounts());
+  $("#loadAccounts").addEventListener("click", () => loader.load());
   $("#copyLiveIds").addEventListener("click", copyLiveIds);
   $("#accountFilter").addEventListener("input", (e) => { state.filter = e.target.value; renderAccounts(); });
 });

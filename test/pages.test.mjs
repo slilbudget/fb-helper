@@ -3,10 +3,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  OPTIONAL, BASE, BIZ_OPTIONAL, BIZ_EDGES, MAX_BUSINESSES, ROW_KEYS, PROBLEMS, isPermissionError, keysToDrop, slimPage, finishPages, businessList, viaBusiness,
+  OPTIONAL, BASE, BIZ_OPTIONAL, BIZ_EDGES, ROW_KEYS, PROBLEMS, isPermissionError, keysToDrop, slimPage, finishPages, accessVerdict, viaBusiness,
   igOf, handleOf, adRightsOf, accessOf, humanTask, problemsOf, problemCounts, filterPages, sortPages, PRIORITY, FIXES, issuesOf,
 } from "../fb-helper/js/pages-model.js";
 import { LINKS } from "../fb-helper/js/links.js";
+import { businessList, MAX_BUSINESSES } from "../fb-helper/js/biz-edges.js";
 import { optionalFieldIn } from "../fb-helper/js/graph.js";
 import { setLang, has } from "../fb-helper/js/i18n.js";
 
@@ -200,6 +201,7 @@ test("adRightsOf / accessOf / humanTask", () => {
   assert.equal(adRightsOf({}), "unknown");
   assert.deepEqual(accessOf({ tasks: ["ANALYZE", "MANAGE", "ADVERTISE", "WEIRD_TASK", "MANAGE"] }), { via: false, tasks: ["ADVERTISE", "MANAGE", "ANALYZE", "WEIRD_TASK"] }, "ADVERTISE first, the known ones in order, no repeats");
   assert.deepEqual(accessOf({ _viaBm: "555", tasks: ["ADVERTISE"] }), { via: true, tasks: [] }, "through a business: not assigned, whatever else");
+  assert.deepEqual(accessOf({ _viaBm: "555", _unsure: true }), { via: true, unsure: true, tasks: [] }, "…and when that is no verdict (me/accounts was not read completely) it says so");
   assert.deepEqual(accessOf({}), { via: false, tasks: [] });
   assert.equal(humanTask("MANAGE_JOBS"), "Manage jobs");
   assert.equal(humanTask("PROFILE_PLUS_FULL_CONTROL"), "Profile plus full control");
@@ -373,4 +375,28 @@ test("every label and tooltip of the problems and their fixes exists in both lan
 test("slimPage: control and bidi characters leave every name (page, business, Instagram handle, ineligibility reason)", () => {
   const r = slimPage({ id: "5", name: "Nova\u202Etxt", business: { id: "9", name: "Biz\u2067" }, instagram_business_account: { id: "7", username: "@h\u202Ee" }, promotion_ineligible_reason: "no\nway\u2066" });
   assert.equal(r.name, "Novatxt"); assert.equal(r.business.name, "Biz"); assert.equal(r.instagram_business_account.username, "he"); assert.equal(r.promotion_ineligible_reason, "no way");
+});
+
+// ---------- "No access" is a verdict only when me/accounts was read completely (C9) ----------
+test("accessVerdict: me/accounts cut at its page limit, or empty while the business edges had rows, is no verdict about access", () => {
+  assert.equal(accessVerdict({ rows: [{ id: "1" }], truncated: false }, { rows: [{ id: "2" }] }), true, "me/accounts answered completely");
+  assert.equal(accessVerdict({ rows: [{ id: "1" }], truncated: true }, { rows: [{ id: "2" }] }), false, "stopped at its page limit: the page may be in the unread part");
+  assert.equal(accessVerdict({ rows: [], truncated: false }, { rows: [{ id: "2" }] }), false, "empty while the edges had pages: the token probably cannot read me/accounts' fields");
+  assert.equal(accessVerdict({ rows: [], truncated: false }, { rows: [] }), true, "nothing anywhere: nothing to judge");
+  assert.equal(accessVerdict({ rows: [{ id: "1" }], truncated: false }, { rows: [] }), true);
+});
+test("finishPages without a verdict: pages seen only through a business are `_unsure` — no 'No access' problem, no chip, no fix; pages me/accounts lists are untouched", () => {
+  const ig = { instagram_business_account: { id: "7" } };
+  const mine = slimPage({ id: "1", name: "Mine", tasks: ["MANAGE"], ...ig });                    // a real task list without ADVERTISE: its own verdict stays
+  const via = viaBusiness(slimPage({ id: "2", name: "Shared", ...ig }), { id: "9", name: "Biz" });
+  const sure = finishPages([mine, via]), unsure = finishPages([mine, via], { verdict: false });
+  assert.deepEqual(problemsOf(sure[1]), ["noAccess"]);
+  assert.deepEqual(problemsOf(unsure[1]), [], "no verdict about access to a page seen only through a business");
+  assert.equal(unsure[1]._unsure, true); assert.equal(unsure[1]._viaBm, "9");
+  assert.equal("_unsure" in unsure[0], false);
+  assert.deepEqual(problemsOf(unsure[0]), ["noAccess"], "a page with a task list that has no ADVERTISE is still a verdict");
+  assert.deepEqual(problemCounts(unsure), { noAccess: 1, unpublished: 0, noAdv: 0, noIg: 0 }, "the chip counts only the verdict");
+  assert.deepEqual(issuesOf(unsure[1]), [], "no fix link either");
+  assert.equal(finishPages([mine, via], { verdict: true })[1]._unsure, undefined);
+  assert.ok(ROW_KEYS.includes("_unsure"));
 });

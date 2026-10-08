@@ -11,16 +11,17 @@ import { t, has } from "./i18n.js";
 import "./strings/pages.js";
 import { $, el, fill, keepFocus, toast } from "./dom.js";
 import { ago } from "./format.js";
-import { state, Stale, saveSession, fbUser, checkOwner, claimSlot, registerCache, isDead, deadCode } from "./state.js";
-import { graph, readPaged } from "./graph.js";
-import { settledGrab, grabToken, tokenReady } from "./token.js";
-import { on, emit } from "./bus.js";
+import { state, Stale, saveSession } from "./state.js";
+import { readPaged } from "./graph.js";
+import { readBusinessEdges } from "./biz-edges.js";
+import { listLoader } from "./list-loader.js";
+import { on } from "./bus.js";
 import { registerTab, registerRender, registerInit, registerStart } from "./registry.js";
 import { LINKS } from "./links.js";
 import { row, kv, whatToDo, fixLink, linksRow } from "./row.js";
 import {
-  OPTIONAL, BASE, BIZ_OPTIONAL, BIZ_EDGES, PROBLEMS, isPermissionError, keysToDrop, slimPage, finishPages, businessList, viaBusiness,
-  igOf, handleOf, accessOf, humanTask, issuesOf, problemCounts, filterPages, sortPages, MAX_BUSINESSES,
+  OPTIONAL, BASE, BIZ_OPTIONAL, BIZ_EDGES, PROBLEMS, isPermissionError, keysToDrop, slimPage, finishPages, accessVerdict, viaBusiness,
+  igOf, handleOf, accessOf, humanTask, issuesOf, problemCounts, filterPages, sortPages,
 } from "./pages-model.js";
 
 const SLOT_MS = 60 * 1000;                   // one list read per minute (a failed attempt counts too); the slot covers ALL requests of a refresh
@@ -32,32 +33,19 @@ Object.assign(state, {
 });
 
 // ---------- storage ----------
-// Rows (already cut to the whitelist) kept across popup reopen and token changes, dropped when the FB user changes.
-registerCache(["pages", "pagesAt", "pagesTruncated", "pagesBizFail"],
-  () => Object.assign(state, { pages: [], pagesAt: 0, pagesTruncated: false, pagesBizFail: false, pagesNote: null, pagesOpen: new Set() }),
-  {
-    load: (ses) => Object.assign(state, { pages: Array.isArray(ses.pages) ? ses.pages : [], pagesAt: ses.pagesAt || 0, pagesTruncated: !!ses.pagesTruncated, pagesBizFail: !!ses.pagesBizFail }),
-    has: () => !!state.pagesAt,
-  });
+// Rows (already cut to the whitelist) kept across popup reopen and token changes, dropped when the FB user changes. The cache is
+// registered by the shared loader (list-loader.js, below), which also takes over what another window of the extension loaded.
 
 // Optional fields Graph refused for this token. Our own set: state.skip is shared with the Ad accounts tab. Replaced on a
 // token change (the new token may read what the old one could not), hence the function form where it is handed to readPaged.
 let skip = new Set();
 on("generation", () => { skip = new Set(); state.pagesNote = null; renderPages(); });
 on("cache-dropped", () => { state.pagesProblem = null; renderPages(); });
-// Another window of this extension loaded or dropped the list: show the same.
-on("session", (ch) => {
-  if (ch.pagesAt && (ch.pagesAt.newValue || 0) !== state.pagesAt) {
-    chrome.storage.session.get(["pages", "pagesAt", "pagesTruncated", "pagesBizFail", "owner"]).then((c) => {
-      Object.assign(state, { pages: Array.isArray(c.pages) ? c.pages : [], pagesAt: c.pagesAt || 0, pagesTruncated: !!c.pagesTruncated, pagesBizFail: !!c.pagesBizFail, owner: c.owner || null });
-      renderPages();
-    });
-  }
-});
 
 // ---------- load ----------
-// The profile's own pages. A refusal readPaged cannot name (a nested field, a permission error that is really about the Instagram
-// fields) gives up the optional fields it can blame and asks again; what is left to blame decides when to stop.
+// The profile's own pages (me/accounts: it carries the person's tasks). The row keeps the refusals of its own page, and loses everything not
+// whitelisted. A refusal readPaged cannot name (a nested field, a permission error that is really about the Instagram fields) gives up the
+// optional fields it can blame, in tiers (pages-model keysToDrop), and asks again; what is left to blame decides when to stop.
 async function readMine() {
   for (;;) {
     try {
@@ -73,106 +61,54 @@ async function readMine() {
     }
   }
 }
-// The pages of the profile's businesses: me/businesses (id, name), then for each business (at most MAX_BUSINESSES) its owned_pages and
-// client_pages, sequentially, owned edges first so a page both owned and shared keeps its owner. Best effort: a business list the token
-// cannot read, a business or an edge that errors is skipped and the rest stays (failed = true then, so the screen says some pages may
-// be missing). Every edge has its own skip set (a copy of the profile's), so a field refused there never drops it from the other reads.
-// Every row is marked with the business it came through (`_viaBm`). Stops reading once the token is dead or paused (nothing more would go out).
-// `gen` = the generation the load started in: a token change in between ends it (Stale), like an aborted request does.
-async function readBusinessPages(gen) {
-  let bms;
-  try {
-    const r = await graph("me/businesses", { fields: "id,name", limit: String(MAX_BUSINESSES) });
-    bms = businessList(r.data, !!r.paging?.next);
-  } catch (e) {
-    if (e instanceof Stale) throw e;
-    return { rows: [], truncated: false, failed: true };            // no list of businesses: only the profile's own pages
-  }
-  const rows = [];
-  let truncated = bms.more, failed = false;
-  edges: for (const edge of BIZ_EDGES) {
-    for (const bm of bms.list) {
-      if (gen !== state.gen) throw new Stale();
-      const edgeSkip = new Set(skip);
-      try {
-        const r = await readPaged(`${bm.id}/${edge}`, {
-          base: BASE, optional: BIZ_OPTIONAL, skip: edgeSkip, limit: PAGE_SIZE, maxPages: MAX_PAGES,
-          map: (raw) => viaBusiness(slimPage(raw, [...edgeSkip]), bm, edge === "owned_pages"),
-        });
-        rows.push(...r.rows);
-        truncated ||= r.truncated;
-      } catch (e) {
-        if (e instanceof Stale) throw e;
-        failed = true;
-        if (isDead() || state.cooldownUntil > Date.now()) break edges;
-      }
-    }
-  }
-  return { rows, truncated, failed };
-}
-// auto: started by opening the tab, not by a click. Same limits as a click, but silent where a click would only complain
-// (no token, dead session, API pause, the one-minute slot): the empty list explains itself.
-let busy = false;                                       // one load at a time: a click during an automatic load is a no-op
-async function fetchPages(opts) {
-  if (busy) return;
-  busy = true;
-  try { await loadPagesNow(opts); } finally { busy = false; }
-}
-async function loadPagesNow({ auto = false } = {}) {
-  await settledGrab();
-  if (!state.token && !(await grabToken({ toClipboard: false, silent: auto }))) return;   // no token: grabToken says why
-  if (isDead()) return auto ? undefined : toast(t("err.session", { c: deadCode() }), true);   // before the slot: costs nothing
-  const pause = state.cooldownUntil - Date.now();
-  if (pause > 0) return auto ? undefined : toast(t("err.cooldown", { n: Math.ceil(pause / 60000) }), true);
-  const gen = state.gen;                                // fixed before waiting for the lock
-  let wait;
-  try { wait = await claimSlot("pages", SLOT_MS); }     // before sending: a failed attempt counts too
-  catch (e) { return auto ? undefined : toast(t("err.slot", { m: e.message }), true); }
-  if (gen !== state.gen) return;                        // new token while waiting
-  if (wait > 0) return auto ? undefined : toast(t("pages.wait", { n: Math.ceil(wait / 1000) }), true);
-  const btn = $("#loadPages");
-  btn.disabled = true; btn.setAttribute("aria-busy", "true");
-  state.pagesLoading = true; state.pagesNote = null; renderPages();
-  try {
+// The pages of the profile's businesses (biz-edges.js: me/businesses, then owned_pages and client_pages of each, at most 50 businesses,
+// owned edges first so a page both owned and shared keeps its owner). Best effort: a business list the token cannot read, a business or an
+// edge that errors is skipped and the rest stays (failed = true then, so the screen says some pages may be missing). One skip set for the
+// whole walk (a copy of the profile's: a field refused on one edge is not asked for again on the next, and never drops it for me/accounts).
+// Every row is marked with the business it came through (`_viaBm`). The walk ends once the token is dead or paused (nothing more would go out).
+const readBusinessPages = (gen) => {
+  const edgeSkip = new Set(skip);
+  return readBusinessEdges({
+    gen, edges: BIZ_EDGES,
+    readEdge: (path, bm, edge) => readPaged(path, {
+      base: BASE, optional: BIZ_OPTIONAL, skip: edgeSkip, limit: PAGE_SIZE, maxPages: MAX_PAGES,
+      map: (raw) => viaBusiness(slimPage(raw, [...edgeSkip]), bm, edge === "owned_pages"),
+    }),
+  });
+};
+const loader = listLoader({
+  name: "pages", button: "#loadPages", slotMs: SLOT_MS, waitKey: "pages.wait",   // one list read per minute; the slot covers ALL requests of a refresh
+  keys: ["pages", "pagesAt", "pagesTruncated", "pagesBizFail"],
+  reset: () => Object.assign(state, { pages: [], pagesAt: 0, pagesTruncated: false, pagesBizFail: false, pagesNote: null, pagesOpen: new Set() }),
+  load: (ses) => Object.assign(state, { pages: Array.isArray(ses.pages) ? ses.pages : [], pagesAt: ses.pagesAt || 0, pagesTruncated: !!ses.pagesTruncated, pagesBizFail: !!ses.pagesBizFail }),
+  has: () => !!state.pagesAt,
+  atKey: "pagesAt", at: () => state.pagesAt,
+  followed: () => renderPages(),
+  loading: (on) => { state.pagesLoading = on; if (on) state.pagesNote = null; renderPages(); },
+  // The tab loads by itself on the first visit of a popup that has nothing cached for this FB user. A cached list is only refreshed by the
+  // button: reopening the popup or switching tabs never sends a request.
+  empty: () => !state.pagesAt, due: () => !state.pagesAt,
+  read: async ({ gen }) => {
     const mine = await readMine();
-    if (gen !== state.gen) return;
+    if (gen !== state.gen) throw new Stale();
     const biz = await readBusinessPages(gen);           // nothing of it is an error: the profile's own pages are already in hand
-    if (gen !== state.gen) return;
-    // The list belongs to the FB user of this profile; a cache of another login (shared owner key) is dropped first.
-    if (await checkOwner()) emit("cache-dropped");
-    const owner = await fbUser();
-    if (gen !== state.gen) return;
-    const pages = finishPages([...mine.rows, ...biz.rows]);       // the profile's own row of a page wins: it has the tasks
+    return { mine, biz };
+  },
+  commit: async ({ mine, biz }, { auto, owner }) => {
+    // the profile's own row of a page wins: it has the tasks. "Not in me/accounts" is a verdict only when me/accounts was read completely.
+    const pages = finishPages([...mine.rows, ...biz.rows], { verdict: accessVerdict(mine, biz) });
     const truncated = mine.truncated || biz.truncated;
     Object.assign(state, { pages, pagesAt: Date.now(), pagesTruncated: truncated, pagesBizFail: biz.failed, owner });   // before the write: our own storage event must find nothing new
     await saveSession({ pages, pagesAt: state.pagesAt, pagesTruncated: truncated, pagesBizFail: biz.failed, owner });
-    if (!auto || truncated) toast(t("pages.loaded", { n: pages.length }) + (truncated ? t("pages.truncated") : ""));
-  } catch (e) {
-    if (e instanceof Stale) return;
-    // The token cannot read pages: not an error of ours, a calm line in the list says what to do (and no red toast).
-    if (isPermissionError(e)) state.pagesNote = "perm"; else toast(e.message, true);
-  } finally {
-    state.pagesLoading = false;
-    btn.disabled = false; btn.removeAttribute("aria-busy");
-    renderPages();
-  }
-}
-// The tab loads the list by itself on the first visit of a popup that has nothing cached for this FB user. A cached list
-// is only refreshed by the button: reopening the popup or switching tabs never sends a request.
-let autoTried = false;
-async function autoLoadPages() {
-  if (autoTried || state.pagesAt) return;
-  autoTried = true;
-  state.pagesLoading = true; renderPages();             // "Loading…" at once, not "press refresh" and then "Loading…"
-  try {
-    // Without the silent token read the request could go out with a stale token. Not forever, though.
-    await Promise.race([tokenReady, new Promise((resolve) => setTimeout(resolve, 15000))]);
-    if (!state.token || isDead() || state.cooldownUntil > Date.now()) return;
-    await fetchPages({ auto: true });
-  } finally {
-    if (!busy) { state.pagesLoading = false; renderPages(); }
-  }
-}
+    return !auto || truncated ? t("pages.loaded", { n: pages.length }) + (truncated ? t("pages.truncated") : "") : null;
+  },
+  // The token cannot read pages: not an error of ours, a calm line in the list says what to do (and no red toast).
+  fail: (e) => {
+    if (!isPermissionError(e)) return false;
+    state.pagesNote = "perm";
+    return true;
+  },
+});
 
 // ---------- draw ----------
 const visiblePages = () => sortPages(filterPages(state.pages, { q: state.pagesQ, problem: state.pagesProblem }));
@@ -260,7 +196,7 @@ function renderPage(p) {
         kv([
           instagramPair(p),
           [t("pages.kv.business"), p.business?.name || "", { wide: true }],
-          [t("pages.kv.access"), acc.via ? t("pages.access.via") : taskText(acc.tasks), { wide: true }],
+          [t("pages.kv.access"), acc.via ? t(acc.unsure ? "pages.access.viaUnsure" : "pages.access.via") : taskText(acc.tasks), { wide: true }],
         ]),
         linksRow([
           { id: "page", label: "pages.linkPage", url: LINKS.page(p.id), tip: t("pages.linkPageTitle") },
@@ -282,7 +218,7 @@ function buildControls() {
       el("button", { id: "loadPages", type: "button", class: "icon-btn" }, el("i", { class: "i i-refresh", "aria-hidden": "true" }))),
     el("div", { class: "total", id: "pagesTotal" }),
     el("div", { class: "chips", id: "pagesChips" }));
-  $("#loadPages").addEventListener("click", () => fetchPages());
+  $("#loadPages").addEventListener("click", () => loader.load());
   $("#pageFilter").addEventListener("input", (e) => { state.pagesQ = e.target.value; renderPages(); });
 }
 function labelControls() {
@@ -293,7 +229,7 @@ function labelControls() {
 }
 
 // Full height from the start (a list arriving a moment later must not make the window jump); showing the tab starts the auto-load.
-registerTab("pages", { tall: true, onShow: autoLoadPages });
+registerTab("pages", { tall: true, onShow: loader.ensure });
 registerRender(() => { labelControls(); renderPages(); });                       // RU · EN
 registerRender(() => { renderTotal(); }, { lang: false, tick: true });          // "updated 3 min ago"
 registerInit(() => { buildControls(); labelControls(); });

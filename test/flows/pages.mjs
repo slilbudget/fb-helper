@@ -56,6 +56,7 @@ const topFields = (fields) => {
 //   cfg.bmsError    an error for me/businesses
 //   cfg.refuseEdge  [{ when(bm, edge, top, fields), error }] on the business edges
 //   cfg.leak        add an access_token to every row (and its business) of every list
+//   cfg.accountsNext  me/accounts always has a next page (an endless list: the read stops at its page limit)
 const mock = (cfg) => (u) => {
   const fields = u.searchParams.get("fields") || "", top = topFields(fields);
   const keep = (row) => ({ ...Object.fromEntries(Object.entries(row).filter(([k]) => k === "id" || k === "name" || top.includes(k))),
@@ -69,7 +70,7 @@ const mock = (cfg) => (u) => {
   }
   if (!/\/me\/accounts$/.test(u.pathname)) return { body: { data: [] } };
   for (const r of cfg.refuse || []) if (r.when(top, fields)) return { status: 400, body: { error: r.error } };
-  return { body: { data: cfg.rows.map(keep) } };
+  return { body: { data: cfg.rows.map(keep), ...(cfg.accountsNext ? { paging: { next: "https://x/next", cursors: { after: "A" } } } : {}) } };   // accountsNext: me/accounts never ends
 };
 const pathOf = (h) => h.split("?")[0];
 const reqs = (b) => b.hits.filter((h) => h.startsWith("/me/accounts"));                         // the profile's own list
@@ -341,9 +342,10 @@ async function bizFlow() {
   b = await boot({ fb: adsFb(TOK), graph: mock({ ...FULL, refuseEdge: [{ when: (bm, edge, top) => top.includes("promotion_ineligible_reason"), error: complaint("promotion_ineligible_reason") }] }) });
   await adsPage(b);
   pop = await openPages(b);
-  ok("a field refused on the edges: every edge asks again without it, the list still has nine pages", (await rowsAre(pop, ".lrow", 9)) && edgeReqs(b).length === 8, String(edgeReqs(b).length));
+  ok("a field refused on the edges: the first edge asks again without it, the list still has nine pages", (await rowsAre(pop, ".lrow", 9)) && edgeReqs(b).length === 5, String(edgeReqs(b).length));
   const eh = edgeReqs(b).map(fieldsOf);
-  ok("…each edge's first request had the field, its second did not (an edge's refusal never reaches the other reads: own skip set)", eh.filter((f) => has(f, "promotion_ineligible_reason")).length === 4 && eh.filter((f) => !has(f, "promotion_ineligible_reason")).length === 4
+  ok("…the refusal is learned once for the whole walk (one skip set across the edges): the first request had the field, the retry and every later edge did not; the profile's own read is untouched",
+    eh.filter((f) => has(f, "promotion_ineligible_reason")).length === 1 && has(eh[0], "promotion_ineligible_reason") && eh.slice(1).every((f) => !has(f, "promotion_ineligible_reason"))
     && has(fieldsOf(reqs(b)[0]), "promotion_ineligible_reason") && reqs(b).length === 1, eh.join(" || "));
   const stk = await stored(pop, "pages");
   ok("…the rows read through the edges record the refusal (_skip), the profile's own rows do not", stk.filter((r) => r._viaBm).every((r) => r._skip?.join() === "promotion_ineligible_reason") && stk.filter((r) => !r._viaBm).every((r) => !r._skip), JSON.stringify(stk.map((r) => [r.name, r._skip])));
@@ -711,4 +713,34 @@ async function rowsFlow() {
   await b.ctx.close();
 }
 
-export const flows = { pagesRows: rowsFlow, pages: pagesFlow, pagesBiz: bizFlow, pagesFields: fieldsFlow, pagesErrors: errorsFlow, pagesToken: tokenFlow, pagesCache: cacheFlow };
+// ---------- "No access" is a verdict only when me/accounts was read completely ----------
+async function verdictFlow() {
+  console.log("\n# pages: no verdict about access when me/accounts was not read completely");
+  const viaIds = [ids.harbor, ids.client, ids.wing];
+  // complete: the three pages that are only in a business are "No access" (the existing flows check the details)
+  let b = await boot({ fb: adsFb(TOK), graph: mock(FULL) });
+  await adsPage(b);
+  let pop = await openPages(b);
+  ok("me/accounts complete: pages seen only through a business are 'No access' with a chip counting them (the three + Hidden Page, whose own task list has no Advertise)", (await rowsAre(pop, ".lrow", 9)) && (await chips(pop)).some((c) => /^No access 4$/.test(c)), (await chips(pop)).join());
+  await b.ctx.close();
+
+  for (const [label, cfg] of [["me/accounts is empty while the business edges have pages (the token cannot read it)", { ...FULL, rows: [] }],
+    ["me/accounts is cut at its page limit (the page may be in the part that was not read)", { ...FULL, accountsNext: true }]]) {
+    b = await boot({ fb: adsFb(TOK), graph: mock(cfg) });
+    await adsPage(b);
+    pop = await openPages(b);
+    ok(`${label}: the pages are listed`, await until(pop, (n) => document.querySelectorAll(".lrow").length >= n, cfg.rows.length ? 9 : 3));
+    const via = await Promise.all(viaIds.map((id) => rowOf(pop, id)));
+    ok(`${label}: no 'No access', no 'Assign me' on a page seen only through a business (nothing is known about the person's access)`,
+      via.every((r) => r && !/No access/.test(r.status?.text ?? "") && r.fix?.text !== "Assign me"), JSON.stringify(via.map((r) => r && [r.name, r.status, r.fix])));
+    ok(`${label}: …and the 'No access' chip counts only a real verdict (${cfg.rows.length ? "Hidden Page, whose own task list has no Advertise" : "none"})`,
+      cfg.rows.length ? (await chips(pop)).some((c) => /^No access 1$/.test(c)) : !(await chips(pop)).some((c) => /No access/.test(c)), (await chips(pop)).join());
+    await pop.click(`.lrow[data-row="${ids.harbor}"] .lrow-title`);
+    ok(`${label}: …the body says 'Via business', not 'not assigned'`, has(await text(pop, `.lrow[data-row="${ids.harbor}"] .lrow-body`), "Via business — whether you are assigned is unknown") && !has(await text(pop, `.lrow[data-row="${ids.harbor}"] .lrow-body`), "not assigned"), await text(pop, `.lrow[data-row="${ids.harbor}"] .lrow-body`));
+    ok(`${label}: …other problems of those pages still show (Client Fashion House is unpublished)`, (await chips(pop)).some((c) => /^Unpublished/.test(c)), (await chips(pop)).join());
+    ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
+    await b.ctx.close();
+  }
+}
+
+export const flows = { pagesVerdict: verdictFlow, pagesRows: rowsFlow, pages: pagesFlow, pagesBiz: bizFlow, pagesFields: fieldsFlow, pagesErrors: errorsFlow, pagesToken: tokenFlow, pagesCache: cacheFlow };

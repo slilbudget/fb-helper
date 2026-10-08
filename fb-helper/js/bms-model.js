@@ -173,6 +173,16 @@ export function sortRows(rows, rates = null) {
 export const totalOf = (rows) => mergeUp(rows.map((r) => r.spend));
 
 // ---------- errors ----------
+// A token that cannot read ONE of the extra fields may answer the whole read with a permission error (or a #100 that names no field)
+// instead of just skipping that field (readPaged only handles complaints that name a field). Then the extras are given up one tier at a time,
+// like the Pages tab does (pages-model keysToDrop): the verification state first, then the logo, and the list keeps what it can have
+// (id and name only; 3 requests at most). [] = nothing left to give up (or the error is not about permissions): show the error.
+export function bmKeysToDrop(e, skipped) {
+  if (!isPermError(e)) return [];
+  const next = Object.keys(BM_OPTIONAL).find((k) => !skipped.has(k));
+  return next ? [next] : [];
+}
+
 // The token cannot read the business edge at all: (#10) permission, (#200–299) permission family, or (#100) that is not about
 // a field (a field error names the field and is handled by readPaged; one that still gets here names a base field, which is
 // a plain error). Shown as a calm note in the list, not a red toast. A session error (190/102) never gets here: graph.js

@@ -348,7 +348,10 @@ async function bmsPermFlow() {
     ok(`${label}: a calm message in the list, saying what to do`, calm && has(await text(pop, "#bmsList"), "refresh the token"), await text(pop, "#bmsList"));
     ok(`${label}: no red toast, no red text`, !(await pop.evaluate(() => document.querySelector("#toast").classList.contains("err") && document.querySelector("#toast").classList.contains("show")))
       && (await pop.locator("#bmsList .err-text").count()) === 0, await toastOf(pop));
-    ok(`${label}: one request of its own, no console error, nothing cached`, bmHits(b).length === 1 && !(await stored(pop, "bmsAt")), String(bmHits(b).length));
+    // a permission error may be about ONE extra field: the extras are given up one tier at a time (verification, then the logo), then it is final
+    const own = bmHits(b).map(fieldsOf);
+    ok(`${label}: three requests of its own, each without the next extra field (verification, then the logo), then the calm note; no console error, nothing cached`,
+      own.length === 3 && askedKeys(own[0]).join() === "id,name,verification_status,profile_picture_uri" && askedKeys(own[1]).join() === "id,name,profile_picture_uri" && askedKeys(own[2]).join() === "id,name" && !(await stored(pop, "bmsAt")), own.join(" | "));
     noErrs(b);
     await b.ctx.close();
   }
@@ -373,7 +376,10 @@ async function bmsPermFlow() {
   await adsPage(b2);
   const pop2 = await popup(b2, "bms");
   ok("another error: the message is toasted in red", await until(pop2, () => /boom/.test(document.querySelector("#toast").textContent) && document.querySelector("#toast").classList.contains("err")), await toastOf(pop2));
-  ok("…and the list is not the permission note", !has(await text(pop2, "#bmsList"), "can't read") && has(await text(pop2, "#bmsList"), "not loaded"), await text(pop2, "#bmsList"));
+  ok("…and not the permission note; the five businesses the loaded ad accounts name (not Gamma, which has none) are shown instead of an empty list (no logo, no fix link: nothing is known of them), the line says it is not all",
+    await until(pop2, () => document.querySelectorAll("#bmsList .lrow").length === 5) && !has(await text(pop2, "#bmsList"), "can't read") && (await pop2.locator(`${ROW} .lrow-fix`).count()) === 0
+    && has(await text(pop2, "#bmsTotal .total-meta"), "(not all)") && (await pop2.locator(`${ROW} img`).count()) === 0, await text(pop2, "#bmsList") + await text(pop2, "#bmsTotal"));
+  ok("…its refresh button says how old the BUSINESS list is: never loaded, so no 'updated'", (await pop2.locator("#loadBms").getAttribute("title")) === "Refresh businesses and spend", await pop2.locator("#loadBms").getAttribute("title"));
   await pop2.click('[data-tab="token"]'); await resetLocks(pop2); await pop2.click('[data-tab="bms"]'); await pop2.waitForTimeout(700);
   ok("…and not retried by going back to the tab", bmHits(b2).length === 1, String(bmHits(b2).length));
   await b2.ctx.close();

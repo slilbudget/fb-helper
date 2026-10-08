@@ -82,7 +82,7 @@ const D = {
     "env.mismatch": "Токен от другого аккаунта ({a}), а cookie — {b}. Обнови вкладку FB",
     "env.unverified": "Токен + cookie + UA скопированы — владелец токена не проверен",
 
-    "acc.wait": "Обновить можно через {n} с", "acc.loaded": "Кабинетов: {n}", "acc.truncated": " (не все — лимит 10 страниц)",
+    "acc.wait": "Обновить можно через {n} с", "acc.loaded": "Кабинетов: {n}", "acc.truncated": " (не все — лимит 10 страниц)", "acc.readFail": " (не все — часть бизнесов не прочиталась)",
     "acc.noLive": "Активных кабинетов нет", "acc.idsCopied": "Скопировано ID: {n}", "acc.partial": " (список неполный)",
     "acc.found": "найдено {n} из {all}", "acc.count": ["кабинет", "кабинета", "кабинетов"], "acc.notAll": " (не все)",
     "acc.updated": "обновлено {t}", "acc.spend": "Спенд", "acc.refreshDash": "— обнови",
@@ -177,7 +177,7 @@ const D = {
     "env.mismatch": "The token belongs to another account ({a}), the cookies to {b}. Reload the FB tab",
     "env.unverified": "Token + cookies + UA copied — token owner not verified",
 
-    "acc.wait": "Refresh available in {n} s", "acc.loaded": "Ad accounts: {n}", "acc.truncated": " (not all — 10-page limit)",
+    "acc.wait": "Refresh available in {n} s", "acc.loaded": "Ad accounts: {n}", "acc.truncated": " (not all — 10-page limit)", "acc.readFail": " (not all — some businesses could not be read)",
     "acc.noLive": "No active ad accounts", "acc.idsCopied": "Copied IDs: {n}", "acc.partial": " (list incomplete)",
     "acc.found": "{n} of {all} found", "acc.count": ["ad account", "ad accounts"], "acc.notAll": " (not all)",
     "acc.updated": "updated {t}", "acc.spend": "Spend", "acc.refreshDash": "— refresh",

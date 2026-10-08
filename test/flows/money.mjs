@@ -58,7 +58,7 @@ async function ratesFlows() {
   const bt = await totalOf(pop, "#bmsTotal");
   ok("…label 'Spend · <date>', same breakdown", new RegExp(`^Spend · ${shortEn}$`).test(bt.label) && bt.sub === t.sub, JSON.stringify(bt));
   ok("…still one request in all", b.rateHits.length === 1, b.rateHits.join());
-  ok("…the Businesses refresh button carries the age too", /^Refresh businesses and spend · updated/.test(await pop.locator("#loadBms").getAttribute("title")), await pop.locator("#loadBms").getAttribute("title"));
+  ok("…the Businesses refresh button carries the age of the business list too (once it is loaded)", await until(pop, () => /^Refresh businesses and spend · updated/.test(document.querySelector("#loadBms").title)), await pop.locator("#loadBms").getAttribute("title"));
 
   // a search: the count appears (only when filtered) and the total follows the rows
   await pop.click('[data-tab="accounts"]');

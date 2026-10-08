@@ -351,12 +351,17 @@ async function autoFlows() {
   pop = await popup(b); await pop.waitForTimeout(1200);
   ok("reopen after a minute, FB page not reloaded: no request", hitsOf(b) === 1, String(hitsOf(b)));
   ok("the popup opens at full height on the Accounts tab", await pop.evaluate(() => document.body.classList.contains("tall") && document.body.getBoundingClientRect().height >= 600));
-  // 4. the FB page is reloaded: the next popup open refreshes once, the one after does not
+  // 4. the FB page is reloaded: within 10 minutes of the last load that is no reason to spend a request (P6)…
+  await fbTab.reload(); await resetLocks(pop);
+  pop = await popup(b); await pop.waitForTimeout(1200);
+  ok("FB page reloaded 1 minute after the load: the list is fresh, no automatic refresh", hitsOf(b) === 1, String(hitsOf(b)));
+  // …a list older than 10 minutes is refreshed once by the next popup open, the one after does not
+  await pop.evaluate(() => chrome.storage.session.get("fetchedAt").then((o) => chrome.storage.session.set({ fetchedAt: o.fetchedAt - 11 * 60000 })));
   await fbTab.reload(); await resetLocks(pop);
   pop = await popup(b);
   for (let i = 0; i < 40 && hitsOf(b) < 2; i++) await pop.waitForTimeout(100);
   await pop.waitForTimeout(500);
-  ok("after an FB page reload: one automatic refresh", hitsOf(b) === 2, String(hitsOf(b)));
+  ok("after an FB page reload, with a list older than 10 minutes: one automatic refresh", hitsOf(b) === 2, String(hitsOf(b)));
   await resetLocks(pop);
   pop = await popup(b); await pop.waitForTimeout(1200);
   ok("…and only one: reopening again sends nothing", hitsOf(b) === 2, String(hitsOf(b)));

@@ -22,7 +22,7 @@ export const STRINGS = {
 
     "pages.kv.ig": "Instagram", "pages.kv.business": "Бизнес", "pages.kv.access": "Твой доступ",
     "pages.ig.real": "Аккаунт @{u}", "pages.ig.realNoName": "Аккаунт", "pages.ig.pbia": "От имени страницы («Use Facebook Page»)", "pages.ig.none": "Нет", "pages.ig.unknown": "Неизвестно",
-    "pages.access.via": "Через бизнес — не назначена на тебя",
+    "pages.access.via": "Через бизнес — не назначена на тебя", "pages.access.viaUnsure": "Через бизнес — назначена ли на тебя, неизвестно",
     "pages.task.ADVERTISE": "Реклама", "pages.task.MANAGE": "Управление", "pages.task.CREATE_CONTENT": "Контент", "pages.task.MODERATE": "Модерация",
     "pages.task.MESSAGING": "Сообщения", "pages.task.ANALYZE": "Аналитика",
 
@@ -58,7 +58,7 @@ export const STRINGS = {
 
     "pages.kv.ig": "Instagram", "pages.kv.business": "Business", "pages.kv.access": "Your access",
     "pages.ig.real": "Account @{u}", "pages.ig.realNoName": "Account", "pages.ig.pbia": "Page identity («Use Facebook Page»)", "pages.ig.none": "None", "pages.ig.unknown": "Unknown",
-    "pages.access.via": "Via business — not assigned",
+    "pages.access.via": "Via business — not assigned", "pages.access.viaUnsure": "Via business — whether you are assigned is unknown",
     "pages.task.ADVERTISE": "Advertise", "pages.task.MANAGE": "Manage", "pages.task.CREATE_CONTENT": "Content", "pages.task.MODERATE": "Moderate",
     "pages.task.MESSAGING": "Messages", "pages.task.ANALYZE": "Insights",
 

@@ -10,9 +10,9 @@
 import { t, tn, has, applyStatic } from "./i18n.js";
 import "./strings/bms.js";
 import { $, el, fill, toast, keepFocus } from "./dom.js";
-import { state, Stale, saveSession, fbUser, claimSlot, registerCache, isDead, deadCode } from "./state.js";
+import { state, Stale, saveSession } from "./state.js";
 import { readPaged } from "./graph.js";
-import { settledGrab, grabToken, tokenReady } from "./token.js";
+import { listLoader } from "./list-loader.js";
 import { LINKS } from "./links.js";
 import { on, emit } from "./bus.js";
 import { registerTab, registerRender, registerInit, registerStart } from "./registry.js";
@@ -21,7 +21,7 @@ import { bindPeriods, fillTotal, refreshTip } from "./period.js";
 import { fmtMoney, cachedRates, rates as fetchRates } from "./money.js";
 import { statsOf, periodRange } from "./spend.js";
 import { ensureAccounts, reloadAccounts } from "./accounts.js";
-import { BM_BASE, BM_OPTIONAL, BM_LIMIT, BM_MAX_PAGES, BM_SLOT_MS, slimBm, buildRows, filterRows, sortRows, totalOf, spendOf, isPermError } from "./bms-model.js";
+import { BM_BASE, BM_OPTIONAL, BM_LIMIT, BM_MAX_PAGES, BM_SLOT_MS, slimBm, bmKeysToDrop, buildRows, filterRows, sortRows, totalOf, spendOf, isPermError } from "./bms-model.js";
 
 // bmQuery is this tab's search (not saved). Not to be confused with accounts.js's state.bmFilter, the business the Accounts tab
 // is filtered by. state.accounts / fetchedAt / truncated / accLoading below are the Accounts tab's: the spend, counts and
@@ -37,13 +37,8 @@ let ready = false;                                   // the controls are built (
 const active = () => ready && $("#tab-bms").classList.contains("active");   // a hidden tab is redrawn when it is shown
 
 // ---------- storage ----------
-// Kept across popup reopen and token changes, dropped together with the other lists when the FB user changes.
-registerCache(["bms", "bmsAt", "bmsTruncated"],
-  () => Object.assign(state, { bms: [], bmsAt: 0, bmsTruncated: false, bmPerm: false }),
-  {
-    load: (ses) => Object.assign(state, { bms: Array.isArray(ses.bms) ? ses.bms : [], bmsAt: ses.bmsAt || 0, bmsTruncated: !!ses.bmsTruncated }),
-    has: () => !!state.bmsAt,
-  });
+// Kept across popup reopen and token changes, dropped together with the other lists when the FB user changes. The cache is registered
+// by the shared loader (list-loader.js, below), which also takes over what another window of the extension loaded.
 
 // Token changed: Graph's refusals and the "can't read" note belonged to the old one (the list itself stays).
 on("generation", () => { bmSkip = new Set(); state.bmPerm = false; renderBms(); });
@@ -53,81 +48,48 @@ on("cache-dropped", () => { openRows.clear(); renderBms(); });
 // Accounts tab, which share it).
 on("accounts", () => { if (active()) renderBms(); });
 on("period", () => { if (active()) renderBms(); });
-// Loaded or dropped in another window of this extension: show the same list.
-on("session", (ch) => {
-  if (ch.bmsAt && (ch.bmsAt.newValue || 0) !== state.bmsAt) {
-    chrome.storage.session.get(["bms", "bmsAt", "bmsTruncated", "owner"]).then((c) => {
-      Object.assign(state, { bms: Array.isArray(c.bms) ? c.bms : [], bmsAt: c.bmsAt || 0, bmsTruncated: !!c.bmsTruncated, owner: c.owner || null });
-      renderBms();
-    });
-  }
-});
 
 // ---------- loading ----------
-// auto: started by showing the tab, not by a click. Same limits as a click, but silent where a click would only complain
-// (no token, dead session, API pause, the one-minute slot): the empty list explains itself.
-let busy = false;                                    // one load at a time: a click during an automatic load is a no-op
-async function fetchBms(opts) {
-  if (busy) return;
-  busy = true;
-  try { await loadBmsNow(opts); } finally { busy = false; }
+// The businesses of the profile: one paged read of me/businesses. A token that cannot read one of the extra fields may be refused the whole
+// read with a permission error: the extras are given up one tier at a time (bms-model.js bmKeysToDrop), the list keeps what it can have.
+async function readBms() {
+  for (;;) {
+    try {
+      // skip as a function: a token change swaps bmSkip while the pages are still coming in. The rows are slimmed as each
+      // page arrives, so a row keeps the refusals of its own page (a refused field reads "unknown", not "none").
+      return await readPaged("me/businesses", { base: BM_BASE, optional: BM_OPTIONAL, skip: () => bmSkip, map: (r) => slimBm(r, bmSkip), limit: BM_LIMIT, maxPages: BM_MAX_PAGES });
+    } catch (e) {
+      if (e instanceof Stale) throw e;
+      const drop = bmKeysToDrop(e, bmSkip);
+      if (!drop.length) throw e;
+      for (const k of drop) bmSkip.add(k);
+    }
+  }
 }
-async function loadBmsNow({ auto = false } = {}) {
-  await settledGrab();
-  if (!state.token && !(await grabToken({ toClipboard: false, silent: auto }))) return;   // no token: grabToken says why
-  if (isDead()) return auto ? undefined : toast(t("err.session", { c: deadCode() }), true);   // before the slot: costs nothing
-  const pause = state.cooldownUntil - Date.now();    // the API pause: graph() would refuse anyway, so don't spend the slot on it
-  if (pause > 0) return auto ? undefined : toast(t("err.cooldown", { n: Math.ceil(pause / 60000) }), true);
-  const gen = state.gen;                             // fixed before waiting for the lock
-  let wait;
-  try { wait = await claimSlot("bms", BM_SLOT_MS); }  // before sending: a failed attempt counts too
-  catch (e) { return auto ? undefined : toast(t("err.slot", { m: e.message }), true); }
-  if (gen !== state.gen) return;                     // new token while waiting
-  if (wait > 0) return auto ? undefined : toast(t("bms.wait", { n: Math.ceil(wait / 1000) }), true);
-  const btn = $("#loadBms");
-  btn.disabled = true; btn.setAttribute("aria-busy", "true");
-  state.bmsLoading = true; renderBms();
-  try {
-    // skip as a function: a token change swaps bmSkip while the pages are still coming in. The rows are slimmed as each
-    // page arrives, so a row keeps the refusals of its own page (a refused field reads "unknown", not "none").
-    const { rows, truncated } = await readPaged("me/businesses", {
-      base: BM_BASE, optional: BM_OPTIONAL, skip: () => bmSkip, map: (r) => slimBm(r, bmSkip), limit: BM_LIMIT, maxPages: BM_MAX_PAGES,
-    });
-    if (gen !== state.gen) return;
-    const owner = await fbUser();
-    if (gen !== state.gen) return;
+const loader = listLoader({
+  name: "bms", button: "#loadBms", slotMs: BM_SLOT_MS, waitKey: "bms.wait",
+  keys: ["bms", "bmsAt", "bmsTruncated"],
+  reset: () => Object.assign(state, { bms: [], bmsAt: 0, bmsTruncated: false, bmPerm: false }),
+  load: (ses) => Object.assign(state, { bms: Array.isArray(ses.bms) ? ses.bms : [], bmsAt: ses.bmsAt || 0, bmsTruncated: !!ses.bmsTruncated }),
+  has: () => !!state.bmsAt,
+  atKey: "bmsAt", at: () => state.bmsAt,
+  followed: () => renderBms(),
+  loading: (on) => { state.bmsLoading = on; renderBms(); },
+  // The tab loads the list by itself when nothing is cached for this FB user (bmsAt: another window may have filled it meanwhile).
+  empty: () => !state.bmsAt, due: () => !state.bmsAt,
+  read: readBms,
+  commit: async ({ rows, truncated }, { auto, owner }) => {
     const bms = rows.filter(Boolean);                // a row without a usable id is not a business
     Object.assign(state, { bms, bmsAt: Date.now(), bmsTruncated: truncated, bmPerm: false, owner });
     await saveSession({ bms, bmsAt: state.bmsAt, bmsTruncated: truncated, owner });
-    if (!auto || truncated) toast(t("bms.loaded", { n: bms.length }) + (truncated ? t("bms.truncated") : ""));   // the list itself is the answer to an automatic load
-  } catch (e) {
-    if (e instanceof Stale) return;
-    if (isPermError(e)) state.bmPerm = true;         // this token can't read businesses: say so in the list, calmly
-    else toast(e.message, true);
-  } finally {
-    state.bmsLoading = false;
-    btn.disabled = false; btn.removeAttribute("aria-busy");
-    renderBms();
-  }
-}
-// The tab loads the list by itself when nothing is cached for this FB user. Reopening the popup or switching tabs alone
-// never sends a request once there is a list (only the refresh button does). At most one try per popup open; the limits
-// are a click's (the one-minute slot, the API pause, a dead session).
-let autoTried = false;
-async function autoLoadBms() {
-  if (autoTried) return;
-  autoTried = true;
-  if (state.bmsAt) return;
-  state.bmsLoading = true; renderBms();              // "Loading…" at once, not "press refresh" and then "Loading…"
-  try {
-    // Without the silent token read the request could go out with a stale token. Not forever, though.
-    await Promise.race([tokenReady, new Promise((resolve) => setTimeout(resolve, 15000))]);
-    if (!state.token || isDead() || state.cooldownUntil > Date.now() || state.bmsAt) return;   // bmsAt: another window filled it meanwhile
-    await fetchBms({ auto: true });
-  } finally {
-    if (!busy) { state.bmsLoading = false; renderBms(); }
-  }
-}
+    return !auto || truncated ? t("bms.loaded", { n: bms.length }) + (truncated ? t("bms.truncated") : "") : null;   // the list itself is the answer to an automatic load
+  },
+  fail: (e) => {
+    if (!isPermError(e)) return false;
+    state.bmPerm = true;                             // this token can't read businesses: say so in the list, calmly
+    return true;
+  },
+});
 
 // ---------- drawing ----------
 // One row per business: the profile's businesses and every business an account names, built from the Ad accounts list the way the Ad
@@ -155,14 +117,16 @@ function buildControls() {
 }
 // "Spend · Aug 29" and the sum of the rows shown, so the rows add up to it (ad accounts without a business are not in it; the Ad accounts
 // tab totals everything). A search shows "3 of 12 found" on the right; an incomplete list says so. "—" until the Ad accounts list is
-// loaded. "updated 3 min ago" is the refresh button's tooltip. The grand total is the one place that says "≈" (period.js fillTotal).
+// loaded. "updated 3 min ago" is the refresh button's tooltip, and it is the age of the BUSINESS list (bmsAt), not of the accounts. The grand
+// total is the one place that says "≈" (period.js fillTotal). Without the business list (not read yet, or this token cannot read it) the
+// rows are the businesses the loaded ad accounts name, and the line says the list is not whole.
 function renderTotal(all = allRows()) {
   const total = $("#bmsTotal");
   if (!total) return;
-  refreshTip($("#loadBms"), t("bms.refresh"), state.fetchedAt || state.bmsAt);
-  if (!state.bmsAt) return fill(total);
+  refreshTip($("#loadBms"), t("bms.refresh"), state.bmsAt);
+  if (!state.bmsAt && !state.fetchedAt) return fill(total);
   const rows = filterRows(all, state.bmQuery);
-  const metaText = `${isFiltered() ? t("bms.found", { n: rows.length, all: all.length }) : ""}${state.bmsTruncated || state.truncated ? t("bms.notAll") : ""}`.trim();
+  const metaText = `${isFiltered() ? t("bms.found", { n: rows.length, all: all.length }) : ""}${state.bmsTruncated || state.truncated || !state.bmsAt ? t("bms.notAll") : ""}`.trim();
   fillTotal(total, {
     metaText, range: state.period === "all" || !state.fetchedAt ? "" : periodRange(state.accounts, state.period, state.fetchedAt),
     sum: state.fetchedAt ? totalOf(rows) : null, zeroCur: rows.find((r) => r.accounts.length)?.accounts[0].currency,
@@ -173,7 +137,8 @@ function drawBms() {
   const list = $("#bmsList");
   const all = allRows();
   renderTotal(all);
-  if (!state.bmsAt) return fill(list, el("div", { class: "empty" }, state.bmPerm ? t("bms.noPerm") : state.bmsLoading ? t("bms.loading") : t("bms.empty")));
+  // No business list (not read yet, or this token cannot read it) but ad accounts that name their businesses: those businesses are shown.
+  if (!state.bmsAt && !all.length) return fill(list, el("div", { class: "empty" }, state.bmPerm ? t("bms.noPerm") : state.bmsLoading ? t("bms.loading") : t("bms.empty")));
   const note = state.bmPerm ? el("div", { class: "hint bm-note" }, t("bms.noPerm")) : null;   // a refresh was refused: the old list stays, the note says why it is old
   if (!all.length) return fill(list, note, el("div", { class: "empty" }, state.bmsLoading ? t("bms.loading") : t("bms.none")));
   const used = cachedRates();                         // the order and the "≈" of a row follow the rates known right now…
@@ -253,13 +218,19 @@ function bodyOf(r, name, sp, lineFix) {
 // ---------- wiring ----------
 // Showing the tab draws it again (the Ad accounts list or the period may have changed meanwhile), starts its own auto-load and the
 // Ad accounts list's (accounts.js: same rule and limits as when that tab is opened).
-registerTab("bms", { tall: true, onShow: () => { renderBms(); autoLoadBms(); ensureAccounts(); } });
+registerTab("bms", { tall: true, onShow: () => { renderBms(); loader.ensure(); ensureAccounts(); } });
 registerRender(() => renderBms());                   // RU · EN
 registerRender(() => { if (active()) renderTotal(); }, { lang: false, tick: true });   // every 30 s: the refresh tooltip says how old the list is
 registerInit(() => {
   buildControls();
-  // The spend and counts come from the Ad accounts list: its refresh is part of this one (silent where its own button would complain).
-  $("#loadBms").addEventListener("click", () => { fetchBms(); reloadAccounts(); });
+  // The spend and counts come from the Ad accounts list: its refresh is part of this one (silent where its own button would complain,
+  // except that a taken slot is said, after the Businesses answer: the numbers on screen are then the old ones).
+  $("#loadBms").addEventListener("click", async () => {
+    const accounts = reloadAccounts();
+    await loader.load();
+    const r = await accounts;
+    if (r?.wait) toast(t("bms.accWait", { n: r.wait }), true);
+  });
   $("#bmFilter").addEventListener("input", (e) => { state.bmQuery = e.target.value; renderBms(); });
   ready = true;
 });
