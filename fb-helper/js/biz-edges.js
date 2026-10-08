@@ -13,7 +13,8 @@
 //   `listFailed` the business list itself could not be read: nothing was walked, so no business can be judged;
 //   `failedBms`  the ids of the businesses with an edge that was not read (an error, or the walk ended before it): only THEIR accounts / pages
 //                may be missing, so a caller withholds its verdict for these and for no other business;
-//   `failed`     any of the above reads failed (what the Pages tab's one muted hint says).
+//   `failed`     any of the above reads failed (what the Pages tab's one muted hint says);
+//   `bmIds`      the ids of the businesses of the profile that were listed (the ones that were walked): what the caller may name as "mine".
 
 import { digitsId, cleanText } from "./pure.js";
 import { state, Stale, isDead } from "./state.js";
@@ -34,7 +35,7 @@ export function businessList(rows, more = false) {
 
 // edges: ["owned_pages", "client_pages"]; readEdge(path, bm, edge) → { rows, truncated } (throws what graph() throws); gen = the generation
 // the load started in.
-// → { rows, truncated, failed, failedBms, listFailed } with every edge's rows in one list, owned edges first. Throws Stale (a token change),
+// → { rows, truncated, failed, failedBms, listFailed, bmIds } with every edge's rows in one list, owned edges first. Throws Stale (a token change),
 // never anything else.
 export async function readBusinessEdges({ gen, edges, readEdge }) {
   let bms;
@@ -44,7 +45,7 @@ export async function readBusinessEdges({ gen, edges, readEdge }) {
     bms = businessList(r.data, !!r.paging?.next);
   } catch (e) {
     if (e instanceof Stale) throw e;
-    return { rows: [], truncated: false, failed: true, failedBms: [], listFailed: true };   // no list of businesses: nothing to walk, and the answer says it is not whole
+    return { rows: [], truncated: false, failed: true, failedBms: [], listFailed: true, bmIds: [] };   // no list of businesses: nothing to walk, and the answer says it is not whole
   }
   const rows = [], unread = new Set();
   let truncated = bms.more, failed = false;
@@ -65,5 +66,5 @@ export async function readBusinessEdges({ gen, edges, readEdge }) {
       }
     }
   }
-  return { rows, truncated, failed, failedBms: bms.list.map((b) => b.id).filter((id) => unread.has(id)), listFailed: false };   // in the order of the business list
+  return { rows, truncated, failed, failedBms: bms.list.map((b) => b.id).filter((id) => unread.has(id)), listFailed: false, bmIds: bms.list.map((b) => b.id) };   // in the order of the business list
 }

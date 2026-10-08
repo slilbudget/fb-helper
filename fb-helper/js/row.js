@@ -41,20 +41,28 @@ function announce(msg) {
 // ---------- avatar ----------
 // 24 px: a circle for a page, a rounded square for a business. Without a picture, while it loads and when it fails to load it is the
 // Lucide icon (flag / building) on a muted background: never initials, never a broken image. The <img> is decorative (alt=""), sends
-// no referrer, loads lazily, and takes the box over only once it has loaded. A URL is used only if links.js imageUrl() accepts it
-// (https, facebook.com / fbcdn.net). Every redraw builds the list again, so URLs that loaded (or failed) once are remembered.
+// no referrer, and takes the box over only once it has loaded. It is not lazy: the picture is 24 px, so deferring it saves nothing, and a popup is
+// sized by its content while it draws, which is one more way for a deferred image to wait for nothing. `url` is one candidate or a list of them,
+// best first (pictures.js picturesOf): the next one is tried when one fails, then the icon stays. A URL is used only if links.js imageUrl() accepts
+// it (https, fbcdn.net / fbsbx.com, or the exact Graph picture redirect). Every redraw builds the list again, so URLs that loaded (or failed) once
+// are remembered.
 const KINDS = { page: { shape: "circle", icon: "flag" }, business: { shape: "square", icon: "building" } };
 const loaded = new Set(), broken = new Set();
 function avatarEl(kind, url) {
-  const k = KINDS[kind] || KINDS.page, src = imageUrl(url);
+  const k = KINDS[kind] || KINDS.page, srcs = [...new Set([].concat(url ?? []).map(imageUrl).filter(Boolean))];
   const box = el("span", { class: `lav lav-${k.shape}`, "aria-hidden": "true" }, el("i", { class: `i i-${k.icon}` }));
-  if (!src || broken.has(src)) return box;
-  if (loaded.has(src)) box.classList.add("ok");
-  // The attribute order matters: the policy and `loading` must be there before `src` starts the request.
-  const img = el("img", { class: "lav-img", alt: "", width: "24", height: "24", referrerpolicy: "no-referrer", loading: "lazy", decoding: "async", src });
-  img.addEventListener("load", () => { loaded.add(src); box.classList.add("ok"); });
-  img.addEventListener("error", () => { broken.add(src); box.classList.remove("ok"); img.remove(); });
-  box.append(img);
+  const next = () => {
+    const src = srcs.find((s) => !broken.has(s));
+    if (!src) return;
+    if (loaded.has(src)) box.classList.add("ok");
+    // The attribute order matters: the policy must be there before `src` starts the request.
+    const img = el("img", { class: "lav-img", alt: "", width: "24", height: "24", referrerpolicy: "no-referrer", decoding: "async", src });
+    img.addEventListener("load", () => { loaded.add(src); box.classList.add("ok"); });
+    img.addEventListener("error", () => { broken.add(src); box.classList.remove("ok"); img.remove(); next(); });
+    box.append(img);
+    if (img.complete && img.naturalWidth > 0) { loaded.add(src); box.classList.add("ok"); }   // already decoded (cache): do not depend on a load event that may have gone by
+  };
+  next();
   return box;
 }
 

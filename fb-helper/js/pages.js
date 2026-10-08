@@ -16,6 +16,7 @@ import { readPaged } from "./graph.js";
 import { readBusinessEdges } from "./biz-edges.js";
 import { listLoader } from "./list-loader.js";
 import { emptyView, listNote } from "./list-state.js";
+import { readPictures, picturelessPages, picturesOf } from "./pictures.js";
 import { on } from "./bus.js";
 import { registerTab, registerRender, registerInit, registerStart } from "./registry.js";
 import { LINKS } from "./links.js";
@@ -44,6 +45,7 @@ on("generation", () => { skip = new Set(); renderPages(); });
 on("token-hint", () => renderPages());               // the Token tab's reason for having no token changed
 on("token-dead", () => renderPages());
 on("cache-dropped", () => { state.pagesProblem = null; renderPages(); });
+on("pictures", () => renderPages());                 // pictures were read (pictures.js)
 
 // ---------- load ----------
 // The profile's own pages (me/accounts: it carries the person's tasks). The row keeps the refusals of its own page, and loses everything not
@@ -97,12 +99,13 @@ const loader = listLoader({
     const biz = await readBusinessPages(gen);           // nothing of it is an error: the profile's own pages are already in hand
     return { mine, biz };
   },
-  commit: async ({ mine, biz }, { auto, owner }) => {
+  commit: async ({ mine, biz }, { gen, auto, owner }) => {
     // the profile's own row of a page wins: it has the tasks. "Not in me/accounts" is a verdict only when me/accounts was read completely.
     const pages = finishPages([...mine.rows, ...biz.rows], { verdict: accessVerdict(mine, biz) });
     const truncated = mine.truncated || biz.truncated;
     Object.assign(state, { pages, pagesAt: Date.now(), pagesTruncated: truncated, pagesBizFail: biz.failed, owner });   // before the write: our own storage event must find nothing new
     await saveSession({ pages, pagesAt: state.pagesAt, pagesTruncated: truncated, pagesBizFail: biz.failed, owner });
+    readPictures("page", picturelessPages(pages), gen);   // the pictures the list read did not bring (pictures.js): not awaited, silent
     return !auto || truncated ? t("pages.loaded", { n: pages.length }) + (truncated ? t("pages.truncated") : "") : null;
   },
 });
@@ -177,7 +180,7 @@ function renderPage(p) {
   const issues = issuesOf(p), worst = issues[0];
   const handle = handleOf(p), pbia = igOf(p).state === "pbia";
   return row({
-    key: p.id, avatar: { kind: "page", url: p.picture }, name,
+    key: p.id, avatar: { kind: "page", url: picturesOf("page", p.id, p.picture) }, name,
     value: handle, valueTitle: handle ? t("pages.igRealTitle") : null, valueMuted: true,
     status: worst ? { tone: worst.tone, text: t(worst.label), title: worst.rawTip || t(worst.tip) } : { tone: "ok", text: t("pages.ready") },
     context: !worst && pbia ? [el("span", { class: "lrow-ctx", title: t("pages.igPbiaTitle") }, t("pages.igPbia"))] : [],

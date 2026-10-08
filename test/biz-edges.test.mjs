@@ -32,6 +32,7 @@ test("readBusinessEdges: the business list is asked with limit 51 (one over the 
   assert.deepEqual(urls.slice(1).map((u) => edgeOf(u).join("/")), ["1001/owned", "1002/owned", "1001/client", "1002/client"], "owned edges of every business first");
   assert.deepEqual(r.rows.map((x) => x.id), ["1001-owned", "1002-owned", "1001-client", "1002-client"]);
   assert.deepEqual([r.truncated, r.failed, r.listFailed], [false, false, false]); assert.deepEqual(r.failedBms, []);
+  assert.deepEqual(r.bmIds, ["1001", "1002"], "the businesses of the profile that were listed (pictures.js names only these in a batch)");
   assert.deepEqual(r.rows.map((x) => [x.bm, x.edge]), [["1001", "owned"], ["1002", "owned"], ["1001", "client"], ["1002", "client"]], "the tab's map saw the business and the edge");
 });
 
@@ -66,7 +67,7 @@ test("readBusinessEdges: an edge that hits its page limit makes the answer trunc
 test("readBusinessEdges: the business list itself failing is a failed, empty answer (listFailed, no business is named) — never an error and never a complete one", async () => {
   prime();
   fakeGraph(() => ({ status: 400, body: { error: { code: 200, message: "(#200) business_management" } } }));
-  assert.deepEqual(await readBusinessEdges({ gen: state.gen, edges: ["owned"], readEdge: reader() }), { rows: [], truncated: false, failed: true, failedBms: [], listFailed: true });
+  assert.deepEqual(await readBusinessEdges({ gen: state.gen, edges: ["owned"], readEdge: reader() }), { rows: [], truncated: false, failed: true, failedBms: [], listFailed: true, bmIds: [] });
   fakeGraph(() => ({ status: 500, body: { error: { code: 1, message: "boom" } } }));
   assert.equal((await readBusinessEdges({ gen: state.gen, edges: ["owned"], readEdge: reader() })).failed, true);
 });

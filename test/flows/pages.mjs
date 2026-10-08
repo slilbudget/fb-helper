@@ -654,7 +654,7 @@ async function rowsFlow() {
   await until(pop, (pid) => !!document.querySelector(`#pagesList .lrow[data-row="${pid}"] .lav.ok`), ids.nova);
   const nova = await av(ids.nova);
   ok("Nova: a picture URL on fbcdn.net renders an <img> in a 24 px circle", !!nova.img && nova.img.src === PIC && nova.w === 24 && nova.h === 24 && /lav-circle/.test(nova.cls) && parseFloat(nova.radius) >= 12, JSON.stringify(nova));
-  ok("…decorative (alt empty, aria-hidden), no referrer, lazy, async, width and height set", nova.img.alt === "" && nova.ariaHidden === "true" && nova.img.rp === "no-referrer" && nova.img.loading === "lazy" && nova.img.decoding === "async" && nova.img.w === "24" && nova.img.h === "24", JSON.stringify(nova.img));
+  ok("…decorative (alt empty, aria-hidden), no referrer, not lazy, async, width and height set", nova.img.alt === "" && nova.ariaHidden === "true" && nova.img.rp === "no-referrer" && nova.img.loading === null && nova.img.decoding === "async" && nova.img.w === "24" && nova.img.h === "24", JSON.stringify(nova.img));
   ok("…it did load (the placeholder icon is hidden behind it)", nova.img.natural > 0 && /\bok\b/.test(nova.cls) && nova.icon.visible === "hidden", JSON.stringify(nova));
   const req = asked.find((r) => r.url === PIC);
   ok("…and the request for it carried no Referer", !!req && req.referer === undefined, JSON.stringify(req));

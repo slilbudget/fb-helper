@@ -26,7 +26,7 @@
     }
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; img-src 'self' https://*.fbcdn.net https://*.fbsbx.com; connect-src https://graph.facebook.com https://open.er-api.com/v6/latest/USD https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json"
+    "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; img-src 'self' https://graph.facebook.com https://*.fbcdn.net https://*.fbsbx.com; connect-src https://graph.facebook.com https://open.er-api.com/v6/latest/USD https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json"
   },
   "minimum_chrome_version": "121"
 }

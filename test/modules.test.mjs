@@ -271,6 +271,27 @@ test("graph(): only word segments are a path; anything else is refused before th
   assert.equal(urls.length, 4, "nothing of the refused ones was sent");
 });
 
+test("graph(): the empty path is allowed for ONE thing: GET /<version>/?ids=… with 1-50 digit-only ids (the batch read of pictures.js); every other guard stays", async () => {
+  prime();
+  const urls = fakeGraph(() => ({ body: {} }));
+  const ids = (n) => Array.from({ length: n }, (_, i) => String(100000000000000 + i)).join(",");
+  await graph("", { ids: "1,22,333", fields: "picture{url}" });
+  assert.equal(urls[0].pathname, "/v26.0/", "the root of the version, nothing after it");
+  assert.equal(urls[0].searchParams.get("ids"), "1,22,333"); assert.equal(urls[0].searchParams.get("fields"), "picture{url}");
+  assert.equal(urls.opts[0].method, "GET");
+  await graph("", { ids: "7" }); await graph("", { ids: ids(50), fields: "x" });
+  assert.equal(urls.length, 3);
+  for (const bad of [undefined, null, "", ",", "1,", ",1", "1,,2", "a", "1,a", "1 ,2", " 1", "1\n", "1;2", "-1", "1.5", "1,2/../3", "1/2", "0x1", ids(51), "1".repeat(26), `${"1".repeat(25)},${"1".repeat(26)}`])
+    await assert.rejects(graph("", bad === undefined ? {} : { ids: bad }), (e) => e.local === true && /invalid path/.test(e.message), JSON.stringify(bad));
+  await assert.rejects(graph("", { fields: "id" }), (e) => e.local === true, "the empty path with other parameters only");
+  for (const path of ["/", "x/", "/me", "../", "me/.."]) await assert.rejects(graph(path, { ids: "1,2" }), (e) => e.local === true && /invalid path/.test(e.message), `${path} stays refused even with ids`);
+  assert.equal(urls.length, 3, "nothing of the refused ones was sent");
+  await graph("me", { ids: "1,2" });
+  assert.equal(urls.length, 4, "a normal path takes ids like any parameter");
+  state.token = null;
+  await assert.rejects(graph("", { ids: "1" }), (e) => e.local === true, "the dead / missing token, pause and budget checks come first, as for every read");
+});
+
 test("graph(): the usage header at 95 % starts the same 30 minute pause as a throttle answer; below it only the pill moves", async () => {
   prime(); state.usage = null;
   fakeGraph(() => ({ body: { data: [] }, headers: { "x-app-usage": JSON.stringify({ call_count: 94, total_time: 12 }) } }));

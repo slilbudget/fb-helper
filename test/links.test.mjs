@@ -1,7 +1,8 @@
 // js/links.js: every URL the extension opens; ids from Graph are validated before they go into a URL.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { LINKS, imageUrl } from "../fb-helper/js/links.js";
+import { LINKS, imageUrl, graphPicture } from "../fb-helper/js/links.js";
+import { setGraphUrl } from "../fb-helper/js/config.js";
 
 test("ad account links take the id with or without act_", () => {
   assert.equal(LINKS.adsManager("123"), "https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=123");
@@ -44,6 +45,35 @@ test("imageUrl: anything else gives null (http, other hosts, look-alikes, creden
     "https://scontent.xx.fbcdn.net/a.jpg\n", " https://scontent.xx.fbcdn.net/a.jpg", "", "   ", null, undefined, 5, {}, ["https://fbcdn.net/a.png"],
     `https://scontent.xx.fbcdn.net/${"a".repeat(2001)}`,
   ]) assert.equal(imageUrl(bad), null, JSON.stringify(bad));
+});
+
+test("imageUrl: the Graph picture redirect is accepted in its exact shape only (the Graph origin, /vNN.N/<digits>/picture, no query or ?type=small|normal|square|large)", () => {
+  setGraphUrl("https://graph.test/");
+  try {
+    for (const ok of ["https://graph.test/v26.0/123/picture", "https://graph.test/v26.0/123/picture?type=small", "https://graph.test/v9.0/1234567890123456/picture?type=square", "https://GRAPH.test/v26.0/5/picture?type=large"])
+      assert.equal(typeof imageUrl(ok), "string", ok);
+    for (const bad of [
+      "https://graph.evil.test/v26.0/123/picture", "https://graph.test.evil.com/v26.0/123/picture", "http://graph.test/v26.0/123/picture", "https://graph.test:8443/v26.0/123/picture", "https://u:p@graph.test/v26.0/123/picture",
+      "https://graph.test/v26.0/me/picture", "https://graph.test/v26.0/12a/picture", "https://graph.test/v26/123/picture", "https://graph.test/123/picture", "https://graph.test/v26.0/123/picture/x", "https://graph.test/v26.0/123/picture/",
+      "https://graph.test/v26.0/123", "https://graph.test/v26.0/123/photos", "https://graph.test/v26.0/me/adaccounts", "https://graph.test/v26.0/?ids=1", "https://graph.test/", "https://graph.test/v26.0/1234567890123456789012345678/picture",
+      "https://graph.test/v26.0/123/picture?access_token=x", "https://graph.test/v26.0/123/picture?type=small&access_token=x", "https://graph.test/v26.0/123/picture?type=evil", "https://graph.test/v26.0/123/picture?redirect=0", "https://graph.test/v26.0/123/picture#x",
+    ]) assert.equal(imageUrl(bad), null, bad);
+    setGraphUrl("");
+    assert.equal(imageUrl("https://graph.test/v26.0/123/picture"), null, "no Graph origin set: nothing but the two CDN hosts");
+  } finally { setGraphUrl(""); }
+});
+
+test("graphPicture: <Graph origin>/<version>/<id>/picture?type=small for a digits-only id and a vNN.N version; anything else gives null; imageUrl accepts what it builds", () => {
+  setGraphUrl("https://graph.test/");
+  try {
+    assert.equal(graphPicture("123", "v26.0"), "https://graph.test/v26.0/123/picture?type=small");
+    assert.equal(graphPicture(123, "v9.0"), "https://graph.test/v9.0/123/picture?type=small");
+    assert.equal(imageUrl(graphPicture("123", "v26.0")), "https://graph.test/v26.0/123/picture?type=small");
+    for (const id of [null, undefined, "", "12a", "1/../x", "me", "act_1", " 1", "1".repeat(26)]) assert.equal(graphPicture(id, "v26.0"), null, JSON.stringify(id));
+    for (const v of [undefined, "", "26.0", "v26", "v26.0/", "../v26.0", "v26.0?x=1"]) assert.equal(graphPicture("1", v), null, JSON.stringify(v));
+    setGraphUrl("");
+    assert.equal(graphPicture("1", "v26.0"), null, "no Graph origin set");
+  } finally { setGraphUrl(""); }
 });
 
 test("no link nobody opens: every LINKS entry is used by the extension (accountSettings and bmQuality were not)", () => {
