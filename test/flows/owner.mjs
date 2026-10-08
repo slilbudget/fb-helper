@@ -34,6 +34,7 @@ async function allGone(p, why) {
   ok(`${why}: storage.session holds none of their keys, and the owner mark is gone`, keys.length === 0 && (await stored(p, "owner")) === undefined, JSON.stringify(keys));
   for (const [name, list, rows] of LISTS) {
     await p.click(`[data-tab="${name}"]`);
+    await until(p, (l) => !!document.querySelector(`${l} .lempty`), list);   // showing the tab may start its auto-load: one "Loading…" line first, then the state
     ok(`${why}: the ${name} tab shows no row of the previous user, only a state with a button`, (await p.locator(rows).count()) === 0 && (await p.locator(`${list} .lempty`).count()) === 1, await text(p, list));
   }
 }

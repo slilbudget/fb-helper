@@ -105,6 +105,7 @@ async function followFlow() {
     const watcher = await popup(b);                                          // window 2, on the Token tab, nothing loaded
     const loader = await popup(b, name);                                     // window 1 loads the list by itself
     ok(`${name}: window 1 loads its list`, await rowsAre(loader, t.rows, 1));
+    await waitFor(() => b.inflight === 0);                                   // window 1 is done (Businesses also reads the accounts and the edges after its rows)
     const hits = b.hits.length;
     await watcher.click(`[data-tab="${name}"]`);
     ok(`${name}: window 2 shows the very same list without a request of its own`, (await rowsAre(watcher, t.rows, 1)) && b.hits.length === hits, `${hits} -> ${b.hits.length}`);
