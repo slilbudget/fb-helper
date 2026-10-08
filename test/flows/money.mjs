@@ -1,6 +1,6 @@
 // Money: the total line of the Ad accounts and Businesses tabs when it adds up several currencies. Rates come from mocks of both
 // origins (never the network): "≈ $…" + the muted breakdown + the tooltip with the date and the attribution; the fallback source;
-// both sources down (the per-currency sum, no "≈", no console error, no retry for 10 minutes); the 24 h cache across popups;
+// both sources down (the per-currency sum, no "≈", no console error, no retry for 20 minutes); the 24 h cache across popups;
 // one currency (no request at all); Russian. Graph is a mock (fictional data).
 import { TOK, ok, has, boot, adsPage, popup, text, until, rowsAre, adsFb, ratesOk, fxEr, fxCdn, FX, ROW } from "../harness.mjs";
 
@@ -125,14 +125,17 @@ async function downFlows() {
     const st = await pop.evaluate(() => chrome.storage.local.get(["fx", "fxFail"]));
     ok(`${name}: a failure mark is saved (no table)`, !st.fx && typeof st.fxFail?.at === "number", JSON.stringify(st));
     noErrs(b);
-    // another popup within 10 minutes: nothing is sent again
+    // another popup within 20 minutes: nothing is sent again
     const pop2 = await popup(b, "accounts");
-    ok(`${name}: a popup opened right after sends nothing (10-minute pause)`, (await rowsAre(pop2, ROW,3)) && (await pop2.waitForTimeout(500), b.rateHits.length === 2), b.rateHits.join());
+    ok(`${name}: a popup opened right after sends nothing (20-minute pause)`, (await rowsAre(pop2, ROW,3)) && (await pop2.waitForTimeout(500), b.rateHits.length === 2), b.rateHits.join());
     ok(`${name}: …and the total is still the plain sum`, !(await text(pop2, "#accountsTotal .total-value")).includes("≈"));
-    // ten minutes later it tries again
+    // twenty minutes later it tries again (a mark 11 minutes old is still inside the pause)
     await pop2.evaluate(() => chrome.storage.local.set({ fxFail: { at: Date.now() - 11 * 60e3 } }));
+    const pop2b = await popup(b, "accounts");
+    ok(`${name}: a mark 11 minutes old still holds: nothing is sent`, (await rowsAre(pop2b, ROW,3)) && (await pop2b.waitForTimeout(500), b.rateHits.length === 2), b.rateHits.join());
+    await pop2b.evaluate(() => chrome.storage.local.set({ fxFail: { at: Date.now() - 21 * 60e3 } }));
     const pop3 = await popup(b, "accounts");
-    ok(`${name}: with a mark older than 10 minutes both sources are tried again`, (await rowsAre(pop3, ROW,3)) && (await hitsReach(b, pop3, 4)), b.rateHits.join());
+    ok(`${name}: with a mark older than 20 minutes both sources are tried again`, (await rowsAre(pop3, ROW,3)) && (await hitsReach(b, pop3, 4)), b.rateHits.join());
     noErrs(b);
     await b.ctx.close();
   }
@@ -172,4 +175,25 @@ async function russianFlow() {
   await b.ctx.close();
 }
 
-export const flows = { moneyRates: ratesFlows, moneyLate: lateFlow, moneyFallback: fallbackFlows, moneyDown: downFlows, moneyOne: oneCurrencyFlow, moneyRu: russianFlow };
+// ---------- rates are asked for only while the total is on screen ----------
+async function hiddenFlow() {
+  console.log("\n# money: no rate request from a hidden tab");
+  const b = await boot({ fb: adsFb(TOK), graph: graphFor(THREE), rates: ratesOk });
+  await adsPage(b);
+  let pop = await popup(b, "accounts");
+  ok("three accounts load, the total turns into '≈' (one rate request)", (await rowsAre(pop, ROW,3)) && (await approx(pop)) && b.rateHits.length === 1, b.rateHits.join());
+  // a popup that opens on the Token tab with the list in the cache and no table: drawing the hidden lists must not ask for rates
+  await pop.evaluate(() => { localStorage.setItem("tab", "token"); return chrome.storage.local.remove(["fx", "fxFail"]); });
+  await pop.close();
+  pop = await popup(b);
+  await pop.waitForTimeout(900);
+  ok("opened on the Token tab: the cached lists are drawn, nothing is requested", b.rateHits.length === 1 && (await pop.locator("#tab-token.active").count()) === 1, `${b.rateHits.length}`);
+  await pop.click('[data-tab="bms"]');
+  ok("showing the Businesses tab asks once (its total is on screen now)", await approx(pop, "#bmsTotal") && b.rateHits.length === 2, b.rateHits.join());
+  await pop.click('[data-tab="accounts"]');
+  ok("the Ad accounts tab uses the table that is there: no third request", (await approx(pop)) && b.rateHits.length === 2, b.rateHits.join());
+  noErrs(b);
+  await b.ctx.close();
+}
+
+export const flows = { moneyRates: ratesFlows, moneyLate: lateFlow, moneyFallback: fallbackFlows, moneyDown: downFlows, moneyOne: oneCurrencyFlow, moneyRu: russianFlow, moneyHidden: hiddenFlow };

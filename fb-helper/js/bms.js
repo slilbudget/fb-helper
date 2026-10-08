@@ -181,7 +181,7 @@ function drawBms() {
   if (!rows.length) return fill(list, note, el("div", { class: "empty" }, t("bms.noMatch")));
   fill(list, note, ...rows.map((r) => renderRow(r, used)));
   // …and when the table arrives later (a total of two or more currencies asks for it, period.js) the rows are drawn once more.
-  if (Object.keys(totalOf(rows).totals).length >= 2) fetchRates().then((r) => { if (r && r.rates !== used?.rates && active()) renderBms(); });
+  if (active() && Object.keys(totalOf(rows).totals).length >= 2) fetchRates().then((r) => { if (r && r.rates !== used?.rates && active()) renderBms(); });
 }
 
 // The exact verification state, in words ("Rejected"); a state Meta adds later is shown as it came.

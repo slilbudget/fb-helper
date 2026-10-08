@@ -5,11 +5,12 @@
 //   primary    GET https://open.er-api.com/v6/latest/USD                  (ExchangeRate-API; its attribution must be shown)
 //   fallback   GET https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json
 // No parameters, no cookies, no referrer, nothing about the user or the accounts goes out: it is the same public file for everyone.
-// Asked only when a caller asks (period.js, when a total with two or more currencies is on screen) and the cache is older than
-// 24 h; after a failed attempt nothing is sent for 10 minutes. The table lives in chrome.storage.local ("fx"), a failed attempt in
+// Asked only when a caller asks (period.js and the tabs, when a total or an order with two or more currencies is on a tab that is
+// on screen) and the cache is older than 24 h; after a failed attempt nothing is sent for 20 minutes. A new table that disagrees
+// wildly with the one we hold (money-core.js plausibleRates) counts as a failed attempt: the held table stays. The table lives in chrome.storage.local ("fx"), a failed attempt in
 // "fxFail". A Web Lock keeps two open popups from both asking. rates() never throws: no table is `null`.
 
-import { SRC_ER, SRC_CDN, FX_FAIL_BACKOFF_MS, normalizeRates, readCache, isFresh, isUsable, publicRates } from "./money-core.js";
+import { SRC_ER, SRC_CDN, FX_FAIL_BACKOFF_MS, normalizeRates, readCache, isFresh, isUsable, publicRates, plausibleRates } from "./money-core.js";
 export { fmtMoney, toUsd, usdEquivalent, totalLine, rowAmount, ATTRIBUTION, SYMBOL_CURRENCIES } from "./money-core.js";
 
 const SOURCES = [
@@ -37,7 +38,7 @@ export async function loadCachedRates() {
 }
 
 // { rates: { EUR: 0.86, … } (units per 1 USD), date: "2026-10-08", source } or null. Safe to call on every redraw: a fresh table
-// answers at once, a failed attempt is not repeated for 10 minutes, concurrent calls share one lookup.
+// answers at once, a failed attempt is not repeated for 20 minutes, concurrent calls share one lookup.
 export function rates() {
   if (!inflight) inflight = load().catch(() => cachedRates()).finally(() => { inflight = null; });
   return inflight;
@@ -66,6 +67,7 @@ async function refresh() {
   for (const src of SOURCES) {
     const got = await fetchOne(src);
     if (!got) continue;
+    if (mem && isUsable(mem) && !plausibleRates(got.rates, mem.rates)) continue;   // not believed: the next source may agree with what we hold
     mem = { ...got, fetchedAt: Date.now() };
     failUntil = 0;
     try { await chrome.storage.local.set({ [KEY]: { fetchedAt: mem.fetchedAt, date: mem.date, base: "USD", rates: mem.rates, source: mem.source } }); await chrome.storage.local.remove(FAIL_KEY); } catch { /* kept in memory */ }

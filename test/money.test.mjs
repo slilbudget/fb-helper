@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { setLang } from "../fb-helper/js/i18n.js";
 import {
   fmtMoney, cleanRates, normalizeRates, readCache, isFresh, isUsable, toUsd, usdEquivalent, totalLine, rowAmount,
-  SRC_ER, SRC_CDN, ATTRIBUTION, FX_FRESH_MS, FX_STALE_OK_MS, FX_FAIL_BACKOFF_MS, SYMBOL_CURRENCIES, ZERO_DECIMAL,
+  SRC_ER, SRC_CDN, ATTRIBUTION, FX_FRESH_MS, FX_STALE_OK_MS, FX_FAIL_BACKOFF_MS, SYMBOL_CURRENCIES, ZERO_DECIMAL, plausibleRates,
 } from "../fb-helper/js/money-core.js";
 
 await setLang("en");
@@ -333,7 +333,7 @@ test("rates(): the primary fails (HTTP error, network error, bad payload, oversi
   }
 });
 
-test("rates(): both sources fail → null, no throw, a failure mark; nothing more is sent for 10 minutes, then it tries again", async () => {
+test("rates(): both sources fail → null, no throw, a failure mark; nothing more is sent for 20 minutes, then it tries again", async () => {
   const w = world({ answer: () => ({ status: 503, body: {} }) });
   const a = await w.popup();
   assert.equal(await a.rates(), null);
@@ -344,11 +344,55 @@ test("rates(): both sources fail → null, no throw, a failure mark; nothing mor
   assert.equal(w.calls.length, 2, "backoff: no new request, same popup or another");
   w.store.fxFail = { at: Date.now() - FX_FAIL_BACKOFF_MS - 1000 };
   assert.equal(await (await w.popup()).rates(), null);
-  assert.equal(w.calls.length, 4, "the mark is 10 min old: both sources tried again");
+  assert.equal(w.calls.length, 4, "the mark is 20 min old: both sources tried again");
   // a mark from the future (the clock moved back) is not a reason to stay silent for good
   w.store.fxFail = { at: Date.now() + 3 * 24 * 3600e3 };
   await (await w.popup()).rates();
   assert.equal(w.calls.length, 6);
+});
+
+test("FX_FAIL_BACKOFF_MS is 20 minutes", () => assert.equal(FX_FAIL_BACKOFF_MS, 20 * 60e3));
+
+// ---------- a new table must roughly agree with the one we hold ----------
+const T = { USD: 1, EUR: 0.86, GBP: 0.75, JPY: 150, VND: 25000, UAH: 40, RUB: 90, PLN: 4 };
+test("plausibleRates: small moves pass; a table where more than a quarter of the shared codes moved by over 50 % does not (inverted, other unit)", () => {
+  assert.equal(plausibleRates({ ...T, EUR: 0.88, JPY: 152 }, T), true, "an ordinary day");
+  assert.equal(plausibleRates(T, T), true);
+  const inverted = Object.fromEntries(Object.entries(T).map(([k, v]) => [k, 1 / v]));
+  assert.equal(plausibleRates(inverted, T), false, "1/x: JPY and VND and UAH and RUB and PLN are far off");
+  assert.equal(plausibleRates(Object.fromEntries(Object.entries(T).map(([k, v]) => [k, k === "USD" ? 1 : v * 100])), T), false, "another unit");
+  assert.equal(plausibleRates({ ...T, UAH: 400 }, T), true, "one real devaluation (1 of 7 shared codes) is believed");
+  assert.equal(plausibleRates({ ...T, UAH: 400, RUB: 900 }, T), false, "two of seven is more than a quarter");
+  assert.equal(plausibleRates({ ...T, UAH: 60, RUB: 135 }, T), true, "exactly +50 % is not over 50 %");
+  assert.equal(plausibleRates({ ...T, UAH: 60.1, RUB: 135.5 }, T), false, "just over 50 % on two");
+});
+test("plausibleRates: nothing to compare (too few shared codes, nothing held) passes; USD is not compared", () => {
+  assert.equal(plausibleRates({ USD: 1, EUR: 5, GBP: 5, JPY: 5, VND: 5 }, { USD: 1, EUR: 0.8, GBP: 0.7, JPY: 150, VND: 25000 }), true, "only four shared codes: no verdict");
+  assert.equal(plausibleRates(T, null), true);
+  assert.equal(plausibleRates(null, T), true);
+  assert.equal(plausibleRates({ XXX: 1, YYY: 2, ZZZ: 3, AAA: 4, BBB: 5, USD: 1 }, T), true, "no shared code");
+});
+
+test("rates(): a table that disagrees wildly with the held one is not taken (the held one stays, the next source is tried, then the failure mark)", async () => {
+  const wild = Object.fromEntries(Object.entries(goodRates()).map(([k, v]) => [k, k === "USD" ? 1 : v * 7]));
+  const w = world({ store: { fx: saved({ fetchedAt: Date.now() - FX_FRESH_MS - 3600e3 }) }, answer: () => ({ body: erBody(wild) }) });
+  w.answer = (url) => ({ body: url === ER ? erBody(wild) : cdnBody(wild) });
+  const r = await (await w.popup()).rates();
+  assert.deepEqual(w.calls.map((c) => c.url), [ER, CDN], "both were asked, neither was believed");
+  assert.equal(r.rates.EUR, 0.9, "the held table (stale but under a week old) is what answers");
+  assert.equal(w.store.fx.rates.EUR, 0.9, "and it was not overwritten");
+  assert.ok(w.store.fxFail?.at, "a rejection counts as a failed attempt: 20 minutes of silence");
+  const again = await (await w.popup()).rates();
+  assert.equal(w.calls.length, 2); assert.equal(again.rates.EUR, 0.9);
+  // the first source is wild, the second agrees with the held table: the second is taken
+  const w2 = world({ store: { fx: saved({ fetchedAt: Date.now() - FX_FRESH_MS - 3600e3 }) }, answer: (url) => ({ body: url === ER ? erBody(wild) : cdnBody({ ...goodRates(), EUR: 0.91 }) }) });
+  const r2 = await (await w2.popup()).rates();
+  assert.equal(r2.source, SRC_CDN); assert.equal(r2.rates.EUR, 0.91);
+  // nothing held (or held too long ago to be used): the first table seen is taken, there is nothing to compare it with
+  const w3 = world({ answer: () => ({ body: erBody(wild) }) });
+  assert.equal((await (await w3.popup()).rates()).rates.EUR, 0.8 * 7);
+  const w4 = world({ store: { fx: saved({ fetchedAt: Date.now() - FX_STALE_OK_MS - 3600e3 }) }, answer: () => ({ body: erBody(wild) }) });
+  assert.equal((await (await w4.popup()).rates()).rates.EUR, 0.8 * 7, "a table older than a week is no yardstick");
 });
 
 test("rates(): a success clears the failure mark", async () => {
@@ -410,18 +454,19 @@ test("money.js exports the whole surface the tabs use", async () => {
 });
 
 // ---------- the network surface is declared ----------
-test("network: the only code that sends a request is graph.js and money.js, and every origin money.js uses is in the manifest CSP (no wildcard, https only)", async () => {
+test("network: the only code that sends a request is graph.js and money.js, and every URL money.js uses is pinned in the manifest CSP (https, no wildcard, with its path)", async () => {
   const fs = await import("node:fs");
   const dir = new URL("../fb-helper/", import.meta.url);
   const csp = JSON.parse(fs.readFileSync(new URL("manifest.json", dir), "utf8")).content_security_policy.extension_pages;
-  const origins = csp.match(/connect-src\s+([^;]+)/)[1].trim().split(/\s+/);
-  assert.equal(origins.length, 3, origins.join(" "));
-  assert.ok(origins.every((o) => /^https:\/\/[a-z0-9.-]+$/.test(o)), `https origins without wildcard or path: ${origins}`);
-  assert.ok(origins[0].startsWith("https://graph."), "the Graph origin stays first (test/harness.mjs derives its mock from the first one)");
-  assert.deepEqual(origins.slice(1).sort(), ["https://cdn.jsdelivr.net", "https://open.er-api.com"]);
+  const sources = csp.match(/connect-src\s+([^;]+)/)[1].trim().split(/\s+/);
+  assert.equal(sources.length, 3, sources.join(" "));
+  assert.ok(/^https:\/\/[a-z0-9.-]+$/.test(sources[0]) && sources[0].startsWith("https://graph."), "the Graph origin stays first (test/harness.mjs derives its mock from the first one)");
+  const urls = sources.slice(1);
+  assert.deepEqual(urls.sort(), ["https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json", "https://open.er-api.com/v6/latest/USD"]);
+  assert.ok(urls.every((u) => /^https:\/\/[a-z0-9.-]+\/[\w@./-]+$/.test(u)), "each one is pinned to its path");
   const money = fs.readFileSync(new URL("js/money.js", dir), "utf8");
-  const used = new Set([...money.matchAll(/https:\/\/[a-z0-9.-]+/g)].map((m) => m[0]));
-  for (const o of used) assert.ok(origins.includes(o), `${o} is used by money.js but not allowed by the CSP`);
+  const used = new Set([...money.matchAll(/url: "(https:\/\/[^"]+)"/g)].map((m) => m[1]));
+  for (const o of used) assert.ok(urls.includes(o), `${o} is used by money.js but not allowed by the CSP`);
   assert.equal(used.size, 2);
   const senders = fs.readdirSync(new URL("js/", dir), { recursive: true }).filter((f) => f.endsWith(".js"))
     .filter((f) => /\b(fetch\(|XMLHttpRequest|WebSocket|sendBeacon|EventSource)/.test(fs.readFileSync(new URL(`js/${f}`, dir), "utf8"))).sort();

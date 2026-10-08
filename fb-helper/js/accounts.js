@@ -20,7 +20,7 @@ import { LINKS } from "./links.js";
 import { row, groupHeader, fixLink, kv, whatToDo, linksRow } from "./row.js";
 import { fmtMoney, rowAmount, toUsd, rates, cachedRates } from "./money.js";
 import { PERIODS, statsOf as spendStats, periodRange as rangeOf, addUp, mergeUp, groupByBusiness, sortKey } from "./spend.js";
-import { bindPeriods, fillTotal, refreshTip } from "./period.js";
+import { bindPeriods, fillTotal, refreshTip, isShown } from "./period.js";
 import "./strings/actions.js";
 import { registerTab, registerRender, registerInit, registerStart } from "./registry.js";
 
@@ -259,7 +259,7 @@ function renderHint() {
 // lookup: cached for a day, no repeat after a failure), and the list is drawn once more when a table arrives that the last draw did not use.
 let usedRates = null;
 function wantRates(rows) {
-  if (new Set(rows.map((a) => a.currency || "USD")).size < 2) return;
+  if (new Set(rows.map((a) => a.currency || "USD")).size < 2 || !isShown($("#tab-accounts"))) return;   // only for a list that is on screen (showing the tab draws it again)
   rates().then((r) => { if ((r?.rates ?? null) !== usedRates) renderAccounts(); });
 }
 
@@ -575,7 +575,8 @@ let sig = "";
 
 // The Accounts tab takes Chrome's full 600 px from the start (tall), so a list arriving a moment later doesn't make the
 // window jump; showing it starts the auto-load.
-registerTab("accounts", { tall: true, onShow: ensureAccounts });
+// Showing the tab draws it again: a total or an order that wanted rates while the tab was hidden asks for them now.
+registerTab("accounts", { tall: true, onShow: () => { renderAccounts(); ensureAccounts(); } });
 // RU · EN: every word on the rows comes from keys, so a redraw from state is all it takes.
 registerRender(() => renderAccounts());
 registerRender(() => {

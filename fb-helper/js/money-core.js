@@ -50,7 +50,7 @@ export const SRC_ER = "exchangerate-api", SRC_CDN = "currency-api";
 export const ATTRIBUTION = { text: "ExchangeRate-API", full: "Rates By Exchange Rate API", url: "https://www.exchangerate-api.com" };
 export const FX_FRESH_MS = 24 * 3600e3;                // rates are asked for again after a day
 export const FX_STALE_OK_MS = 7 * 24 * 3600e3;         // …but a table up to a week old still beats no conversion when the refresh fails
-export const FX_FAIL_BACKOFF_MS = 10 * 60e3;           // after a failed attempt: nothing for 10 minutes
+export const FX_FAIL_BACKOFF_MS = 20 * 60e3;           // after a failed (or rejected) attempt: nothing for 20 minutes
 const CLOCK_SLACK_MS = 5 * 60e3;                       // a table "from the future" by more than this is not trusted (the clock moved)
 const MIN_CODES = 5, MAX_KEYS = 2000, LOW = 1e-9, HIGH = 1e12;
 
@@ -67,6 +67,18 @@ export function cleanRates(obj) {
   }
   out.USD = 1;
   return Object.keys(out).length - 1 >= MIN_CODES ? out : null;
+}
+// A table that arrives while another one is held must roughly agree with it: a day does not move the world's currencies by half. When more than
+// a quarter of the codes both tables name (USD aside) moved by more than 50 % the newcomer is not believed (an inverted table, another unit,
+// a broken mirror) and the held one stays. Not "any code": one real devaluation or a crypto ticker among the ~200 codes of the fallback source
+// must not freeze the rates. With fewer than MIN_CODES shared codes there is nothing to compare, so it passes.
+export const FX_MAX_MOVE = 0.5, FX_MAX_WILD_SHARE = 0.25;
+export function plausibleRates(next, prev) {
+  if (!next || !prev) return true;
+  const shared = Object.keys(next).filter((k) => k !== "USD" && Object.hasOwn(prev, k));
+  if (shared.length < MIN_CODES) return true;
+  const wild = shared.filter((k) => Math.abs(next[k] / prev[k] - 1) > FX_MAX_MOVE).length;
+  return wild <= shared.length * FX_MAX_WILD_SHARE;
 }
 const isoDay = (ms) => new Date(ms).toISOString().slice(0, 10);
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
