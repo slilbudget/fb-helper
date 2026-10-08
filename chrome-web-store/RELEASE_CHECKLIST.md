@@ -67,3 +67,14 @@ Rules from the Chrome docs: avoid text in promo images, fill the whole area, mak
 3. **Prominent disclosure.** The Chrome FAQ says a disclosure of sensitive data handling must be shown in the product before use and not only in the policy. The popup already shows the token and cookies openly, but has no first-run notice. Adding a one-line notice under the tabs is the cheap fix if a reviewer asks.
 4. **Brand.** The store build carries no "FB"/"Facebook" in the name or the icon. The homepage/privacy URL still points at the repo called `fb-helper` with the FB Helper name; a reviewer who clicks through sees it. Renaming the repo or hosting the policy on a neutral URL removes the mismatch.
 5. **Meta's rules.** Meta's developer brand rules forbid "FB", "Facebook" and "for Facebook" in names. The description uses "Facebook" only to say what the extension works with, which the rules allow.
+
+## 9. Release 2.5.0 (Businesses and Pages tabs, next-step links)
+- [ ] Version 2.5.0 set by the release step (`manifest.json`, the ZIP names); not before
+- [ ] Live click-through of every URL in `fb-helper/js/links.js` in a logged-in browser: each one lands on the intended page. Only the Ads Manager link is verified; the rest are pending. Mark each `VERIFIED` in that file after it passes
+- [ ] Live check of the Businesses (`me/businesses`) and Pages (`me/accounts`, `owned_pages`, `client_pages`) reads with a real token of each type, EAAB and EAAG: the list loads, optional fields a token cannot read drop out without losing the list, and no Page access token appears in the stored rows (`chrome.storage.session`)
+- [ ] Live check of the business edges (`owned_ad_accounts`, `client_ad_accounts`, `owned_pages`, `client_pages`) per business: merged without duplicates, accounts and Pages not assigned to the profile marked
+- [ ] Live check of the picture URLs: pictures load only from facebook.com / fbcdn.net, with no referrer, only for rows on screen. Confirm the manifest CSP (`img-src`) allows those hosts, or the pictures do not show
+- [ ] Tab order is Token · Cookies · Businesses · Ad accounts · Pages, and the Businesses label is "BM" nowhere in the UI (EN "Businesses", RU "Бизнесы")
+- [ ] Privacy policy URL in the store form points to `PRIVACY_POLICY.md` on `main` with the 2026-10-08 date (push to `main` first)
+- [ ] Store listing text (`STORE_LISTING.md`, 2.5.0) pasted into the Dashboard; the manifest `description` (summary, max 132 chars) is updated only in the manifest, so check it still matches the listing
+- [ ] New screenshots of the Businesses and Pages tabs, EN and RU, made with `chrome-web-store/art/shots.mjs` from fictional data (no Facebook logo, no "FB Helper" name, no real pictures)
