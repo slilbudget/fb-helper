@@ -8,7 +8,7 @@
 // unknown value is never guessed.
 
 import { LINKS, imageUrl } from "./links.js";
-import { addUp, mergeUp, groupByBusiness, compareSpend } from "./spend.js";
+import { addUp, mergeUp, groupByBusiness, membersByBusiness, compareSpend } from "./spend.js";
 import { rowAmount } from "./money-core.js";
 import { cleanText } from "./pure.js";
 
@@ -84,27 +84,30 @@ export function stateOf(counts, { loaded, truncated = false }) {
 }
 
 // ---------- the rows of the list ----------
-// bms = the slimmed me/businesses rows; accounts = the Ad accounts list (each with business { id, name } or none);
-// loaded = the accounts list has been read; stats(account) → { spend } | null for the selected period (null = unknown).
-// One row per business, from groupByBusiness(accounts) joined with `bms`: every business of the profile (even one with no ad
-// account) and every other business an account names (client accounts of a business the profile does not manage: named from the
-// account, no logo, `known` false). Accounts that have no business belong to no row: this tab is about businesses, the Ad
-// accounts tab has the rest.
+// bms = the slimmed me/businesses rows; accounts = the Ad accounts list (each with business { id, name } or none, and `_bmId` when it was
+// read through a business of the person); loaded = the accounts list has been read; stats(account) → { spend } | null for the selected
+// period (null = unknown).
+// One row per business: every business of the profile (even one with no ad account), every business that owns an account of the list, and
+// every business an account was read through (a business only known from the accounts has no logo, `known` false). Accounts without a
+// business belong to no row: this tab is about businesses, the Ad accounts tab has the rest.
+// Two readings of "belongs" (spend.js, one rule for every tab): COUNTS and STATE use the members (owner or read-through business), so a
+// business that only has shared accounts is not "No ad accounts"; SPEND uses the owner's group only, so no account is added twice.
 // → [{ key, id, name, known, picture, accounts, counts, partial, state, verification, verificationState, spend, issues }]
-//   partial = the accounts list is incomplete (counts are "at least")
+//   accounts = the members; partial = the accounts list is incomplete (counts are "at least")
 export function buildRows({ bms = [], accounts = [], loaded = false, truncated = false, stats = () => null } = {}) {
-  const byBiz = new Map(groupByBusiness(accounts).filter((g) => g.id !== null).map((g) => [g.id, g]));
+  const owned = new Map(groupByBusiness(accounts).filter((g) => g.id !== null).map((g) => [g.id, g]));
+  const members = membersByBusiness(accounts);
   const ids = new Map();
   for (const b of bms) if (b && !ids.has(b.id)) ids.set(b.id, b);
-  for (const id of byBiz.keys()) if (!ids.has(id)) ids.set(id, null);
+  for (const id of [...owned.keys(), ...members.keys()]) if (!ids.has(id)) ids.set(id, null);
   return [...ids].map(([id, bm]) => {
-    const g = byBiz.get(id), list = g?.accounts ?? [];
+    const own = owned.get(id)?.accounts ?? [], m = members.get(id), list = m?.accounts ?? [];
     const counts = countAccounts(list);
     const row = {
-      key: id, id, name: bm?.name || g?.name || "", known: !!bm, picture: bm?.profile_picture_uri,
+      key: id, id, name: bm?.name || owned.get(id)?.name || m?.name || "", known: !!bm, picture: bm?.profile_picture_uri,
       accounts: list, counts, partial: loaded && truncated, state: stateOf(counts, { loaded, truncated }),
       verification: badVerification(bm), verificationState: verificationOf(bm),
-      spend: addUp(list.map((a) => ({ spend: stats(a)?.spend ?? null, currency: a.currency }))),
+      spend: addUp(own.map((a) => ({ spend: stats(a)?.spend ?? null, currency: a.currency }))),
     };
     row.issues = issuesOf(row);
     return row;

@@ -718,10 +718,10 @@ async function listFlow() {
   await pop.fill("#accountFilter", "");
   await rowsAre(pop, ROW, 14);
 
-  // Active IDs: the active accounts that are shown (status ACTIVE: restricted and unassigned ones too)
+  // Active IDs: the active accounts that are shown and assigned to the person (status ACTIVE: restricted ones too; 3003, read only through a business, is not theirs)
   await captureClipboard(pop);
   await pop.click("#copyLiveIds");
-  ok("Active IDs copies the ACTIVE accounts, one per line", await until(pop, () => window.__clip.length === 1) && (await clip(pop))[0].split("\n").sort().join() === "1001,1002,2001,2004,3001,3003,4001", JSON.stringify(await clip(pop)));
+  ok("Active IDs copies the ACTIVE assigned accounts, one per line (not 3003, which is only read through a business)", await until(pop, () => window.__clip.length === 1) && (await clip(pop))[0].split("\n").sort().join() === "1001,1002,2001,2004,3001,4001", JSON.stringify(await clip(pop)));
   await pop.click('#statusChips .chip:has-text("Closed")');
   ok("…and follows the filter (no active account shown → nothing copied)", has(await clickToast(pop, "#copyLiveIds"), "No active ad accounts") && (await clip(pop)).length === 1);
   await pop.click('#statusChips .chip:has-text("Closed")');
@@ -933,5 +933,54 @@ async function sortFlow() {
   await b.ctx.close();
 }
 
-export const flows = { sort: sortFlow, version: versionFlows, cache: cacheFlows, session: sessionFlows, ads: adsFlows, auto: autoFlows, alltime: allTimeFlows, layout: layoutFlows, stale: staleFlows, fields: fieldsFlows, paging: pagingFlows, slots: slotFlows, bm: bmFlows,
+// ---------- business membership (owner or read-through), chips under the business filter, Active IDs ----------
+async function membersFlow() {
+  console.log("\n# accounts: members of a business, chips under the filter, Active IDs");
+  const acc = (id, name, status, biz, extra = {}) => ({ account_id: id, name, account_status: status, currency: "USD", timezone_name: "UTC", amount_spent: "100", business: { id: biz[0], name: biz[1] }, ...extra });
+  const ALPHA = ["9001", "Alpha Media"], PARTNER = ["9002", "Partner Agency"], OTHER = ["9003", "Other Co"];
+  const mine = [acc("11", "Alpha own", 1, ALPHA, { p_today: ins(40) }), acc("33", "Other own", 1, OTHER, { p_today: ins(5) })];
+  const client = [acc("22", "Shared active", 1, PARTNER, { p_today: ins(7) }), acc("23", "Shared disabled", 2, PARTNER, { disable_reason: 1, p_today: ins(3) })];   // owned by Partner, shared with Alpha as a client
+  const b = await boot({ fb: adsFb(TOK), graph: (u) => {
+    const p = u.pathname.replace(/^\/v[\d.]+\//, "/");
+    if (p === "/me/adaccounts") return { body: { data: mine } };
+    if (p === "/me/businesses") return { body: { data: [{ id: "9001", name: "Alpha Media" }, { id: "9003", name: "Other Co" }] } };
+    if (p === "/9001/client_ad_accounts") return { body: { data: client } };
+    return { body: { data: [] } };
+  } });
+  await adsPage(b);
+  await captureClipboard(await popup(b));
+  const pop = await popup(b, "accounts");
+  await captureClipboard(pop);
+  ok("four accounts: two assigned, two only through Alpha's client edge", await rowsAre(pop, ROW, 4), await text(pop, "#accountsList"));
+  // Active IDs: the assigned active ones only
+  await pop.click("#copyLiveIds");
+  ok("Active IDs copies the assigned active accounts and leaves out the one read through a business (22)", (await clip(pop)).join("|") === "11\n33", JSON.stringify(await clip(pop)));
+  // the Businesses tab counts the shared accounts for Alpha (a client of them) and shows the spend of the owner's group only
+  await pop.click('[data-tab="bms"]');
+  const bmRow = (name) => pop.locator("#bmsList .lrow").filter({ has: pop.locator(".lrow-name", { hasText: name }) });
+  await until(pop, () => document.querySelectorAll("#bmsList .lrow").length >= 3);
+  const alpha = (await bmRow("Alpha Media").locator(".lrow-sub").textContent()).replace(/\s+/g, " ").trim();
+  ok("Alpha Media counts its own and the two shared accounts: '3 ad accounts · 1 disabled', not 'No ad accounts'", has(alpha, "3 ad accounts") && has(alpha, "1 disabled") && !has(alpha, "No ad accounts"), alpha);
+  const value = async (n) => (await bmRow(n).locator(".lrow-value").textContent()).replace(/\s+/g, " ").trim();
+  ok("…spend stays with the owner: Alpha $40 (its own account), Partner Agency $10 (the two shared ones), the sum is the list's $55 once", (await value("Alpha Media")) === "$40.00" && (await value("Partner Agency")) === "$10.00" && (await value("Other Co")) === "$5.00", `${await value("Alpha Media")} ${await value("Partner Agency")} ${await value("Other Co")}`);
+  const partner = (await bmRow("Partner Agency").locator(".lrow-sub").textContent()).replace(/\s+/g, " ").trim();
+  ok("Partner Agency (owner, not one of the profile's businesses) counts the same two", has(partner, "2 ad accounts"), partner);
+  // the jump lists exactly the accounts the count counted, and the chips count under the filter
+  await bmRow("Alpha Media").locator(".lrow-title").click();
+  await bmRow("Alpha Media").locator(".lbm-go").click();
+  ok("'Show ad accounts' lists Alpha's three (own + shared), not Other Co's", await rowsAre(pop, ROW, 3) && (await pop.$$eval(`${ROW} .lrow-name`, (n) => n.map((x) => x.textContent).sort().join())) === "Alpha own,Shared active,Shared disabled");
+  const chips = () => pop.$$eval("#statusChips .chip", (n) => n.map((x) => x.textContent.replace(/\s+/g, " ").trim()));
+  const c = await chips();
+  ok("the chips count the rows under the filter (Active 1 of the three, not 2 of the whole list), plus the filter chip", c.some((x) => /^Active 1$/.test(x)) && c.some((x) => /^Disabled 1$/.test(x)) && c.some((x) => /^No access 1$/.test(x)) && !c.some((x) => /^Active 2$/.test(x)), JSON.stringify(c));
+  await pop.click("#copyLiveIds");
+  ok("Active IDs under the filter: 11 only", (await clip(pop)).at(-1) === "11", JSON.stringify(await clip(pop)));
+  await pop.click("#statusChips .chip.on");                                    // clear the business filter
+  await until(pop, () => document.querySelectorAll("#accountsList .lrow").length === 4);
+  const all = await chips();
+  ok("without the business filter the chips count the whole list again (Active 2)", all.some((x) => /^Active 2$/.test(x)), JSON.stringify(all));
+  ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
+  await b.ctx.close();
+}
+
+export const flows = { members: membersFlow, sort: sortFlow, version: versionFlows, cache: cacheFlows, session: sessionFlows, ads: adsFlows, auto: autoFlows, alltime: allTimeFlows, layout: layoutFlows, stale: staleFlows, fields: fieldsFlows, paging: pagingFlows, slots: slotFlows, bm: bmFlows,
   accList: listFlow, accRu: listRuFlow, accBody: bodyFlow, accLayout: listLayoutFlow };

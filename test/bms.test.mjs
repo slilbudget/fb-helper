@@ -348,3 +348,28 @@ test("slimBm: control and bidi characters leave the name (it is drawn, searched 
   const r = slimBm({ id: "5", name: "Nova\u202E fdp\nMedia\u2066" });
   assert.equal(r.name, "Nova fdp Media");
 });
+
+test("buildRows: counts and state use the members (owner OR read-through business), spend only the owner's group", () => {
+  const acc = (id, status, biz, via, cur = "USD") => ({ account_id: id, account_status: status, currency: cur, business: { id: biz, name: `Owner ${biz}` }, ...(via ? { _viaBm: true, _bmId: via, _bmName: `Through ${via}` } : {}) });
+  const accounts = [acc("1", 1, "10"), acc("2", 1, "20", "10"), acc("3", 2, "20", "10"), acc("4", 1, "30", "40")];   // 2 and 3: owned by 20, shared with 10; 4: owned by 30, read through the (unlisted) business 40
+  const stats = (a) => ({ spend: { 1: 5, 2: 7, 3: 3, 4: 1 }[a.account_id] });
+  const rows = buildRows({ bms: [slimBm({ id: "10", name: "Mine" }), slimBm({ id: "11", name: "Empty" })], accounts, loaded: true, stats });
+  const by = Object.fromEntries(rows.map((r) => [r.id, r]));
+  assert.deepEqual(rows.map((r) => r.id), ["10", "11", "20", "30", "40"], "profile's businesses first, then owners and read-through businesses of the accounts");
+  assert.deepEqual(by["10"].counts, { total: 3, active: 2, disabled: 1 }, "Mine: its own account and the two shared with it");
+  assert.equal(by["10"].state, "active"); assert.deepEqual(by["10"].issues, []);
+  assert.deepEqual(by["10"].spend.totals, { USD: 5 }, "spend: only the account Mine owns (the shared ones are in 20's group)");
+  assert.deepEqual(by["20"].counts, { total: 2, active: 1, disabled: 1 }); assert.deepEqual(by["20"].spend.totals, { USD: 10 });
+  assert.deepEqual(by["11"].counts, { total: 0, active: 0, disabled: 0 }); assert.equal(by["11"].state, "none");
+  assert.equal(by["40"].name, "Through 40", "a business known only as the read-through side takes its name from the account"); assert.equal(by["40"].known, false);
+  assert.deepEqual(by["40"].counts, { total: 1, active: 1, disabled: 0 }); assert.deepEqual(by["40"].spend.totals, {}, "it owns nothing: its spend is 0, the account's $1 is Owner 30's");
+  assert.deepEqual(by["30"].spend.totals, { USD: 1 });
+  const sum = (key) => Object.values(rows.reduce((t, r) => ({ ...t, ...Object.fromEntries(Object.entries(r.spend.totals).map(([c, v]) => [c, (t[c] || 0) + v])) }), {}))[0];
+  assert.equal(sum(), 16, "the rows' spend adds up to the list's total once: 5 + 7 + 3 + 1");
+});
+test("buildRows: a business whose accounts are all shared with it is not 'No ad accounts' (C2) and the problems follow the members", () => {
+  const accounts = [{ account_id: "2", account_status: 2, currency: "USD", business: { id: "20", name: "O" }, _viaBm: true, _bmId: "10" }];
+  const [row] = buildRows({ bms: [slimBm({ id: "10", name: "Mine" })], accounts, loaded: true, stats: () => ({ spend: 0 }) }).filter((r) => r.id === "10");
+  assert.equal(row.state, "noActive", "it has an account, none active");
+  assert.deepEqual(row.issues.map((i) => i.id), ["noActive"]);
+});

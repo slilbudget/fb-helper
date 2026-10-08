@@ -70,9 +70,33 @@ export function mergeUp(parts) {
   return { totals, unknown, sort: sum ?? -1 };
 }
 // ---------- grouping and ordering (one way for every tab) ----------
+// WHICH BUSINESS AN ACCOUNT BELONGS TO — one rule, two readings, every tab:
+//   owner    a.business.id, the business that owns the account. SPEND is grouped by it (groupByBusiness): an account's spend is counted exactly
+//            once, in its owner's group, so the group subtotals add up to the total of the list.
+//   member   the owner OR the business the account was read through (a._bmId: an account the person only sees as a client of one of their own
+//            businesses; business-edge reads set it, accounts.js readBmAccounts). COUNTS, STATUS and the "ad accounts of this business" filter
+//            use it (inBusiness / membersByBusiness), so a business that has only shared (client) accounts never says "No ad accounts"
+//            and the jump "Show ad accounts" from the Businesses tab lists the same accounts its count did.
+// A client account therefore shows in two places: counted in its user's business, spent in its owner's group.
+const bizId = (v) => (v === undefined || v === null || v === "" ? null : String(v));
+export const inBusiness = (a, id) => id !== null && id !== undefined && (bizId(a?.business?.id) === String(id) || bizId(a?._bmId) === String(id));
+// Business id → { id, name, accounts } over the member rule, first-seen order. Accounts without any business are in no entry.
+export function membersByBusiness(accounts) {
+  const map = new Map();
+  for (const a of accounts || []) {
+    for (const [id, name] of [[bizId(a?.business?.id), a?.business?.name], [bizId(a?._bmId), a?._bmName]]) {
+      if (id === null) continue;
+      let m = map.get(id);
+      if (!m) map.set(id, m = { id, name: String(name ?? ""), accounts: [] });
+      else if (!m.name && name) m.name = String(name);
+      if (!m.accounts.includes(a)) m.accounts.push(a);
+    }
+  }
+  return map;
+}
 // Accounts by the business that owns them (a.business.id): [{ id, name, accounts }], in first-seen order. Accounts without a
 // business form the group with id null. The Ad accounts tab draws these as its group headers; the Businesses tab builds its
-// rows from them, so a business shows the same accounts and the same subtotal on both tabs.
+// rows' SPEND from them (its counts use the member rule above), so a business shows the same subtotal on both tabs.
 export function groupByBusiness(accounts) {
   const groups = new Map();
   for (const a of accounts || []) {

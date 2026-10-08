@@ -19,7 +19,7 @@ import { accountState, adSteps } from "./nextsteps.js";
 import { LINKS } from "./links.js";
 import { row, groupHeader, fixLink, kv, whatToDo, linksRow } from "./row.js";
 import { fmtMoney, rowAmount, toUsd, rates, cachedRates } from "./money.js";
-import { PERIODS, statsOf as spendStats, periodRange as rangeOf, addUp, mergeUp, groupByBusiness, compareSpend } from "./spend.js";
+import { PERIODS, statsOf as spendStats, periodRange as rangeOf, addUp, mergeUp, groupByBusiness, inBusiness, compareSpend } from "./spend.js";
 import { bindPeriods, fillTotal, refreshTip, isShown } from "./period.js";
 import "./strings/actions.js";
 import { registerTab, registerRender, registerInit, registerStart } from "./registry.js";
@@ -225,19 +225,23 @@ const word = (w) => t(w.key, w.vars);
 const CHIP_ORDER = ["active", "2", "3", "restricted", "noaccess", "7", "8", "9", "100", "101"];
 const chipRank = (id) => { const i = CHIP_ORDER.indexOf(id); return i < 0 ? CHIP_ORDER.length : i; };
 
+// The accounts of the business the Businesses tab sent us to (spend.js: owner OR read-through business, the member rule its count used).
+const underBmFilter = () => (state.bmFilter ? state.accounts.filter((a) => inBusiness(a, state.bmFilter.id)) : state.accounts);
 // Rows matching the search + status filter + BM filter. The total, the count and "Active IDs" all follow it.
 function visibleRows() {
   const q = state.filter.trim().toLowerCase();
-  return state.accounts.filter((a) => {
+  return underBmFilter().filter((a) => {
     const s = stateOf(a);
     if (state.statusFilter && s.chip.id !== state.statusFilter) return false;
-    if (state.bmFilter && a.business?.id !== state.bmFilter.id) return false;
     return !q || `${a.name} ${a.account_id} ${word(s.word)} ${word(s.chip)} ${a.business?.name || ""}`.toLowerCase().includes(q);
   });
 }
 const isFiltered = () => !!(state.filter.trim() || state.statusFilter || state.bmFilter);
+// "Active IDs" = the active accounts the person works with: assigned to them. An account only read through a business (_viaBm: "No access")
+// is not one of them, whatever its status; it would put an id into the list that this person cannot use.
+const isLive = (a) => a.account_status === 1 && !a._viaBm;
 function copyLiveIds() {
-  const ids = visibleRows().filter((a) => a.account_status === 1).map((a) => a.account_id);
+  const ids = visibleRows().filter(isLive).map((a) => a.account_id);
   if (!ids.length) return toast(t("acc.noLive"), true);
   copy(ids.join("\n"), t("acc.idsCopied", { n: ids.length }) + (state.truncated ? t("acc.partial") : ""));
 }
@@ -267,9 +271,10 @@ function renderAccounts() { keepFocus(drawAccounts); }
 function drawAccounts() {
   const list = $("#accountsList");
   renderHint();
-  $("#copyLiveIds").disabled = !state.accounts.some((a) => a.account_status === 1);
+  $("#copyLiveIds").disabled = !state.accounts.some(isLive);
+  // The chips count the rows the business filter leaves (not the search or the chip itself: the other chips must stay to switch to).
   const counts = new Map();
-  for (const a of state.accounts) { const c = stateOf(a).chip; const e = counts.get(c.id); if (e) e.n++; else counts.set(c.id, { chip: c, n: 1 }); }
+  for (const a of underBmFilter()) { const c = stateOf(a).chip; const e = counts.get(c.id); if (e) e.n++; else counts.set(c.id, { chip: c, n: 1 }); }
   if (state.statusFilter && !counts.has(state.statusFilter)) state.statusFilter = null;
   // A status filter is only useful when statuses differ; with one status it just repeats the count.
   if (counts.size < 2) { state.statusFilter = null; counts.clear(); }
