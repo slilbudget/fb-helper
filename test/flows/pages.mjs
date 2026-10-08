@@ -125,7 +125,7 @@ async function pagesFlow() {
   await pop.waitForTimeout(300);
   ok("…six requests: the profile's pages, the businesses, the owned edges of both businesses, then the client edges", pageReqs(b).map(pathOf).join() === ["/me/accounts", "/me/businesses", "/555/owned_pages", "/777/owned_pages", "/555/client_pages", "/777/client_pages"].join(), pageReqs(b).map(pathOf).join());
   ok("…and no toast for an automatic load", (await toastOf(pop)) === "", await toastOf(pop));
-  ok("the popup opens at full height on the Pages tab", await pop.evaluate(() => document.body.classList.contains("tall")));
+  ok("the popup opens at full height on the Pages tab", await pop.evaluate(() => document.body.getBoundingClientRect().height >= 600));
   const mine = fieldsOf(reqs(b)[0]), edge = fieldsOf(edgeReqs(b)[0]);
   ok("me/accounts names id, name and every optional field (with tasks)", ["id", "name", ...OPT_ALL].every((f) => mine.includes(f)), mine);
   ok("every business edge names the same fields without tasks", ["id", "name", ...OPT_ALL.filter((f) => f !== "tasks")].every((f) => edge.includes(f)) && !has(edge, "tasks") && edgeReqs(b).length === 4 && edgeReqs(b).every((h) => !has(fieldsOf(h), "tasks") && fieldsOf(h) === edge), edgeReqs(b).map(fieldsOf).join(" || "));
@@ -150,15 +150,15 @@ async function pagesFlow() {
     && nova.value === "@nova.travel" && nova.valueMuted && nova.ctx.length === 0 && nova.id === ids.nova, JSON.stringify(nova));
   ok("…the handle is shown once (not repeated on line 2)", (await pop.locator(`.lrow[data-row="${ids.nova}"] .lrow-head`).innerText()).split("@nova.travel").length === 2);
   const backed = await rowOf(pop, ids.backed);
-  ok("Backed (healthy, «Use Facebook Page» set): silent; the only thing on line 2 is the identity 'IG: page', with its explanation as the tooltip; no handle", backed.status === null && backed.fix === null && backed.value === null
-    && backed.ctx.length === 1 && backed.ctx[0].text === "IG: page" && has(backed.ctx[0].title, "«Use Facebook Page» is set") && has(backed.ctx[0].title, "Instagram placements will run as the page"), JSON.stringify(backed));
+  ok("Backed (healthy, “Use Facebook Page” set): silent; the only thing on line 2 is the identity 'IG via page', with its explanation as the tooltip; no handle", backed.status === null && backed.fix === null && backed.value === null
+    && backed.ctx.length === 1 && backed.ctx[0].text === "IG via page" && has(backed.ctx[0].title, "“Use Facebook Page” is set") && has(backed.ctx[0].title, "Instagram placements will run as the page"), JSON.stringify(backed));
   const fresh = await rowOf(pop, ids.fresh);
-  ok("Fresh (No Instagram): the word, then its ONE fix 'Set «Use Facebook Page»' → the Ads Manager ads view, with the explanation as tooltip; no '+N'",
-    fresh.status?.text === "No Instagram" && fresh.status.tone === "warn" && fresh.fixes === 1 && fresh.fix.text === "Set «Use Facebook Page»" && fresh.fix.href === LINKS.adsManagerHome() && fresh.fix.target === "_blank" && fresh.fix.rel === "noopener noreferrer"
+  ok("Fresh (No Instagram): the word, then its ONE fix 'Set “Use Facebook Page”' → the Ads Manager ads view, with the explanation as tooltip; no '+N'",
+    fresh.status?.text === "No Instagram" && fresh.status.tone === "warn" && fresh.fixes === 1 && fresh.fix.text === "Set “Use Facebook Page”" && fresh.fix.href === LINKS.adsManagerHome() && fresh.fix.target === "_blank" && fresh.fix.rel === "noopener noreferrer"
     && has(fresh.fix.title, "Identity → Instagram account") && has(fresh.fix.title, "once") && has(fresh.fix.title, "automated launches to Instagram placements fail") && fresh.more === null && fresh.sr === null, JSON.stringify(fresh));
   const hidden = await rowOf(pop, ids.hidden);
-  ok("Hidden (tasks without ADVERTISE, unpublished, can't advertise, no Instagram): the WORST problem only — 'No access' → 'Assign me' (Business Suite: owner unknown) '+3'",
-    hidden.status?.text === "No access" && hidden.status.tone === "warn" && hidden.fixes === 1 && hidden.fix.text === "Assign me" && hidden.fix.href === LINKS.pageSuite(ids.hidden) && hidden.more === "+3", JSON.stringify(hidden));
+  ok("Hidden (tasks without ADVERTISE, unpublished, can't advertise, no Instagram): the WORST problem only — 'No access' → 'Assign me' (Business Suite: owner unknown) '+3 more'",
+    hidden.status?.text === "No access" && hidden.status.tone === "warn" && hidden.fixes === 1 && hidden.fix.text === "Assign me" && hidden.fix.href === LINKS.pageSuite(ids.hidden) && hidden.more === "+3 more", JSON.stringify(hidden));
   const orion = await rowOf(pop, ids.orion);
   ok("Orion (Can't advertise): the word in red, Graph's reason is its tooltip (never a line of its own), the fix is 'Appeal' → Account Quality",
     orion.status?.text === "Can't advertise" && orion.status.tone === "bad" && orion.status.title === "This page is restricted from promoting" && orion.fix.text === "Appeal" && orion.fix.href === LINKS.accountQuality() && orion.more === null && orion.value === "@orion.studio", JSON.stringify(orion));
@@ -167,9 +167,9 @@ async function pagesFlow() {
   const harbor = await rowOf(pop, ids.harbor), client = await rowOf(pop, ids.client), wing = await rowOf(pop, ids.wing);
   ok("Harbor (owned by business 555, not in me/accounts): 'No access' → 'Assign me' → the Pages settings of THAT business; no '+N'; its own Instagram handle is still shown",
     harbor.status?.text === "No access" && harbor.fix.text === "Assign me" && harbor.fix.href === LINKS.bmPages("555") && harbor.more === null && harbor.value === "@harbor.bakery" && has(harbor.status.title, "not assigned"), JSON.stringify(harbor));
-  ok("Client (shared with business 555 by another business, unpublished): 'No access' → 'Assign me' → business 555's Pages settings (the business I am in, not the owner's) '+1'",
-    client.status?.text === "No access" && client.fix.href === LINKS.bmPages("555") && client.more === "+1", JSON.stringify(client));
-  ok("Wingtip (owned by business 777, no Instagram): 'No access' → business 777's Pages settings '+1'", wing.status?.text === "No access" && wing.fix.href === LINKS.bmPages("777") && wing.more === "+1", JSON.stringify(wing));
+  ok("Client (shared with business 555 by another business, unpublished): 'No access' → 'Assign me' → business 555's Pages settings (the business I am in, not the owner's) '+1 more'",
+    client.status?.text === "No access" && client.fix.href === LINKS.bmPages("555") && client.more === "+1 more", JSON.stringify(client));
+  ok("Wingtip (owned by business 777, no Instagram): 'No access' → business 777's Pages settings '+1 more'", wing.status?.text === "No access" && wing.fix.href === LINKS.bmPages("777") && wing.more === "+1 more", JSON.stringify(wing));
   ok("exactly one fix link on every collapsed row that has a problem, none on healthy ones", (await pop.locator(".lrow .lrow-head .lrow-fix").count()) === 7 && (await pop.locator('.lrow[data-row="' + ids.nova + '"] .lrow-fix, .lrow[data-row="' + ids.backed + '"] .lrow-fix').count()) === 0);
   ok("no pill-shaped or boxed action anywhere in a row (fix links are plain underlined text, in the tone of the word)", (await pop.locator(".lrow .pill, .lrow .btn, .lrow .act-link").count()) === 0
     && (await pop.locator(".lrow .lrow-fix").evaluateAll((a) => a.every((x) => getComputedStyle(x).backgroundColor === "rgba(0, 0, 0, 0)" && getComputedStyle(x.querySelector(".act-label")).textDecorationLine === "underline" && !x.querySelector(".i")))));
@@ -179,25 +179,26 @@ async function pagesFlow() {
   ok("no body exists while rows are closed", (await pop.locator(".lrow-body").count()) === 0);
   await openRow(pop, ids.hidden);
   const hb = await bodyOf(pop, ids.hidden);
-  ok("Hidden, opened: 'What to do' lists the OTHER problems (the first is on line 2), worst first, each its word + exactly ONE fix link to the right page",
-    hb.todo && hb.todoTitle === "What to do" && hb.probs.map((x) => `${x.text}>${x.fixes.map((f) => f.text).join("+")}`).join() === "Unpublished>Publish,Can't advertise>Appeal,No Instagram>Set «Use Facebook Page»"
+  ok("Hidden, opened: 'What to do' lists EVERY problem (the worst, which is on line 2 too, first), worst first, each its word + exactly ONE fix link to the right page",
+    hb.todo && hb.todoTitle === "What to do" && hb.probs.map((x) => `${x.text}>${x.fixes.map((f) => f.text).join("+")}`).join() === "No access>Assign me,Unpublished>Publish,Can't advertise>Appeal,No Instagram>Set “Use Facebook Page”"
     && hb.probs.every((x) => x.fixes.length === 1 && x.fixes[0].target === "_blank" && x.fixes[0].rel === "noopener noreferrer" && x.fixes[0].tab === 0)
-    && hb.probs.map((x) => x.fixes[0].href).join() === [LINKS.pageSuite(ids.hidden), LINKS.accountQuality(), LINKS.adsManagerHome()].join() && hb.probs.map((x) => x.tone).join() === "warn,bad,warn", JSON.stringify(hb.probs));
-  ok("…Graph's reason is the tooltip of 'Can't advertise'; each fix names its page and has a keyboard key", hb.probs[1].title === "Page is not published"
+    && hb.probs.map((x) => x.fixes[0].href).join() === [LINKS.pageSuite(ids.hidden), LINKS.pageSuite(ids.hidden), LINKS.accountQuality(), LINKS.adsManagerHome()].join() && hb.probs.map((x) => x.tone).join() === "warn,warn,bad,warn", JSON.stringify(hb.probs));
+  ok("…Graph's reason is the tooltip of 'Can't advertise'; each fix names its page and has a keyboard key", hb.probs[2].title === "Page is not published"
     && hb.probs.every((x) => x.fixes[0].aria === `${x.fixes[0].text} · Hidden Page` && x.fixes[0].focus === `pfix:${ids.hidden}:${x.key}`), JSON.stringify(hb.probs.map((x) => x.fixes[0].aria)));
-  ok("…key–value: Instagram (None), my access in plain words (ADVERTISE first, known tasks in order), no Business row (unknown)", hb.kv.map((x) => x.join("=")).join("|") === "Instagram=None|Your access=Moderate, Insights", JSON.stringify(hb.kv));
+  ok("…key–value: no pair at all — 'Instagram: None' and 'Your access: …' only say again what the problems above say, and the business is unknown", hb.kv.length === 0, JSON.stringify(hb.kv));
   ok("…links: Page, Business Suite (no Portfolio: no owner business known), new tab, noopener noreferrer, ids in the URLs", hb.links.map((l) => l.text).join() === "Page,Business Suite" && hb.links.every((l) => l.target === "_blank" && l.rel === "noopener noreferrer")
     && hb.links[0].href === `https://www.facebook.com/${ids.hidden}` && hb.links[1].href === `https://business.facebook.com/latest/home?asset_id=${ids.hidden}`, JSON.stringify(hb.links));
-  ok("…the body starts with the ID line (the keyboard route to copy), no boxes or pills", hb.idline === `ID ${ids.hidden}` && hb.boxes === 0, JSON.stringify(hb));
+  ok("…the body starts with the ID line (for narrow windows: from 480 px the ID is on the collapsed row and its copy button is tabbable once the row is open), no boxes or pills", /^ID\s?\d+$/.test(hb.idline) && hb.boxes === 0
+    && (await pop.locator(`.lrow[data-row="${ids.hidden}"] .lrow-idline`).evaluate((n) => getComputedStyle(n).display)) === "none" && (await pop.locator(`.lrow[data-row="${ids.hidden}"] .lrow-head .lrow-id`).evaluate((n) => n.tabIndex)) === 0, JSON.stringify(hb));
   await openRow(pop, ids.nova); await openRow(pop, ids.harbor); await openRow(pop, ids.client); await openRow(pop, ids.fresh);
   const nb = await bodyOf(pop, ids.nova), hrb = await bodyOf(pop, ids.harbor), cb = await bodyOf(pop, ids.client), fb = await bodyOf(pop, ids.fresh);
-  ok("Nova, opened: no 'What to do' (nothing wrong); Instagram account, owner business, my tasks; three links, Portfolio → business 555", !nb.todo && nb.kv.map((x) => x.join("=")).join("|") === "Instagram=Account @nova.travel|Business=Nova Media|Your access=Advertise, Manage, Insights"
-    && nb.links.map((l) => l.text).join() === "Page,Business Suite,Portfolio" && nb.links[2].href === LINKS.bmPages("555"), JSON.stringify(nb));
-  ok("Harbor, opened (via business): one problem, so no 'What to do' list; Business = the owner (filled from the owned edge), access = 'Via business — not assigned'; Portfolio → 555",
-    !hrb.todo && hrb.kv.map((x) => x.join("=")).join("|") === "Instagram=Account @harbor.bakery|Business=Nova Media|Your access=Via business — not assigned" && hrb.links[2]?.href === LINKS.bmPages("555"), JSON.stringify(hrb));
-  ok("Client, opened: the other problem (Unpublished → Publish); Business = the owner Graph named; Portfolio → the business I see it through (555), not the owner's", cb.probs.map((x) => `${x.text}>${x.fixes[0].text}`).join() === "Unpublished>Publish"
+  ok("Nova, opened: no 'What to do' (nothing wrong); Instagram account, owner business, my tasks; three links, Business pages → business 555", !nb.todo && nb.kv.map((x) => x.join("=")).join("|") === "Instagram=Account @nova.travel|Business=Nova Media|Your access=Advertise, Manage, Insights"
+    && nb.links.map((l) => l.text).join() === "Page,Business Suite,Business pages" && nb.links[2].href === LINKS.bmPages("555"), JSON.stringify(nb));
+  ok("Harbor, opened (via business): its one problem and fix are in What to do (No access → Assign me, 'not assigned' is that problem's tooltip, so no 'Your access' pair); Business = the owner (filled from the owned edge); Business pages → 555",
+    hrb.todo && hrb.probs.map((x) => `${x.text}>${x.fixes[0].text}`).join() === "No access>Assign me" && has(hrb.probs[0].title, "not assigned") && hrb.kv.map((x) => x.join("=")).join("|") === "Instagram=Account @harbor.bakery|Business=Nova Media" && hrb.links[2]?.href === LINKS.bmPages("555"), JSON.stringify(hrb));
+  ok("Client, opened: both problems with their fixes (No access → Assign me, Unpublished → Publish); Business = the owner Graph named; Business pages → the business I see it through (555), not the owner's", cb.probs.map((x) => `${x.text}>${x.fixes[0].text}`).join() === "No access>Assign me,Unpublished>Publish"
     && cb.kv[1]?.join("=") === "Business=Fashion Holding" && cb.links[2]?.href === LINKS.bmPages("555"), JSON.stringify(cb));
-  ok("Fresh, opened: one problem, no list; Instagram None with the explanation as tooltip", !fb.todo && fb.kv[0].join("=") === "Instagram=None" && has(await pop.locator(`.lrow[data-row="${ids.fresh}"] .lrow-pair dd`).first().getAttribute("title"), "Identity → Instagram account"), JSON.stringify(fb));
+  ok("Fresh, opened: its one problem + fix in What to do, the explanation is the problem word's tooltip; no 'Instagram: None' pair (it would say the problem again)", fb.probs.map((x) => `${x.text}>${x.fixes[0].text}`).join() === "No Instagram>Set “Use Facebook Page”" && has(fb.probs[0].title, "Identity → Instagram account") && fb.kv.every((x) => x[0] !== "Instagram"), JSON.stringify(fb));
   ok("five bodies can be open at once", (await pop.locator(".lrow-body").count()) === 5);
   for (const k of ["nova", "harbor", "client", "fresh"]) await closeRow(pop, ids[k]);
   ok("a closed row throws its body away", (await pop.locator(".lrow-body").count()) === 1);
@@ -207,7 +208,7 @@ async function pagesFlow() {
   ok("chip (keyboard Enter): only the pages without Instagram", (await names(pop)).join() === "Hidden Page,Wingtip Gadgets,Fresh Page", (await names(pop)).join());
   ok("…focus stays on the chip after the redraw, aria-pressed", await pop.evaluate(() => document.activeElement?.dataset.focus === "pchip:noIg" && document.activeElement.getAttribute("aria-pressed") === "true"));
   ok("…an open row stays open through the redraw", (await rowOf(pop, ids.hidden)).open && !!(await bodyOf(pop, ids.hidden)));
-  ok("…the count line appears only now ('3 of 9 found'), the fix is written out above the list", await text(pop, "#pagesTotal") === "3 of 9 found" && await pop.locator("#pagesTotal").isVisible() && has(await text(pop, ".pg-note"), "choose «Use Facebook Page» once"), await text(pop, "#pagesTotal"));
+  ok("…the count line appears only now ('3 of 9 found'), the fix is written out above the list", await text(pop, "#pagesTotal") === "3 of 9 found" && await pop.locator("#pagesTotal").isVisible() && has(await text(pop, ".pg-note"), "choose “Use Facebook Page” once"), await text(pop, "#pagesTotal"));
   await pop.fill("#pageFilter", "hid");
   ok("chip + search together", (await names(pop)).join() === "Hidden Page" && (await text(pop, "#pagesTotal")) === "1 of 9 found", (await names(pop)).join());
   await pop.fill("#pageFilter", "");
@@ -239,8 +240,8 @@ async function pagesFlow() {
   await pop.click(`.lrow[data-row="${ids.nova}"] .lrow-head .lrow-id`);
   ok("the copy icon copies the page's ID, the row does not toggle, and there is no toast (a live region says it)", (await clip(pop)).at(-1) === ids.nova && !(await rowOf(pop, ids.nova)).open && (await toastOf(pop)) === ""
     && (await until(pop, () => document.querySelector('.sr-only[aria-live]')?.textContent === "ID copied")));
-  await pop.focus(`[data-focus="rowid2:${ids.hidden}"]`); await pop.keyboard.press("Enter");
-  ok("the 'Copy ID' button in an open body copies it too (keyboard)", (await clip(pop)).at(-1) === ids.hidden, JSON.stringify(await clip(pop)));
+  await pop.focus(`[data-focus="rowid:${ids.hidden}"]`); await pop.keyboard.press("Enter");
+  ok("the copy button of an OPEN row's head is a tab stop and copies by keyboard (the body's own copy line is for narrow windows)", (await clip(pop)).at(-1) === ids.hidden, JSON.stringify(await clip(pop)));
   ok("…and the copy icon of the collapsed row is not a tab stop", await pop.locator(`.lrow[data-row="${ids.nova}"] .lrow-head .lrow-id`).evaluate((n) => n.tabIndex === -1));
 
   // the minute: the auto-load took the slot, which covers the whole refresh
@@ -269,15 +270,15 @@ async function pagesFlow() {
   ok("RU: the fix note", has(await text(pop, ".pg-note"), "один раз выбери «Use Facebook Page»"), await text(pop, ".pg-note"));
   await pop.click('.chip:has-text("Нет Instagram")');
   const ruHidden = await rowOf(pop, ids.hidden), ruFresh = await rowOf(pop, ids.fresh), ruOrion = await rowOf(pop, ids.orion), ruDraft = await rowOf(pop, ids.draft), ruBacked = await rowOf(pop, ids.backed), ruNova = await rowOf(pop, ids.nova);
-  ok("RU: words and fixes: Нет доступа → Назначить себя +3 · Нельзя рекламировать → Апелляция · Не опубликована → Опубликовать · Нет Instagram → Выбрать «Use Facebook Page»",
-    `${ruHidden.status.text}>${ruHidden.fix.text}${ruHidden.more}|${ruOrion.status.text}>${ruOrion.fix.text}|${ruDraft.status.text}>${ruDraft.fix.text}|${ruFresh.status.text}>${ruFresh.fix.text}` === "Нет доступа>Назначить себя+3|Нельзя рекламировать>Апелляция|Не опубликована>Опубликовать|Нет Instagram>Выбрать «Use Facebook Page»"
-    && has(ruFresh.fix.title, "автозапуски") && ruBacked.ctx[0].text === "IG: страница" && ruBacked.sr === "Готова" && ruNova.sr === "Готова", JSON.stringify([ruHidden, ruFresh]));
+  ok("RU: words and fixes: Нет доступа → Назначить себя ещё 3 · Нельзя рекламировать → Апелляция · Не опубликована → Опубликовать · Нет Instagram → Выбрать «Use Facebook Page»",
+    `${ruHidden.status.text}>${ruHidden.fix.text}${ruHidden.more}|${ruOrion.status.text}>${ruOrion.fix.text}|${ruDraft.status.text}>${ruDraft.fix.text}|${ruFresh.status.text}>${ruFresh.fix.text}` === "Нет доступа>Назначить себяещё 3|Нельзя рекламировать>Апелляция|Не опубликована>Опубликовать|Нет Instagram>Выбрать «Use Facebook Page»"
+    && has(ruFresh.fix.title, "автозапуски") && ruBacked.ctx[0].text === "IG от страницы" && ruBacked.sr === "Готова" && ruNova.sr === "Готова", JSON.stringify([ruHidden, ruFresh]));
   await openRow(pop, ids.hidden);
   const ruHb = await bodyOf(pop, ids.hidden);
-  ok("RU: the body — the title, the other problems with their fixes, labels and values", ruHb.todoTitle === "Что делать" && ruHb.probs.map((x) => `${x.text}>${x.fixes[0].text}`).join() === "Не опубликована>Опубликовать,Нельзя рекламировать>Апелляция,Нет Instagram>Выбрать «Use Facebook Page»"
-    && ruHb.kv.map((x) => x.join("=")).join("|") === "Instagram=Нет|Твой доступ=Модерация, Аналитика" && ruHb.links.map((l) => l.text).join() === "Страница,Business Suite", JSON.stringify(ruHb));
+  ok("RU: the body — the title, every problem with its fix, no pair that restates them, links", ruHb.todoTitle === "Что делать" && ruHb.probs.map((x) => `${x.text}>${x.fixes[0].text}`).join() === "Нет доступа>Назначить себя,Не опубликована>Опубликовать,Нельзя рекламировать>Апелляция,Нет Instagram>Выбрать «Use Facebook Page»"
+    && ruHb.kv.length === 0 && ruHb.links.map((l) => l.text).join() === "Страница,Business Suite", JSON.stringify(ruHb));
   await openRow(pop, ids.harbor);
-  ok("RU: via business", (await bodyOf(pop, ids.harbor)).kv.map((x) => x.join("=")).join("|") === "Instagram=Аккаунт @harbor.bakery|Бизнес=Nova Media|Твой доступ=Через бизнес — не назначена на тебя" && (await bodyOf(pop, ids.harbor)).links[2].text === "Портфолио");
+  ok("RU: via business", (await bodyOf(pop, ids.harbor)).kv.map((x) => x.join("=")).join("|") === "Instagram=Аккаунт @harbor.bakery|Бизнес=Nova Media" && has((await bodyOf(pop, ids.harbor)).probs[0].title, "тебя на неё не назначили") && (await bodyOf(pop, ids.harbor)).links[2].text === "Страницы бизнеса");
   await closeRow(pop, ids.harbor);
   await pop.click('[data-lang="en"]');
   ok("back to English", await until(pop, () => /^Refresh · updated/.test(document.querySelector("#loadPages").title) && document.querySelector("#pageFilter").placeholder === "Search"));
@@ -399,7 +400,7 @@ async function fieldsFlow() {
   ok("Instagram refused: no row says 'No Instagram' for the profile's pages, no handle on them, and the body says 'Unknown'", (await rowOf(pop, ids.fresh)).status === null && (await rowOf(pop, ids.nova)).value === null && !(await chips(pop)).some((c) => c.startsWith("No Instagram")), (await chips(pop)).join());
   await openRow(pop, ids.nova);
   ok("…the Instagram line says Unknown, with the reason as tooltip", (await bodyOf(pop, ids.nova)).kv[0].join("=") === "Instagram=Unknown" && has(await pop.locator(`.lrow[data-row="${ids.nova}"] .lrow-pair dd`).first().getAttribute("title"), "did not return the Instagram fields"));
-  ok("…the page-backed account that WAS read still counts", (await rowOf(pop, ids.backed)).ctx[0]?.text === "IG: page");
+  ok("…the page-backed account that WAS read still counts", (await rowOf(pop, ids.backed)).ctx[0]?.text === "IG via page");
   ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
   await b.ctx.close();
 
@@ -411,7 +412,7 @@ async function fieldsFlow() {
   const last = fieldsOf(reqs(b).at(-1));
   ok("nested complaint: two requests, the second without the real-Instagram fields but with the rest", reqs(b).length === 2 && !has(last, "instagram_business_account") && !has(last, "connected_instagram_account")
     && has(last, "connected_page_backed_instagram_account{id}") && has(last, "tasks") && has(last, "business{id,name}"), reqs(b).map(fieldsOf).join(" || "));
-  ok("…Instagram of a page without PBIA is unknown, the page-backed one still counts", (await rowOf(pop, ids.nova)).value === null && (await rowOf(pop, ids.backed)).ctx[0]?.text === "IG: page");
+  ok("…Instagram of a page without PBIA is unknown, the page-backed one still counts", (await rowOf(pop, ids.nova)).value === null && (await rowOf(pop, ids.backed)).ctx[0]?.text === "IG via page");
   await b.ctx.close();
 
   // 4. a 100 that names no field, whatever is asked beyond id and name: business goes first, then Instagram, then the rest
@@ -449,9 +450,9 @@ async function errorsFlow() {
     const b = await boot({ fb: adsFb(TOK), graph: mock({ ...FULL, refuse: [{ when: () => true, error }] }) });
     await adsPage(b);
     const pop = await openPages(b);
-    await until(pop, () => /can't read pages/.test(document.querySelector("#pagesList").textContent));
+    await until(pop, () => /can't read the list/.test(document.querySelector("#pagesList").textContent));
     const s = await calm(pop);
-    ok(`${label}: a calm message in the list, no rows, no red toast`, has(s.list, "This token can't read pages — open Business Manager and refresh the token") && s.rows === 0 && !s.errToast, JSON.stringify(s));
+    ok(`${label}: a calm message in the list, no rows, no red toast`, has(s.list, "This token can't read the list — open Ads Manager or Business Manager, refresh the token (the refresh button on the Token tab) and try again.") && s.rows === 0 && !s.errToast, JSON.stringify(s));
     ok(`${label}: four requests (all fields, without business, without Instagram, id and name), nothing about businesses, the button is free again`, reqs(b).length === 4 && !has(fieldsOf(reqs(b)[1]), "business{") && fieldsOf(reqs(b)[3]) === "id,name" && pageReqs(b).length === 4 && s.busy === null && !s.disabled, reqs(b).map(fieldsOf).join(" || "));
     ok(`${label}: nothing is cached`, (await stored(pop, "pages")) === undefined && (await stored(pop, "pagesAt")) === undefined);
     await resetLocks(pop); await pop.click("#loadPages");
@@ -461,11 +462,11 @@ async function errorsFlow() {
     if (label === "code 10") {
       // the message is in both languages and goes away when a later load works
       await pop.click('[data-lang="ru"]');
-      ok("RU: the same calm message", has(await text(pop, "#pagesList"), "Этим токеном страницы не прочитать — открой Business Manager и обнови токен"), await text(pop, "#pagesList"));
+      ok("RU: the same calm message", has(await text(pop, "#pagesList"), "Этим токеном список не прочитать — открой Ads Manager или Business Manager, обнови токен (кнопка обновления на вкладке «Токен») и повтори."), await text(pop, "#pagesList"));
       await pop.click('[data-lang="en"]');
       b.graph = mock(FULL);
       await resetLocks(pop); await pop.click("#loadPages");
-      ok("a later load that works replaces the message with the rows", await rowsAre(pop, ".lrow", 9) && !has(await text(pop, "#pagesList"), "can't read pages"));
+      ok("a later load that works replaces the message with the rows", await rowsAre(pop, ".lrow", 9) && !has(await text(pop, "#pagesList"), "can't read the list"));
     }
     await b.ctx.close();
   }
@@ -473,7 +474,7 @@ async function errorsFlow() {
   let b = await boot({ fb: adsFb(TOK), graph: mock({ ...FULL, refuse: [{ when: (top) => top.length > 2, error: permission(10) }] }) });
   await adsPage(b);
   let pop = await openPages(b);
-  ok("a permission error caused by the extra fields: the list loads from id and name, no message", (await rowsAre(pop, ".lrow", 9)) && !has(await text(pop, "#pagesList"), "can't read pages") && reqs(b).length === 4, String(reqs(b).length));
+  ok("a permission error caused by the extra fields: the list loads from id and name, no message", (await rowsAre(pop, ".lrow", 9)) && !has(await text(pop, "#pagesList"), "can't read the list") && reqs(b).length === 4, String(reqs(b).length));
   await b.ctx.close();
 
   // 5. any other error: a red toast, the list says it is not loaded, no retry by going back to the tab
@@ -481,7 +482,8 @@ async function errorsFlow() {
   await adsPage(b);
   pop = await openPages(b);
   ok("other error: shown once", await until(pop, () => /boom/.test(document.querySelector("#toast").textContent)) && reqs(b).length === 1, await toastOf(pop));
-  ok("…the list tells you to press refresh, not a calm permission text", has(await text(pop, "#pagesList"), "press the refresh button above"), await text(pop, "#pagesList"));
+  ok("…the list says it could not load, with Graph's words muted under it and a 'Try again' button — not the calm permission text", (await text(pop, "#pagesList .lempty-text")) === "Couldn't load" && (await text(pop, "#pagesList .lempty-detail")) === "Graph says: boom"
+    && (await text(pop, "#pagesList .lempty .btn")) === "Try again" && !has(await text(pop, "#pagesList"), "can't read the list"), await text(pop, "#pagesList"));
   await pop.click('[data-tab="token"]'); await resetLocks(pop); await pop.click('[data-tab="pages"]'); await pop.waitForTimeout(700);
   ok("…and not retried by going back to the tab", reqs(b).length === 1, String(reqs(b).length));
   await b.ctx.close();
@@ -505,7 +507,7 @@ async function errorsFlow() {
   await pop.evaluate(() => chrome.storage.session.set({ cooldownUntil: Date.now() + 10 * 60000 }));
   await pop.reload(); await pop.waitForTimeout(500);
   await pop.click('[data-tab="pages"]'); await pop.waitForTimeout(800);
-  ok("API pause: no automatic request, the list explains itself", pageReqs(b).length === 0 && has(await text(pop, "#pagesList"), "press the refresh button above"), String(pageReqs(b).length));
+  ok("API pause: no automatic request, the list explains itself", pageReqs(b).length === 0 && (await text(pop, "#pagesList .lempty-text")) === "Not loaded yet" && (await text(pop, "#pagesList .lempty .btn")) === "Load", String(pageReqs(b).length));
   const paused = await clickToast(pop, "#loadPages");
   ok("API pause: a click says so and sends nothing", has(paused, "hands off") && pageReqs(b).length === 0, `${paused} / ${pageReqs(b).length}`);
   await pop.evaluate(() => chrome.storage.session.set({ cooldownUntil: 0 }));
@@ -517,7 +519,7 @@ async function errorsFlow() {
   b = await boot({ fb: () => "<p>feed</p>", graph: mock(FULL) });
   await (await b.ctx.newPage()).goto("https://www.facebook.com/");
   pop = await popup(b, "pages"); await pop.waitForTimeout(700);
-  ok("no token: no request, the list tells you which button to press, no toast", pageReqs(b).length === 0 && has(await text(pop, "#pagesList"), "press the refresh button above") && (await toastOf(pop)) === "", await text(pop, "#pagesList"));
+  ok("no token: no request, the list tells you which button to press, no toast", pageReqs(b).length === 0 && (await text(pop, "#pagesList .lempty-text")) === (await text(pop, "#tokenBox")) && (await text(pop, "#pagesList .lempty .btn")) === "Try again" && (await toastOf(pop)) === "", await text(pop, "#pagesList"));
   await b.ctx.close();
 
   // 9. a slow load says "Loading", a click meanwhile does nothing
@@ -543,7 +545,7 @@ async function errorsFlow() {
   b = await boot({ fb: adsFb(TOK), graph: () => ({ body: { data: [] } }) });
   await adsPage(b);
   pop = await openPages(b);
-  ok("no pages: says so, no hint (nothing failed), the count line is empty", await until(pop, () => /No pages found for this profile/.test(document.querySelector("#pagesList").textContent)) && (await pop.locator(".pg-foot").count()) === 0 && (await text(pop, "#pagesTotal")) === "", await text(pop, "#pagesList"));
+  ok("no pages: says so, no hint (nothing failed), the count line is empty", await until(pop, () => /No pages/.test(document.querySelector("#pagesList").textContent)) && (await pop.locator(".pg-foot").count()) === 0 && (await text(pop, "#pagesTotal")) === "", await text(pop, "#pagesList"));
   await b.ctx.close();
 }
 
@@ -594,7 +596,7 @@ async function cacheFlow() {
   await b.ctx.addCookies([{ name: "c_user", value: "2002", domain: ".facebook.com", path: "/", secure: true }]);
   pop = await popup(b);
   ok("another FB user → the cache is dropped, no rows", (await rowsAre(pop, ".lrow", 0)) && (await until(pop, () => chrome.storage.session.get("pages").then((o) => !o.pages))));
-  ok("…and the list is empty, not someone else's pages", has(await text(pop, "#pagesList"), "Pages not loaded") || has(await text(pop, "#pagesList"), "Loading pages"), await text(pop, "#pagesList"));
+  ok("…and the list is empty, not someone else's pages", (await pop.locator("#pagesList .lrow").count()) === 0 && (await pop.locator("#pagesList .lempty, #pagesList .lsk-list").count()) === 1, await text(pop, "#pagesList"));
   ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
   await b.ctx.close();
 
@@ -736,7 +738,7 @@ async function verdictFlow() {
     ok(`${label}: …and the 'No access' chip counts only a real verdict (${cfg.rows.length ? "Hidden Page, whose own task list has no Advertise" : "none"})`,
       cfg.rows.length ? (await chips(pop)).some((c) => /^No access 1$/.test(c)) : !(await chips(pop)).some((c) => /No access/.test(c)), (await chips(pop)).join());
     await pop.click(`.lrow[data-row="${ids.harbor}"] .lrow-title`);
-    ok(`${label}: …the body says 'Via business', not 'not assigned'`, has(await text(pop, `.lrow[data-row="${ids.harbor}"] .lrow-body`), "Via business — whether you are assigned is unknown") && !has(await text(pop, `.lrow[data-row="${ids.harbor}"] .lrow-body`), "not assigned"), await text(pop, `.lrow[data-row="${ids.harbor}"] .lrow-body`));
+    ok(`${label}: …the body says 'Via business', not 'not assigned'`, has(await text(pop, `.lrow[data-row="${ids.harbor}"] .lrow-body`), "Via business — assignment unknown") && !has(await text(pop, `.lrow[data-row="${ids.harbor}"] .lrow-body`), "not assigned"), await text(pop, `.lrow[data-row="${ids.harbor}"] .lrow-body`));
     ok(`${label}: …other problems of those pages still show (Client Fashion House is unpublished)`, (await chips(pop)).some((c) => /^Unpublished/.test(c)), (await chips(pop)).join());
     ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
     await b.ctx.close();

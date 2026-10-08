@@ -14,7 +14,7 @@
 <body>
   <div class="bar">
     <header class="top">
-      <div class="brand"><img src="images/logo.webp" alt="" width="20" height="20">FB Helper</div>
+      <h1 class="brand"><img src="images/logo.webp" alt="" width="20" height="20">FB Helper</h1>
       <div class="top-right">
         <span id="usage" class="pill hidden"></span>
         <div class="lang" role="group" data-i18n-aria="lang.title">
@@ -23,13 +23,13 @@
         </div>
       </div>
     </header>
-    <nav class="tabs" role="tablist">
-      <button class="tab active" id="tabbtn-token" data-tab="token" role="tab" aria-selected="true" aria-controls="tab-token" data-i18n="tab.token">Token</button>
-      <button class="tab" id="tabbtn-cookies" data-tab="cookies" role="tab" aria-selected="false" aria-controls="tab-cookies" data-i18n="tab.cookies">Cookies</button>
-      <button class="tab" id="tabbtn-bms" data-tab="bms" role="tab" aria-selected="false" aria-controls="tab-bms" data-i18n="tab.bms">Businesses</button>
-      <button class="tab" id="tabbtn-accounts" data-tab="accounts" role="tab" aria-selected="false" aria-controls="tab-accounts" data-i18n="tab.accounts">Ad accounts</button>
-      <button class="tab" id="tabbtn-pages" data-tab="pages" role="tab" aria-selected="false" aria-controls="tab-pages" data-i18n="tab.pages">Pages</button>
-    </nav>
+    <div class="tabs" role="tablist" aria-label="Sections" data-i18n-aria="tabs.aria">
+      <button class="tab active" id="tabbtn-token" data-tab="token" role="tab" aria-selected="true" aria-controls="tab-token" tabindex="0" data-i18n="tab.token">Token</button>
+      <button class="tab" id="tabbtn-cookies" data-tab="cookies" role="tab" aria-selected="false" aria-controls="tab-cookies" tabindex="-1" data-i18n="tab.cookies">Cookies</button>
+      <button class="tab" id="tabbtn-bms" data-tab="bms" role="tab" aria-selected="false" aria-controls="tab-bms" tabindex="-1" data-i18n="tab.bms">Businesses</button>
+      <button class="tab" id="tabbtn-accounts" data-tab="accounts" role="tab" aria-selected="false" aria-controls="tab-accounts" tabindex="-1" data-i18n="tab.accounts">Accounts</button>
+      <button class="tab" id="tabbtn-pages" data-tab="pages" role="tab" aria-selected="false" aria-controls="tab-pages" tabindex="-1" data-i18n="tab.pages">Pages</button>
+    </div>
   </div>
 
   <main>
@@ -99,7 +99,9 @@
 
   </main>
 
+  <!-- Both live regions are in the page from the start: a region that is created together with its message is not announced. #live: "ID copied". -->
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="live" class="sr-only" role="status" aria-live="polite"></div>
   <script type="module" src="js/popup.js"></script>
 </body>
 </html>

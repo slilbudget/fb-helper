@@ -1,7 +1,7 @@
 // Unit tests for fb-helper/js/pure.js — plain Node, no browser: `node --test test/*.test.mjs`
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isSessionError, sessionLabel, verNum, latestVersion, adRank, reviewLines, ownerVerdict, profileBlock, isUserAgent, lifetimeSpend, spendFloor, insightRow, cleanText, digitsId } from "../fb-helper/js/pure.js";
+import { isSessionError, sessionLabel, verNum, latestVersion, adRank, reviewLines, ownerVerdict, profileBlock, isUserAgent, lifetimeSpend, spendFloor, insightRow, cleanText, digitsId, isPermError, humanEnum } from "../fb-helper/js/pure.js";
 
 test("session errors: code 190 (any subcode) and 102; subcodes alone are not enough", () => {
   for (const c of [190, "190", 102]) assert.ok(isSessionError(c), String(c));
@@ -216,4 +216,49 @@ test("digitsId: 1-25 digits (string or number) or null; nothing that could add a
 test("reviewLines and profileBlock clean Graph's text of bidi controls too", () => {
   assert.deepEqual(reviewLines({ ad_review_feedback: { global: { [`Rule ${RLO}x`]: `desc${LRI}` } } }), ["Rule x — desc"]);
   assert.equal(profileBlock({ name: `Alex${RLO}`, id: "1", businesses: [{ id: "2", name: `Nova${LRE}` }] }), "Profile: Alex (1)\nBM: Nova (2)");
+});
+
+// ---------- review round 1, Fix B ----------
+test("isPermError: one rule for every list tab — #10, #283, #200–299 and a #100 that names no field; field complaints, throttle, session and plain failures are not", () => {
+  const e = (code, raw) => ({ code, raw });
+  for (const code of [10, 283, 200, 210, 299]) assert.equal(isPermError(e(code, "no")), true, String(code));
+  assert.equal(isPermError(e(100, "Unsupported get request. Object with ID 'me' does not exist, cannot be loaded due to missing permissions")), true);
+  assert.equal(isPermError(e(100, "Tried accessing nonexisting field (insights) on node type (AdAccount)")), false, "a field complaint is not about permissions");
+  for (const code of [1, 4, 17, 190, 199, 300, 2635, undefined]) assert.equal(isPermError(e(code, "x")), false, String(code));
+  assert.equal(isPermError(new Error("plain")), false); assert.equal(isPermError(null), false);
+});
+
+test("humanEnum: an enum no string covers is shown as plain words, never as a raw constant", () => {
+  assert.equal(humanEnum("PENDING_BILLING_INFO"), "Pending billing info");
+  assert.equal(humanEnum("MANAGE_JOBS"), "Manage jobs");
+  assert.equal(humanEnum("WITH__ISSUES"), "With issues", "doubled underscores are one space");
+  assert.equal(humanEnum("x"), "X");
+  for (const v of ["", "___", null, undefined]) assert.equal(humanEnum(v), "");
+});
+
+test("tnPlus: the count word of 'at least n' (written '10+') is the many / plural form, never the singular", async () => {
+  const { setLang, tnPlus, tn, addStrings } = await import("../fb-helper/js/i18n.js");
+  addStrings({ ru: { "t.thing": ["кабинет", "кабинета", "кабинетов"] }, en: { "t.thing": ["ad account", "ad accounts"] } });
+  try {
+    await setLang("ru");
+    assert.deepEqual([1, 2, 5, 21].map((n) => tn(n, "t.thing")), ["кабинет", "кабинета", "кабинетов", "кабинет"]);
+    assert.deepEqual([1, 2, 5, 21].map((n) => tnPlus(n, "t.thing", true)), ["кабинетов", "кабинетов", "кабинетов", "кабинетов"], "'1+ кабинетов', '2+ кабинетов'");
+    assert.deepEqual([1, 2].map((n) => tnPlus(n, "t.thing", false)), ["кабинет", "кабинета"], "without the plus nothing changes");
+    await setLang("en");
+    assert.deepEqual([1, 3].map((n) => tnPlus(n, "t.thing", true)), ["ad accounts", "ad accounts"], "'1+ ad accounts'");
+    assert.equal(tnPlus(1, "t.thing", false), "ad account");
+  } finally { await setLang("en"); }
+});
+
+test("format: fullDate and tzLabel — the muted facts line of an account body ('UTC+3 Kyiv · US · created 04.03.2025')", async () => {
+  const { setLang } = await import("../fb-helper/js/i18n.js");
+  const { fullDate, tzLabel } = await import("../fb-helper/js/format.js");
+  try {
+    await setLang("ru"); assert.equal(fullDate("2025-03-04T10:00:00+0000"), "04.03.2025"); assert.equal(fullDate("2025-03-04"), "04.03.2025");
+    await setLang("en"); assert.equal(fullDate("2025-03-04T10:00:00+0000"), "Mar 4, 2025");
+  } finally { await setLang("en"); }
+  for (const bad of [undefined, null, "", "yesterday", "2025-3-4"]) assert.equal(fullDate(bad), "", String(bad));
+  assert.match(tzLabel("Europe/Kiev"), /^UTC\+[23] \S/, "offset, a space, the city: no dot between them (the line has its own dots)");
+  assert.equal(tzLabel("Etc/GMT+3"), "UTC−3", "Etc/GMT+N is UTC−N");
+  assert.equal(tzLabel("UTC"), "UTC"); assert.equal(tzLabel(""), "");
 });

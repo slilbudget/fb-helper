@@ -13,6 +13,12 @@ export function ago(ts) {
   const m = Math.round((Date.now() - ts) / 60000);
   return m < 1 ? t("ago.now") : m < 60 ? t("ago.min", { n: m }) : t("ago.h", { n: Math.round(m / 60) });
 }
+// "04.03.2025" in Russian, "Mar 4, 2025" in English (d = YYYY-MM-DD from Graph).
+export const fullDate = (d) => {
+  if (!/^\d{4}-\d{2}-\d{2}/.test(d || "")) return "";
+  if (getLang() === "ru") return `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}`;
+  return new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: "UTC" }).format(new Date(`${d.slice(0, 10)}T00:00:00Z`));
+};
 // Was ts still today in this timezone? Cached numbers of an earlier day must not pass for today's.
 export const sameDay = (tz, ts) => dayIn(tz, ts) === dayIn(tz, Date.now());
 function dayIn(tz, ts) {
@@ -30,7 +36,7 @@ export const shortDate = (d) => {
   if (getLang() === "ru") return `${d.slice(8, 10)}.${d.slice(5, 7)}`;
   return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${d}T00:00:00Z`));
 };
-// One format for every account timezone: "UTC+3 · Kiev", "UTC−3". Meta stores some as city names
+// One format for every account timezone: "UTC+3 Kiev", "UTC−3". Meta stores some as city names
 // (Europe/Kiev) and some as Etc/GMT±N, whose sign is inverted (Etc/GMT+3 = UTC−3); Intl resolves both.
 const tzLabels = new Map();
 export function tzLabel(tz) {
@@ -47,5 +53,5 @@ function tzLabelOf(tz) {
   off = (off || "GMT").replace("GMT", "UTC").replace("-", "−");
   off = off.replace(/^UTC\+0$/, "UTC");
   const city = tz.includes("/") && !tz.startsWith("Etc/") ? tz.split("/").pop().replace(/_/g, " ") : "";
-  return city ? `${off} · ${city}` : off;
+  return city ? `${off} ${city}` : off;
 }

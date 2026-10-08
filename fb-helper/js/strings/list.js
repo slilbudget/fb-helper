@@ -8,13 +8,13 @@ export const STRINGS = {
     "list.retry": "Повторить", "list.load": "Загрузить",
     "list.idle": "Пока не загружено",
     "list.error": "Не удалось загрузить",
-    "list.perm": "Этим токеном список не прочитать — открой Ads Manager или Business Manager, обнови токен (⟳ на вкладке «Токен») и повтори.",
+    "list.perm": "Этим токеном список не прочитать — открой Ads Manager или Business Manager, обнови токен (кнопка обновления на вкладке «Токен») и повтори.",
   },
   en: {
     "list.retry": "Try again", "list.load": "Load",
     "list.idle": "Not loaded yet",
     "list.error": "Couldn't load",
-    "list.perm": "This token can't read the list — open Ads Manager or Business Manager, refresh the token (⟳ on the Token tab) and try again.",
+    "list.perm": "This token can't read the list — open Ads Manager or Business Manager, refresh the token (the refresh button on the Token tab) and try again.",
   },
 };
 addStrings(STRINGS);

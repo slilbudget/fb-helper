@@ -9,7 +9,7 @@
 
 import { t, has } from "./i18n.js";
 import "./strings/pages.js";
-import { $, el, fill, keepFocus, toast } from "./dom.js";
+import { $, el, fill, keepFocus, toast, scrollFade } from "./dom.js";
 import { ago } from "./format.js";
 import { state, Stale, saveSession } from "./state.js";
 import { readPaged } from "./graph.js";
@@ -126,9 +126,10 @@ function renderChips() {
   if (state.pagesProblem && !counts[state.pagesProblem]) state.pagesProblem = null;
   fill($("#pagesChips"), ...Object.keys(PROBLEMS).filter((k) => counts[k] > 0).map((k) => {
     const on = state.pagesProblem === k;
-    return el("button", { type: "button", class: `pill chip ${PROBLEMS[k]}${on ? " on" : ""}`, "aria-pressed": String(on), "data-focus": `pchip:${k}`,
+    return el("button", { type: "button", class: `pill chip ${PROBLEMS[k]}${on ? " on" : ""}`, "aria-pressed": String(on), "data-focus": `pchip:${k}`, "aria-label": `${t(`pages.p.${k}`)}: ${counts[k]}`,
       onclick: () => { state.pagesProblem = on ? null : k; renderPages(); } }, `${t(`pages.p.${k}`)} ${counts[k]}`);
   }));
+  scrollFade($("#pagesChips"));
 }
 function renderPages() { if ($("#pageFilter")) keepFocus(drawPages); }          // nothing to draw before registerInit has built the controls
 function drawPages() {
@@ -161,15 +162,16 @@ function instagramPair(p) {
   if (ig.state === "none") return pair(t("pages.ig.none"), t("pages.igNoneTitle"));
   return pair(t("pages.ig.unknown"), t("pages.igUnknownTitle"));
 }
-// The other problems of a page (the worst is on line 2 of the row): each as its word and its fix, so every problem has its way out.
-function otherProblems(p, issues, name) {
+// The problems of a page (the worst is on line 2 of the row too): each as its word and its fix, so every problem has its way out in one place.
+function problemList(p, issues, name) {
   return el("span", { class: "pg-probs" }, issues.map((i) => el("span", { class: "pg-prob", "data-problem": i.key },
     el("span", { class: `pg-prob-text ${i.tone}`, title: i.rawTip || t(i.tip) }, t(i.label)),
     i.fix ? fixLink({ label: i.fix.label, url: i.fix.url, tip: t(i.fix.tip) }, { tone: i.tone, focus: `pfix:${p.id}:${i.key}`, owner: name }) : null)));
 }
 // One page = the shared row (row.js): picture · name … the Instagram handle; healthy = silent (only the identity of a page-backed
-// account), a problem = its word + its fix (+N for the others); the ID. The body (built when the row opens): the other problems,
-// Instagram, business, my access, links.
+// account), a problem = its word + its fix (+N for the others); the ID. The body (built when the row opens): every problem with its fix,
+// Instagram, business, my access, links - but never a pair that only says again what the row's problem already says (no Instagram → the
+// problem, so no "Instagram: none" pair; no access → no "Your access: not assigned" pair).
 function renderPage(p) {
   const name = p.name || t("pages.noName");
   const issues = issuesOf(p), worst = issues[0];
@@ -186,12 +188,13 @@ function renderPage(p) {
     onToggle: (open) => { if (open) state.pagesOpen.add(p.id); else state.pagesOpen.delete(p.id); },
     body: () => {
       const acc = accessOf(p), bmId = p._viaBm || p.business?.id;     // a business I am in comes first: the owner's settings may not be mine to open
+      const says = (key) => issues.some((i) => i.key === key);        // the problem is already on screen (line 2 or the list above)
       return [
-        issues.length > 1 ? whatToDo({ help: otherProblems(p, issues.slice(1), name), owner: name, focus: `ptodo:${p.id}` }) : null,
+        issues.length ? whatToDo({ help: problemList(p, issues, name), tone: issues[0].tone, owner: name, focus: `ptodo:${p.id}` }) : null,
         kv([
-          instagramPair(p),
+          says("noIg") ? null : instagramPair(p),
           [t("pages.kv.business"), p.business?.name || "", { wide: true }],
-          [t("pages.kv.access"), acc.via ? t(acc.unsure ? "pages.access.viaUnsure" : "pages.access.via") : taskText(acc.tasks), { wide: true }],
+          says("noAccess") ? null : [t("pages.kv.access"), acc.via ? t(acc.unsure ? "pages.access.viaUnsure" : "pages.access.via") : taskText(acc.tasks), { wide: true }],
         ]),
         linksRow([
           { id: "page", label: "pages.linkPage", url: LINKS.page(p.id), tip: t("pages.linkPageTitle") },
@@ -224,7 +227,7 @@ function labelControls() {
 }
 
 // Full height from the start (a list arriving a moment later must not make the window jump); showing the tab starts the auto-load.
-registerTab("pages", { tall: true, onShow: loader.ensure });
+registerTab("pages", { onShow: loader.ensure });
 registerRender(() => { labelControls(); renderPages(); });                       // RU · EN
 registerRender(() => { renderTotal(); }, { lang: false, tick: true });          // "updated 3 min ago"
 registerInit(() => { buildControls(); labelControls(); });

@@ -125,7 +125,7 @@ function renderTotal(all = allRows()) {
   const rows = filterRows(all, state.bmQuery);
   const metaText = `${isFiltered() ? t("bms.found", { n: rows.length, all: all.length }) : ""}${state.bmsTruncated || state.truncated || !state.bmsAt ? t("bms.notAll") : ""}`.trim();
   fillTotal(total, {
-    metaText, range: state.period === "all" || !state.fetchedAt ? "" : periodRange(state.accounts, state.period, state.fetchedAt),
+    labelTitle: t("bms.totalTitle"), metaText, range: state.period === "all" || !state.fetchedAt ? "" : periodRange(state.accounts, state.period, state.fetchedAt),
     sum: state.fetchedAt ? totalOf(rows) : null, zeroCur: rows.find((r) => r.accounts.length)?.accounts[0].currency,
   });
 }
@@ -183,12 +183,12 @@ function renderRow(r, rt) {
     key: `bm-${r.id}`, avatar: { kind: "business", url: r.picture }, name, ...valueOf(sp),
     status, context: contextOf(r), fix, more: Math.max(0, r.issues.length - 1), id: { value: r.id },
     open: openRows.has(r.id), onToggle: (open) => openRows[open ? "add" : "delete"](r.id),
-    body: () => bodyOf(r, name, sp, fix),
+    body: () => bodyOf(r, name, sp),
   });
 }
 // The expanded row: the ad accounts (counts + the jump to the Ad accounts tab, filtered), the exact verification, the spend of three or more
-// currencies in full; then what to do (the help + every fix not already on line 2); then the one link out, Business settings.
-function bodyOf(r, name, sp, lineFix) {
+// currencies in full; then what to do (the help + every fix); then the one link out, Business settings.
+function bodyOf(r, name, sp) {
   const c = r.counts, loaded = !!state.fetchedAt;
   const go = () => { emit("filter-bm", { id: r.id, name }); emit("show-tab", "accounts"); };
   const counts = loaded && c.total
@@ -202,7 +202,7 @@ function bodyOf(r, name, sp, lineFix) {
   const todo = r.issues.length ? whatToDo({
     help: r.issues.map((i) => t(i.help)).join(" "),
     actions: r.issues.filter((i) => i.fix).map((i, n) => ({ id: i.id, label: i.fix.label, url: i.fix.url, tip: t(i.fix.tip), primary: n === 0 })),
-    skip: lineFix, tone: r.issues[0].tone, owner: name, focus: `bm-todo:${r.id}`,
+    tone: r.issues[0].tone, owner: name, focus: `bm-todo:${r.id}`,
   }) : null;
   return [
     kv([accounts,
@@ -218,7 +218,7 @@ function bodyOf(r, name, sp, lineFix) {
 // ---------- wiring ----------
 // Showing the tab draws it again (the Ad accounts list or the period may have changed meanwhile), starts its own auto-load and the
 // Ad accounts list's (accounts.js: same rule and limits as when that tab is opened).
-registerTab("bms", { tall: true, onShow: () => { renderBms(); loader.ensure(); ensureAccounts(); } });
+registerTab("bms", { onShow: () => { renderBms(); loader.ensure(); ensureAccounts(); } });
 registerRender(() => renderBms());                   // RU · EN
 registerRender(() => { if (active()) renderTotal(); }, { lang: false, tick: true });   // every 30 s: the refresh tooltip says how old the list is
 registerInit(() => {

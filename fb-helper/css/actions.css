@@ -13,7 +13,6 @@
   text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px;
   text-decoration-color: color-mix(in srgb, currentColor 45%, transparent); }
 .act-inline:hover .act-label, .act-inline:focus-visible .act-label { text-decoration-color: currentColor; }
-.act-inline:focus-visible { outline: 1.5px solid currentColor; outline-offset: 2px; }
 
 /* "Pixels: none" in an expanded body: the one fact worth a colour. */
 .acc-warn { color: var(--color-warning); }
@@ -29,13 +28,13 @@
 /* The toggle is the same box before the first load, collapsed and open, so folding the list moves nothing. Words darken on hover, no fill. */
 .ads-toggle {
   appearance: none; border: 0; background: transparent; cursor: pointer; flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--spacing-1-5);
-  height: 28px; padding: 0; color: var(--color-text-secondary); font: var(--text-md) var(--font); text-align: left; white-space: nowrap;
+  height: 28px; padding: 0; color: var(--color-text-secondary); font: var(--text-md) var(--font); text-align: start; white-space: nowrap;
 }
 .ads-toggle .i { --size-icon: 14px; }
 .ads-toggle:hover:not(:disabled), .ads-toggle:focus-visible { color: var(--color-text-primary); }
 .ads-toggle:disabled { color: var(--color-text-disabled); cursor: default; }
 .ads-refresh {
-  appearance: none; border: 0; background: transparent; cursor: pointer; flex: none; margin-right: -6px;
+  appearance: none; border: 0; background: transparent; cursor: pointer; flex: none; margin-inline-end: -6px;
   width: 28px; height: 28px; display: grid; place-items: center; color: var(--color-text-secondary);
 }
 .ads-refresh .i { --size-icon: 16px; }

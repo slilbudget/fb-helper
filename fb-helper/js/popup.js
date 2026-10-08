@@ -49,12 +49,11 @@ const GRAPH_URL = "https://graph.facebook.com/";
 setGraphUrl(GRAPH_URL);
 
 // ---------- wiring ----------
-// Visual only. The popup opens at the height of the tab it shows: a tab that registers `tall` (the Accounts tab) takes
-// Chrome's full 600 px from the start, so a list arriving a moment later doesn't make the window jump.
+// Visual only. Every tab has the same height (css: body min-height 600 px = Chrome's popup maximum), so neither a list arriving a moment later
+// nor a switch between tabs makes the window jump.
 let current = null;                                     // the tab on screen
 function showTab(name) {
   current = name;
-  document.body.classList.toggle("tall", !!tabInfo(name)?.tall);
   $$(".tab").forEach((tab) => {
     const on = tab.dataset.tab === name;
     tab.classList.toggle("active", on); tab.setAttribute("aria-selected", String(on)); tab.tabIndex = on ? 0 : -1;
@@ -67,8 +66,9 @@ function switchTab(name) {
   showTab(name);
   if (started) tabInfo(name)?.onShow?.();
 }
-// A module opens another tab (the BM tab's "ad accounts of this BM" → Accounts) without knowing popup.js.
-on("show-tab", (name) => { if (tabInfo(name)) switchTab(name); });
+// A module opens another tab (the BM tab's "ad accounts of this BM" → Accounts) without knowing popup.js. The control that asked for it
+// is gone with its tab: focus goes to the button of the tab that opened, so a keyboard user is not left on the body.
+on("show-tab", (name) => { if (tabInfo(name)) { switchTab(name); $(`#tabbtn-${name}`)?.focus(); } });
 const savedTab = () => { try { const v = localStorage.getItem("tab"); return tabNames().includes(v) ? v : "token"; } catch { return "token"; } };
 showTab(savedTab());                                    // module code runs before the first paint: open on the right tab and height
 
@@ -85,15 +85,19 @@ document.addEventListener("DOMContentLoaded", async () => {
   await loadLang(); applyStatic();
   $$("[data-lang]").forEach((b) => b.addEventListener("click", () => switchLang(b.dataset.lang)));
   await loadState();
-  $$(".tab").forEach((tab) => tab.addEventListener("click", () => switchTab(tab.dataset.tab)));
-  // WAI-ARIA tabs: arrows / Home / End move between tabs; Tab key goes straight into the panel.
+  $(".tabs").addEventListener("click", (ev) => { const tab = ev.target.closest(".tab"); if (tab) switchTab(tab.dataset.tab); });   // one listener: a tab added to the strip later works too
+  // WAI-ARIA tabs with MANUAL activation: arrows / Home / End only move focus along the strip (a tab that loads a list must not send requests
+  // as the arrow passes over it); Enter or Space - the button's own click - opens the focused tab. Roving tabindex: the focused tab is the one
+  // the Tab key stops at; leaving the strip puts it back on the open tab.
+  const tabIndexes = (on) => $$(".tab").forEach((tab) => { tab.tabIndex = tab === on ? 0 : -1; });
   $(".tabs").addEventListener("keydown", (ev) => {
     const tabs = $$(".tab"), i = tabs.indexOf(document.activeElement), n = tabs.length;
     if (i < 0) return;
     const j = { ArrowRight: (i + 1) % n, ArrowLeft: (i + n - 1) % n, Home: 0, End: n - 1 }[ev.key];
     if (j === undefined) return;
-    ev.preventDefault(); switchTab(tabs[j].dataset.tab); tabs[j].focus();
+    ev.preventDefault(); tabIndexes(tabs[j]); tabs[j].focus();
   });
+  $(".tabs").addEventListener("focusout", (ev) => { if (!ev.relatedTarget?.closest?.(".tabs")) tabIndexes($(".tab.active")); });
   runInit();                                            // every module attaches its listeners and reads its saved view
 
   await checkOwner();                                   // cache from another FB login: don't show it

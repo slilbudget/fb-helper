@@ -61,13 +61,15 @@ async function rowFlow() {
   // ---- structure and ARIA ----
   const s = await q(pop, () => {
     const r = document.querySelector('.lrow[data-row="problem"]'), btn = r.querySelector("button.lrow-title"), sub = r.querySelector(".lrow-sub");
-    return { tag: btn.tagName, expanded: btn.getAttribute("aria-expanded"), controls: btn.getAttribute("aria-controls"), describedby: btn.getAttribute("aria-describedby"), subId: sub.id,
+    return { tag: btn.tagName, expanded: btn.getAttribute("aria-expanded"), controls: btn.getAttribute("aria-controls"), describedby: btn.getAttribute("aria-describedby"), subId: sub.id, valId: r.querySelector(".lrow-value").id,
+      desc: btn.getAttribute("aria-describedby").split(" ").map((id) => document.getElementById(id).textContent.replace(/\s+/g, " ").trim()).join(" | "),
       subText: sub.textContent.replace(/\s+/g, " ").trim(), buttons: r.querySelectorAll("button").length, links: r.querySelectorAll("a").length, name: btn.textContent.trim(), titleAttr: btn.title,
       controlsExists: !!document.getElementById(btn.getAttribute("aria-controls")), tab: btn.tabIndex };
   });
-  ok("the name is a real <button aria-expanded=false aria-controls aria-describedby=line 2>", s.tag === "BUTTON" && s.expanded === "false" && s.describedby === s.subId && /^lrow-body-\d+$/.test(s.controls) && !s.controlsExists, JSON.stringify(s));
+  ok("the name is a real <button aria-expanded=false aria-controls aria-describedby=value + line 2>", s.tag === "BUTTON" && s.expanded === "false" && s.describedby === `${s.valId} ${s.subId}` && /^lrow-val-\d+$/.test(s.valId) && /^lrow-body-\d+$/.test(s.controls) && !s.controlsExists, JSON.stringify(s));
+  ok("…the description a screen reader gives is the amount, then line 2: '55,20 $ + 20,00 € | Ads policy Appeal +2 more'", has(s.desc, "55,20 $ + 20,00 €") && s.desc.endsWith("| Ads policyAppeal+2 more"), s.desc);
   ok("…its accessible name is the name only; the full name is its tooltip", s.name === "Nova Media — spring promo" && s.titleAttr === "Nova Media — spring promo");
-  ok("…line 2 reads: the problem word, the fix, '+2'", s.subText === "Ads policyAppeal+2", s.subText);   // the "·" between the items is CSS, not text
+  ok("…line 2 reads: the problem word, the fix, '+2 more'", s.subText === "Ads policyAppeal+2 more", s.subText);   // the "·" between the items is CSS, not text
   ok("…the row has exactly one name button, the copy button, and one fix link in its head", s.buttons === 2 && s.links === 1, JSON.stringify(s));
   const dom = await q(pop, () => [...document.querySelectorAll(".lrow")].every((r) => r.querySelector(".lrow-head") && !r.querySelector(".lrow-head a, .lrow-head button")?.closest("button.lrow-title")?.querySelector("a, button")));
   ok("…no interactive control nested inside another", dom);
@@ -79,12 +81,15 @@ async function rowFlow() {
       sub: r.querySelector(".lrow-sub").textContent.replace(/\s+/g, " ").trim(), fix: !!r.querySelector(".lrow-fix") };
   });
   ok("a healthy row prints no status word and no dot; the word is there for screen readers only", !h.status && !h.dot && h.sr === "Active" && h.srVisible <= 1, JSON.stringify(h));
+  const hd = await q(pop, () => { const btn = document.querySelector('.lrow[data-row="healthy"] .lrow-title'); return btn.getAttribute("aria-describedby").split(" ").map((id) => document.getElementById(id).textContent.replace(/\s+/g, " ").trim()).join(" | "); });
+  ok("…and it is part of the button's description: '$1,240 | Active3 ad accounts' (value, the sr-only status, the context)", hd === "$1,240 | Active3 ad accounts", hd);
+  ok("names carry dir=auto (a right-to-left name from Graph lays itself out)", await q(pop, () => [...document.querySelectorAll(".lrow-name, .lgroup-text")].every((n) => n.getAttribute("dir") === "auto")));
   ok("…line 2 shows the context ('3 ad accounts') and nothing else", h.sub === "Active3 ad accounts" && !h.fix, h.sub);
   const g = await q(pop, () => {
     const st = (k) => { const e = document.querySelector(`.lrow[data-row="${k}"] .lrow-status`); return e && { text: e.textContent.trim(), cls: e.className, title: e.title, color: getComputedStyle(e).color, dot: getComputedStyle(e.querySelector(".lrow-dot")).backgroundColor }; };
     return { bad: st("problem"), warn: st("warn"), grey: st("grey") };
   });
-  ok("a problem shows a dot + the problem word in its tone: bad red, warn amber, neutral grey; the tooltip is the status title", g.bad.text === "Ads policy" && g.bad.color === "rgb(216, 35, 42)" && g.bad.dot === "rgb(250, 56, 62)" && g.bad.title === "Disabled: ads integrity"
+  ok("a problem shows a dot + the problem word in its tone: bad red, warn amber, neutral grey; the tooltip is the status title", g.bad.text === "Ads policy" && g.bad.color === "rgb(207, 33, 39)" && g.bad.dot === "rgb(250, 56, 62)" && g.bad.title === "Disabled: ads integrity"
     && g.warn.color === "rgb(138, 97, 0)" && g.warn.dot === "rgb(247, 185, 40)" && g.grey.text === "Closed" && g.grey.dot === "rgb(188, 192, 196)" && g.grey.color === "rgb(96, 103, 112)", JSON.stringify(g));
 
   // ---- the fix link ----
@@ -94,10 +99,10 @@ async function rowFlow() {
     return { href: a.href, target: a.target, rel: a.rel, aria: a.getAttribute("aria-label"), title: a.title, icon: !!a.querySelector(".i"), focus: a.dataset.focus, color: cs.color, deco: getComputedStyle(lab).textDecorationLine,
       h: r.height, z: cs.zIndex, pos: cs.position };
   });
-  ok("the fix is an underlined link in the problem's colour, no ↗ icon, new tab, noopener noreferrer, owner in its accessible name, tooltip", fx.href === URL_REVIEW && fx.target === "_blank" && fx.rel === "noopener noreferrer" && fx.aria === "Appeal · Nova Media — spring promo" && fx.title === "Opens Account Quality" && !fx.icon && fx.deco === "underline" && fx.color === "rgb(216, 35, 42)", JSON.stringify(fx));
+  ok("the fix is an underlined link in the problem's colour, no ↗ icon, new tab, noopener noreferrer, owner in its accessible name, tooltip", fx.href === URL_REVIEW && fx.target === "_blank" && fx.rel === "noopener noreferrer" && fx.aria === "Appeal · Nova Media — spring promo" && fx.title === "Opens Account Quality" && !fx.icon && fx.deco === "underline" && fx.color === "rgb(207, 33, 39)", JSON.stringify(fx));
   ok("…24 px high hit area, above the row's covering area", fx.h >= 24 && fx.pos === "relative" && fx.z === "1", JSON.stringify(fx));
   const more = await q(pop, () => { const e = document.querySelector('.lrow[data-row="problem"] .lrow-more'); return { text: e.textContent, title: e.title }; });
-  ok("'+2' is muted text with a tooltip", more.text === "+2" && has(more.title, "2 more"), JSON.stringify(more));
+  ok("'+2 more' is muted text with a tooltip", more.text === "+2 more" && has(more.title, "2 more"), JSON.stringify(more));
 
   // ---- value ----
   const v = await q(pop, () => ["healthy", "problem", "warn", "grey", "long"].map((k) => { const e = document.querySelector(`.lrow[data-row="${k}"] .lrow-value`); const cs = getComputedStyle(e); const hd = document.querySelector(`.lrow[data-row="${k}"] .lrow-head`).getBoundingClientRect();
@@ -133,7 +138,7 @@ async function rowFlow() {
     }
     return out;
   });
-  ok("collapsed rows are two lines (≤ 68 px with a 24 px picture, 64 without), a long name ends in an ellipsis", lay.healthy.h <= 68 && lay.problem.h <= 64 && lay.long.h <= 68 && lay.long.nameCut && lay.long.nameOverflow === "ellipsis", JSON.stringify(lay));
+  ok("collapsed rows are two lines and ALL the same height (68 px, with or without a picture), a long name ends in an ellipsis", lay.healthy.h === 68 && lay.problem.h === 68 && lay.long.h === 68 && lay.bare.h === 68 && lay.flat.h === 68 && lay.long.nameCut && lay.long.nameOverflow === "ellipsis", JSON.stringify(lay));
   ok("line 2 never wraps (one 17-px line); a long status phrase is cut with an ellipsis while the fix and '+3' keep their width", lay.long.subH <= 24 && lay.long.st.cut && lay.long.st.ov === "ellipsis" && lay.long.subScroll, JSON.stringify(lay.long));
   const keep = await q(pop, () => { const r = document.querySelector('.lrow[data-row="long"]'), fixR = r.querySelector(".lrow-fix").getBoundingClientRect(), sub = r.querySelector(".lrow-sub").getBoundingClientRect(), more = r.querySelector(".lrow-more").getBoundingClientRect(); return { fixInside: fixR.right <= sub.right + 1, moreInside: more.right <= sub.right + 1, fixW: Math.round(fixR.width) }; });
   ok("…the fix link and '+3' are fully inside line 2", keep.fixInside && keep.moreInside && keep.fixW > 40, JSON.stringify(keep));
@@ -148,7 +153,7 @@ async function rowFlow() {
   const sticky = await q(pop, () => getComputedStyle(document.querySelector(".lgroup")).position);
   ok("the group header is sticky", sticky === "sticky");
   const gh = await q(pop, () => { const g = document.querySelector(".lgroup"); return { role: g.getAttribute("role"), level: g.getAttribute("aria-level"), text: g.textContent.replace(/\s+/g, " ").trim(), valueTitle: g.querySelector(".lgroup-value").title, size: getComputedStyle(g).fontSize }; });
-  ok("the group header: heading role, 'Tailspin Toys · 3', the subtotal with its tooltip, 12 px", gh.role === "heading" && gh.level === "3" && gh.text === "Tailspin Toys· 3≈ $1,770" && gh.valueTitle === "breakdown" && gh.size === "12px", JSON.stringify(gh));
+  ok("the group header: heading role (level 2, under the h1), 'Tailspin Toys · 3', the subtotal with its tooltip, 12 px", gh.role === "heading" && gh.level === "2" && gh.text === "Tailspin Toys· 3≈ $1,770" && gh.valueTitle === "breakdown" && gh.size === "12px", JSON.stringify(gh));
   if (SHOT) await pop.screenshot({ path: path.join(SHOT, "rows-lab-560.png"), fullPage: true });
 
   // ---- keyboard focus ring (first: no mouse has touched the page yet) ----
@@ -215,6 +220,7 @@ async function rowFlow() {
       todoTitle: todo.querySelector(".lrow-todo-title").textContent, help: todo.querySelector(".lrow-todo-help")?.textContent, links, todoBox: getComputedStyle(todo).backgroundColor, linksRow: [...bd.querySelectorAll(".lrow-link")].map((a) => ({ text: a.textContent.trim(), icon: !!a.querySelector(".i-external"), aria: a.getAttribute("aria-label"), rel: a.rel })),
       pairs: bd.querySelectorAll(".lrow-pair").length, wide: bd.querySelectorAll(".lrow-pair.wide").length, cols: getComputedStyle(bd.querySelector(".lrow-kv")).gridTemplateColumns.split(" ").length, indent: Math.round(bd.getBoundingClientRect().left + parseFloat(getComputedStyle(bd).paddingLeft)), nameX: Math.round(r.querySelector(".lrow-name").getBoundingClientRect().left) };
   });
+  ok("…and so do the values of the key–value list", await q(pop, () => [...document.querySelectorAll(".lrow-body .lrow-pair dd")].length > 0 && [...document.querySelectorAll(".lrow-body .lrow-pair dd")].every((n) => n.getAttribute("dir") === "auto")));
   ok("the body starts with a keyboard-reachable 'ID <id> ⧉' line", has(body.first, "lrow-idline") && body.idText === "ID111222333444555" && body.idTab === null && body.idFocus === "rowid2:problem", JSON.stringify(body));
   ok("kv drops the pairs that are '—', '', false or null (Clicks, Balance, Timezone, Payment stay; CPC, Country gone)", body.dts.join() === "Clicks,Balance,Timezone,Payment", body.dts.join());
   ok("…two columns at 560 px; a pair marked wide has a row of its own", body.cols === 2 && body.wide === 1, JSON.stringify([body.cols, body.wide]));

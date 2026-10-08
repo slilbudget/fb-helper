@@ -1,17 +1,19 @@
 /* rows: the one list row of the Businesses, Ad accounts and Pages tabs (js/row.js, design.md §1 + §8). Tokens come from popup.css.
    Class prefix: .lrow = a row, .lgroup = a group header, .lav = a picture, .lsk = a skeleton row, .lempty = an empty / error state.
 
-   collapsed row = a 2 x 2 grid in .lrow-head:
-     [ name button ............ ]  [ value ]        line 1
-     [ line 2: status, context, fix ]  [ ID  ⧉ ]    line 2 (12 px)
+   collapsed row = a 2 x 2 grid in .lrow-head (both lines have a minimum height, so every row of every tab is the same height):
+     [ name button ............ ]  [ value ]        line 1 (24 px)
+     [ line 2: status, context, fix ]  [ ⧉ ID ]      line 2 (12 px); the digits end where the amount above them ends
    The name <button> is the only button of the row; its ::after covers the head (stretched-button pattern), so the whole row clicks
    like one control. Whatever must be clickable on its own (fix link, copy button) or must show a tooltip / be selectable (status,
-   value, "+N") is positioned above that cover (z-index 1). */
+   value, "+N") is positioned above that cover (z-index 1).
+   Logical properties throughout (inline-start / inline-end), so a right-to-left name or language would mirror the row. */
 
 :root {
   /* Dots: Facebook's own status colours (the words keep the AA text colours of popup.css). */
   --lrow-dot-ok: #42B72A; --lrow-dot-warn: #F7B928; --lrow-dot-bad: #FA383E;
   --lrow-right: 140px;                                /* the right column is never narrower: line 1 values and line 2 IDs line up across rows */
+  --bar-h: 34px;                                      /* the tab strip, which stays under the top of the window when the brand row has scrolled away */
 }
 .i-tick { --icon: url(../images/icons/check.svg); }
 
@@ -28,7 +30,7 @@
 .lrow.flat.has-av { --lrow-indent: 30px; }
 /* Dividers: 1px, inset 16px, never edge-to-edge; none above a group header. */
 .lrow:not(:last-child)::after {
-  content: ""; position: absolute; left: var(--spacing-4); right: var(--spacing-4); bottom: 0; height: 1px;
+  content: ""; position: absolute; inset-inline: var(--spacing-4); bottom: 0; height: 1px;
   background: var(--color-border); pointer-events: none; z-index: 1;
 }
 .lrow:has(+ .lgroup)::after { display: none; }
@@ -37,40 +39,53 @@
    dividers so it covers the line above and below; text stays 16px from the edge. */
 .lrow-head {
   position: relative; z-index: 2; cursor: pointer;
-  display: grid; grid-template-columns: minmax(0, 1fr) minmax(var(--lrow-right), auto); column-gap: var(--spacing-3); row-gap: 2px; align-items: center;
-  margin: -1px 0 0; padding: calc(var(--spacing-3) + 1px) var(--spacing-4) var(--spacing-3);
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(var(--lrow-right), auto); grid-template-rows: minmax(24px, auto) minmax(17px, auto);
+  column-gap: var(--spacing-3); row-gap: 2px; align-items: center;
+  margin-block: -1px 0; padding-block: calc(var(--spacing-3) + 1px) var(--spacing-3); padding-inline: var(--spacing-4);
 }
 .lrow.flat .lrow-head { cursor: default; }
 .lrow-head:hover { background: var(--color-hover-row); }
 /* Keyboard focus: a ring around the whole row (the name button itself has none). */
+.lrow-title:focus-visible { outline: 0; }
 .lrow-head:has(.lrow-title:focus-visible) { background: var(--color-hover-row); outline: 2px solid var(--color-accent); outline-offset: -2px; border-radius: var(--radius-inner); }
 
 /* line 1, left: the one real button */
 .lrow-title {
-  grid-area: 1 / 1; display: flex; align-items: center; gap: 6px; min-width: 0;
-  appearance: none; border: 0; background: none; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer;
+  grid-area: 1 / 1; display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 24px;
+  appearance: none; border: 0; background: none; padding: 0; font: inherit; color: inherit; text-align: start; cursor: pointer;
 }
 span.lrow-title { cursor: default; }
 .lrow-title::after { content: ""; position: absolute; inset: 0; }   /* the stretched hit area: the nearest positioned ancestor is .lrow-head */
-.lrow-title .i-chevron { --size-icon: 16px; color: var(--color-text-disabled); flex: none; }
+.lrow-title .i-chevron { --size-icon: 16px; color: var(--color-icon); flex: none; transition: transform .18s ease, color .15s ease; }
 .lrow.open .lrow-title .i-chevron { transform: rotate(180deg); color: var(--color-text-secondary); }
 .lrow-name { min-width: 0; font-size: var(--text-lg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* An open row shows its whole name: it wraps (anywhere: an account name is often one long unbroken token), the chevron and the picture stay on the
+   first line, and the amount stays level with it. */
+.lrow.open .lrow-title { align-items: flex-start; }
+.lrow.open .lrow-name { overflow: visible; white-space: normal; overflow-wrap: anywhere; padding-block: 2px; }
+.lrow.open .lrow-title .i-chevron { margin-block: 4px; }
+.lrow.open .lrow-value { align-self: start; padding-block: 2px; }
 
-/* line 1, right: the amount */
+/* line 1, right: the amount (weight 500: the number is what the row is for) */
 .lrow-value {
   grid-area: 1 / 2; justify-self: end; position: relative; z-index: 1;
-  font-size: var(--text-lg); white-space: nowrap; font-variant-numeric: tabular-nums;
+  font-size: var(--text-lg); font-weight: 500; white-space: nowrap; font-variant-numeric: tabular-nums;
 }
-.lrow-value.muted { font-size: var(--text-md); color: var(--color-text-secondary); }
+.lrow-value.muted { font-size: var(--text-md); font-weight: 400; color: var(--color-text-secondary); }
 
-/* line 2, left: never wraps. Only the status text and the context shrink (ellipsis); the fix link and "+N" keep their width. */
+/* line 2, left: never wraps. Only the status text and the context shrink (ellipsis); the fix link and "+N" keep their width. A context
+   that would keep fewer than ~6 characters is dropped whole (row.js fitSub: "[hidden]"). */
 .lrow-sub {
-  grid-area: 2 / 1; display: flex; align-items: center; min-width: 0; overflow: clip; overflow-clip-margin: 4px; padding-left: var(--lrow-indent);
+  grid-area: 2 / 1; display: flex; align-items: center; min-width: 0; overflow: clip; overflow-clip-margin: 4px; padding-inline-start: var(--lrow-indent);
   font-size: var(--text-sm); line-height: 1.4; color: var(--color-text-secondary);
 }
 .lrow-it { display: flex; align-items: center; min-width: 0; flex: 0 1 auto; }
-.lrow-it:not(:last-child)::after { content: "·"; flex: none; margin: 0 6px; }
+.lrow-it[hidden] { display: none; }
+.lrow-it:not(:last-child)::after { content: "·"; flex: none; margin-inline: 6px; }
 .lrow-it.fixed { flex: none; }
+/* When the line is too narrow the context gives way first: it takes (nearly) all the shrinking, so the problem word and its fix keep their room (the
+   weight is so large that the status text loses not even a sub-pixel, which would turn its last letter into an ellipsis). */
+.lrow-it.ctx { flex-shrink: 100000; overflow: hidden; }
 .lrow-ctx { min-width: 0; position: relative; z-index: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lrow-status { display: flex; align-items: center; gap: 5px; min-width: 0; position: relative; z-index: 1; }
 .lrow-status-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -80,34 +95,44 @@ span.lrow-title { cursor: default; }
 .lrow-status.warn .lrow-dot { background: var(--lrow-dot-warn); }
 .lrow-status.bad { color: var(--color-error); }
 .lrow-status.bad .lrow-dot { background: var(--lrow-dot-bad); }
-/* The fix: an underlined link in the problem's tone (actions.css .act-inline, which loads after this file: hence the `a.` for specificity). Its hit area is 24 px high through padding that the
-   negative margin takes back, so line 2 stays 12 px text. Above the row's cover. */
-a.lrow-fix { position: relative; z-index: 1; flex: none; max-width: none; padding: 4px; margin: -4px; --act-fg: var(--color-accent); }
+/* The fix: an underlined link in the problem's tone (actions.css .act-inline, which loads after this file: hence the `a.` for specificity).
+   Link colours, everywhere: the TONE of the problem for a fix (red / amber); grey for a plain link that only opens a page (here: no tone);
+   the accent blue only for a control that moves inside the extension (the "Show ad accounts" button). Its hit area is 24 px high through
+   padding that the negative margin takes back, so line 2 stays 12 px text. Above the row's cover. */
+a.lrow-fix { position: relative; z-index: 1; flex: none; max-width: none; padding: 4px; margin: -4px; --act-fg: var(--color-text-secondary); }
+a.lrow-fix:focus-visible { outline-offset: -2px; border-radius: 4px; }                /* the row's line 2 clips what is 4 px outside the text: the ring goes inside the padding */
 .lrow-fix.bad { --act-fg: var(--color-error); }
 .lrow-fix.warn { --act-fg: var(--color-warning); }
-.lrow-more { position: relative; z-index: 1; margin-left: 4px; color: var(--color-text-secondary); }
+.lrow-more { position: relative; z-index: 1; margin-inline-start: 4px; color: var(--color-text-secondary); }
 
-/* line 2, right: the full ID, muted, with the copy icon. The whole button is the 24 px hit area (padding / negative margin). */
+/* line 2, right: the ID, muted, copy icon to the LEFT of the digits so the digits end exactly where the amount above them ends; the icon
+   shows on hover / focus only (and as the ✓ after a copy). The whole button is the 24 px hit area (padding / negative margin). */
 .lrow-idc { grid-area: 2 / 2; justify-self: end; min-width: 0; display: flex; justify-content: flex-end; font-size: var(--text-sm); line-height: 1.4; }
 .lrow-id {
   appearance: none; border: 0; background: none; cursor: pointer; position: relative; z-index: 1;
   display: inline-flex; align-items: center; gap: 4px; padding: 5px 4px; margin: -5px -4px;
   font: var(--text-sm) var(--font); line-height: 1.4; color: var(--color-text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap;
 }
-.lrow-id .i { --size-icon: 14px; }
+.lrow-id .i { --size-icon: 14px; opacity: 0; transition: opacity .12s ease; }
+.lrow-head:hover .lrow-id .i, .lrow-id:focus-visible .i, .lrow-id .i-tick { opacity: 1; }
 .lrow-id:hover, .lrow-id:focus-visible { color: var(--color-text-primary); }
-.lrow-id:focus-visible { outline: 1.5px solid currentColor; outline-offset: -1px; border-radius: 3px; }
+.lrow-id:focus-visible { outline-offset: -1px; border-radius: 3px; }
 
 /* ---------- the expanded body: flat, indented under the name ---------- */
 .lrow-body {
   display: grid; gap: var(--spacing-3); min-width: 0;
-  padding: var(--spacing-1) var(--spacing-4) var(--spacing-4) calc(var(--spacing-4) + var(--lrow-indent));
+  padding-block: var(--spacing-1) var(--spacing-4); padding-inline: calc(var(--spacing-4) + var(--lrow-indent)) var(--spacing-4);
 }
+.lrow-body.enter { animation: lrow-in .16s ease-out; }
+@keyframes lrow-in { from { opacity: 0; transform: translateY(-3px); } }
+/* The copy-ID line of the body is for narrow windows only: from 480 px the ID is on the collapsed row, and its copy button is reachable by the
+   keyboard once the row is open (row.js). */
 .lrow-idline { display: flex; align-items: center; gap: var(--spacing-2); color: var(--color-text-secondary); }
-.lrow-idline .lrow-id { margin: 0; padding: 4px; font-size: var(--text-md); }
+.lrow-idline .lrow-id { margin: 0; padding: 4px; flex-direction: row-reverse; font-size: var(--text-md); }
+.lrow-idline .lrow-id .i { opacity: 1; }
 .lrow-idlabel { font-size: var(--text-sm); }
 
-/* key–value pairs: one column, two from 520 px; a pair marked wide takes a row of its own */
+/* key–value pairs: one column, two from 520 px; a pair marked wide takes a row of its own. The label column is the Token tab's too. */
 .lrow-kv { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--spacing-2) var(--spacing-4); }
 .lrow-pair { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 0 var(--spacing-3); min-width: 0; }
 .lrow-pair dt { color: var(--color-text-secondary); }
@@ -116,18 +141,21 @@ a.lrow-fix { position: relative; z-index: 1; flex: none; max-width: none; paddin
   .lrow-kv { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .lrow-pair.wide { grid-column: 1 / -1; }
 }
+/* One muted line of small facts under the pairs ("UTC+3 Kiev · US · created 04.03.2025"), and a muted note ("couldn't read…"). */
+.lrow-meta, .lrow-note { margin: 0; color: var(--color-text-secondary); font-size: var(--text-sm); }
 
-/* "What to do": plain text, plain links */
+/* "What to do": plain text, plain links. A link here is the fix of a problem: in the tone of that problem (the title above them says it too);
+   with no tone (a closed account) it is grey. The accent blue is not used. */
 .lrow-todo { display: grid; gap: 2px; min-width: 0; }
 .lrow-todo-title { font-size: var(--text-sm); color: var(--color-text-secondary); }
 .lrow-todo.bad .lrow-todo-title { color: var(--color-error); }
 .lrow-todo.warn .lrow-todo-title { color: var(--color-warning); }
 .lrow-todo-help { margin: 0; overflow-wrap: anywhere; }
 .lrow-todo-links { display: flex; flex-wrap: wrap; gap: 0 var(--spacing-4); min-width: 0; }
-a.lrow-todo-link { --act-fg: var(--color-accent); padding: 4px 0; margin: 0; z-index: auto; }
+a.lrow-todo-link { padding: 4px 0; margin: 0; z-index: auto; }
 a.lrow-todo-link.primary { font-weight: 500; }
 
-/* the muted row of secondary links (these keep the ↗ icon) */
+/* the muted row of plain external links: grey, with the ↗ icon */
 .lrow-links { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--spacing-2); font-size: var(--text-sm); color: var(--color-text-secondary); }
 .lrow-link {
   display: inline-flex; align-items: center; gap: 3px; padding: 5px 0; color: inherit; text-decoration: none; transition: color .15s ease;
@@ -149,14 +177,21 @@ a.lrow-todo-link.primary { font-weight: 500; }
 .lav.ok .i { visibility: hidden; }
 
 /* ---------- group header: [16 px picture] Name · 2 .................. subtotal ---------- */
-/* Sticky under the tabs (the bar is 48 px + the 34 px tab strip); opaque so rows scroll under it, above the rows' heads (z-index 2). */
+/* Sticky under the tab strip (the brand row above it scrolls away: popup.css .bar); opaque so rows scroll under it, above the rows' heads
+   (z-index 2). The name is in the primary colour, weight 500; the count and the subtotal stay secondary. While it is stuck a hairline of
+   shadow separates it from the rows passing under it (a scroll-state query: browsers without it just have no shadow). */
 .lgroup {
-  position: sticky; top: 82px; z-index: 3; display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-3); min-width: 0;
+  position: sticky; top: var(--bar-h); z-index: 3; display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-3); min-width: 0;
   padding: var(--spacing-2) var(--spacing-4); background: var(--color-background-surface);
-  font-size: var(--text-sm); color: var(--color-text-secondary);
+  font-size: var(--text-sm); color: var(--color-text-secondary); container-type: scroll-state;
 }
+.lgroup::after {
+  content: ""; position: absolute; inset-inline: 0; top: 100%; height: 6px; pointer-events: none; opacity: 0; transition: opacity .15s ease;
+  background: linear-gradient(rgba(28, 30, 33, .09), rgba(28, 30, 33, 0));
+}
+@container scroll-state(stuck: top) { .lgroup::after { opacity: 1; } }
 .lgroup-name { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.lgroup-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lgroup-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-primary); font-weight: 500; }
 .lgroup-count, .lgroup-value { flex: none; }
 .lgroup-value { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .lgroup .lav { --lav: 16px; }
@@ -187,10 +222,19 @@ a.lrow-todo-link.primary { font-weight: 500; }
 
 /* A muted line under a list ("some businesses couldn't be read…"). */
 .pg-foot, .acc-foot { padding: var(--spacing-3) var(--spacing-4) var(--spacing-4); color: var(--color-text-secondary); font-size: var(--text-sm); text-align: center; }
-.lrow-note { margin: 0; color: var(--color-text-secondary); font-size: var(--text-sm); }
 
 /* ---------- narrow window ---------- */
 @media (max-width: 479.98px) {
   .lrow-idc { display: none; }                      /* the ID is still in the expanded body */
   .lrow-head { grid-template-columns: minmax(0, 1fr) auto; }
+  .lrow-sub { grid-column: 1 / -1; }                /* with the ID gone, line 2 may use the whole width on every tab: a problem word and its fix are never cut for the amount above */
+  .lrow-head.bare { grid-template-rows: minmax(24px, auto); min-height: 68px; row-gap: 0; align-content: center; }   /* the same 68 px, the name in the middle of it */
+}
+@media (min-width: 480px) {
+  .lrow-idline { display: none; }                   /* the ID is on the collapsed row (its copy button is reachable once the row is open) */
+}
+
+/* ---------- motion: nothing moves for a person who asked for less ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }

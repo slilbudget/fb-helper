@@ -40,9 +40,9 @@ registerInit(() => { try { const p = localStorage.getItem("period"); if (isPerio
 registerInit(() => { loadCachedRates(); });                                    // the saved rates (storage only, no request): the first paint of a total already has them
 
 // ---------- the total ----------
-// The block under the controls: "Spend · Aug 29" (left, the date range of the period: the segment above already says which period) and
-// `metaText` (right: "3 of 10 found", "(not all)"; empty when nothing is to be said) on the first row, the sum under them.
-// label = what is added up ("Spend" by default).
+// The block under the controls, ONE line: "Spend · Aug 29 · 3 of 10 found" on the left (the date range of the period: the segment above already
+// says which period; `metaText`: "3 of 10 found", "(not all)", empty when nothing is to be said) and the sum on the right; what the sum is
+// made of under it. label = what is added up ("Spend" by default), labelTitle = its tooltip (Businesses: "without personal ad accounts").
 // sum = { totals, unknown } (spend.js addUp / mergeUp), or null when nothing is known yet (shown as "—").
 // zeroCur = the currency to print a zero in when every spend was 0 (none known: "—").
 // One currency: that amount. Two or more: "≈ 1 727 $" (USD, at the daily rate: money.js) with a muted line under it ("1 696 $ + 20 € ·
@@ -60,14 +60,16 @@ export function fillTotal(box, opts) {
   latest.set(box, opts);
   rates().then((r) => { if (r && r.rates !== used?.rates && latest.get(box) === opts) paintTotal(box, opts, r); });
 }
-function paintTotal(box, { label = t("acc.spend"), metaText, range = "", sum = null, zeroCur = null }, r) {
+function paintTotal(box, { label = t("acc.spend"), labelTitle, metaText, range = "", sum = null, zeroCur = null }, r) {
   const line = sum ? totalLine(sum.totals, r) : null;
   const value = !sum ? "—" : sum.unknown && !line.main ? t("acc.refreshDash") : line.main || (zeroCur ? fmtMoney(0, zeroCur) : "—");
   const parts = line?.approx ? [`${line.breakdown}${line.more ? ` ${t("money.more", { n: line.more })}` : ""}`, line.note] : [];
   fill(box,
-    el("span", { class: "total-label" }, `${label}${range ? ` · ${range}` : ""}`),
-    metaText ? el("span", { class: "total-meta" }, metaText) : null,
-    el("span", { class: "total-value", title: line?.approx ? line.title : null }, value,
+    // The label and what is said about the list ("3 of 10 found", "(not all)") are one muted piece on the left; the sum is on the right of the same line.
+    el("span", { class: "total-label", title: labelTitle || null }, `${label}${range ? ` · ${range}` : ""}`,
+      metaText ? el("span", { class: `total-meta${metaText.startsWith("(") ? " paren" : ""}` }, metaText) : null),
+    // The tooltip of the sum: the converted one's breakdown; the exact amounts when the line wrote a million of an ISO-code currency short.
+    el("span", { class: "total-value", title: line?.approx ? line.title : line?.main && line.main !== line.full ? line.full : null }, value,
       sum?.unknown && line.main ? el("small", { title: t("acc.notAllTitle") }, t("acc.notAllShort")) : null),
     line?.approx ? el("span", { class: "total-sub", title: line.title }, parts.join(" · "),
       line.attribution ? [" · ", el("a", { href: line.attribution.url, target: "_blank", rel: "noopener noreferrer" }, line.attribution.text)] : null) : null);

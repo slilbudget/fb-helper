@@ -102,18 +102,18 @@ async function tabApiFlows() {
     }
     const { registerTab } = await import(chrome.runtime.getURL("js/registry.js"));
     window.__shown = [];
-    registerTab("zz", { tall: true, onShow: () => window.__shown.push("zz") });
+    registerTab("zz", { onShow: () => window.__shown.push("zz") });
     registerTab("zy", { onShow: () => window.__shown.push("zy") });
   });
-  const look = () => pop.evaluate(() => ({ tab: document.querySelector(".tab.active")?.dataset.tab, panel: document.querySelector(".panel.active")?.id, tall: document.body.classList.contains("tall"), saved: localStorage.getItem("tab"), shown: window.__shown.join() }));
+  const look = () => pop.evaluate(() => ({ tab: document.querySelector(".tab.active")?.dataset.tab, panel: document.querySelector(".panel.active")?.id, h: Math.round(document.body.getBoundingClientRect().height), saved: localStorage.getItem("tab"), shown: window.__shown.join() }));
   await pop.focus('[data-tab="pages"]');   // the last real tab: the test tabs come right after it
-  await pop.keyboard.press("ArrowRight"); let s = await look();
+  await pop.keyboard.press("ArrowRight"); await pop.keyboard.press("Enter"); let s = await look();    // arrows only move focus: Enter opens
   ok("a registered tab shows its panel, is remembered, and its onShow runs", s.tab === "zz" && s.panel === "tab-zz" && s.saved === "zz" && s.shown === "zz", JSON.stringify(s));
-  ok("tall: true gives the popup full height", s.tall === true, JSON.stringify(s));
-  await pop.keyboard.press("ArrowRight"); s = await look();
-  ok("a tab that is not tall goes back to normal height", s.tab === "zy" && s.tall === false && s.shown === "zz,zy", JSON.stringify(s));
-  await pop.keyboard.press("ArrowLeft"); s = await look();
-  ok("onShow runs every time the tab is shown", s.tab === "zz" && s.tall === true && s.shown === "zz,zy,zz", JSON.stringify(s));
+  ok("every tab has the same full height (no per-tab option)", s.h >= 600, JSON.stringify(s));
+  await pop.keyboard.press("ArrowRight"); await pop.keyboard.press("Enter"); s = await look();
+  ok("the next tab shows, at the same height", s.tab === "zy" && s.h >= 600 && s.shown === "zz,zy", JSON.stringify(s));
+  await pop.keyboard.press("ArrowLeft"); await pop.keyboard.press("Space"); s = await look();      // Space activates a focused tab too
+  ok("onShow runs every time the tab is shown", s.tab === "zz" && s.shown === "zz,zy,zz", JSON.stringify(s));
   ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
   await b.ctx.close();
 }

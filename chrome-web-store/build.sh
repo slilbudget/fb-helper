@@ -22,9 +22,9 @@ find "$OUT" -name '.DS_Store' -delete
 I=chrome-web-store/icons
 cp "$I"/icon_128.png "$I"/icon_48.png "$I"/toolbar_32.png "$I"/toolbar_16.png "$I"/logo.webp "$OUT/images/"
 
-# name: manifest (name, toolbar tooltip), popup title and header, comment in popup.js
+# name: manifest (name, toolbar tooltip), popup title and header (the h1), comment in popup.js
 perl -pi -e 's/"name": "FB Helper"/"name": "'"$NAME"'"/; s/"default_title": "FB Helper"/"default_title": "'"$NAME"'"/' "$OUT/manifest.json"
-perl -pi -e 's/<title>FB Helper<\/title>/<title>'"$NAME"'<\/title>/; s/>FB Helper<\/div>/>'"$NAME"'<\/div>/' "$OUT/popup.html"
+perl -pi -e 's/<title>FB Helper<\/title>/<title>'"$NAME"'<\/title>/; s/>FB Helper<\/h1>/>'"$NAME"'<\/h1>/' "$OUT/popup.html"
 perl -pi -e 's/^\/\/ FB Helper/\/\/ '"$NAME"'/ if $. == 1' "$OUT/js/popup.js"
 
 if grep -rIn -i 'fb helper' "$OUT"; then echo "old name left in the package" >&2; exit 1; fi

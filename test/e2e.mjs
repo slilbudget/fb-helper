@@ -18,7 +18,9 @@ for (const file of fs.readdirSync(fileURLToPath(base)).filter((f) => f.endsWith(
 
 const only = process.argv[2];
 if (only && !flows[only]) { console.error(`no flow "${only}"; flows: ${Object.keys(flows).join(", ")}`); process.exit(2); }
-try {
-  for (const [name, fn] of Object.entries(flows)) if (!only || only === name) await fn();
-} catch (e) { crash(e); }
+// A flow that throws is one failure, and the flows after it still run (one crash must not hide the rest of the suite).
+for (const [name, fn] of Object.entries(flows)) {
+  if (only && only !== name) continue;
+  try { await fn(); } catch (e) { console.error(`(flow "${name}")`); crash(e); }
+}
 process.exit(summary());

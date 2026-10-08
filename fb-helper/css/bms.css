@@ -1,13 +1,10 @@
 /* bms: styles of js/bms.js. The row itself (lines, picture, dividers, expanded body) is the shared .lrow grammar in rows.css; only what
    is specific to a business goes here. */
 
-/* Line 2: "3 ad accounts · 1 disabled": the disabled count is red, the rest muted. When the line is too narrow the context gives way first
-   (rows.css lets every item shrink alike; here the context takes the shrinking, so the problem word and its fix keep their room: the weight
-   is so large that the problem word loses not even a sub-pixel, which would turn its last letter into an ellipsis). A context that has
-   shrunk to nothing hides its "·" too. */
+/* Line 2: "3 ad accounts · 1 disabled": the disabled count is red, the rest muted. (When the line is too narrow the context gives way first,
+   on every tab: rows.css .lrow-it.ctx.) */
 .lbm-dis { color: var(--color-error); }
 .lbm-sep { padding: 0 3px; }
-#bmsList .lrow-it:has(> .lrow-ctx) { flex-shrink: 100000; overflow: hidden; }
 
 /* Expanded row, Ad accounts: "3 · 2 active · 1 disabled   Show ad accounts →". The button is the same underlined accent link as a fix
    (actions.css .act-inline), reset to look like text. */

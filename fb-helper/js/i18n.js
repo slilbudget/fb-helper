@@ -8,7 +8,7 @@ let lang = "ru";
 
 const D = {
   ru: {
-    "lang.title": "Язык интерфейса",
+    "lang.title": "Язык интерфейса", "tabs.aria": "Разделы",
     "tab.token": "Токен", "tab.cookies": "Cookie", "tab.accounts": "Кабинеты", "tab.bms": "Бизнесы", "tab.pages": "Страницы",
     "check": "Проверить", "check.title": "Профиль, приложение и права токена", "check.aria": "Проверить токен",
     "token.refresh": "Прочитать токен из вкладки FB заново", "token.refreshed": "Токен обновлён", "token.retry": "Токен тот же — отметку «сессия закрыта» снял, следующий запрос попробует его ещё раз",
@@ -91,10 +91,10 @@ const D = {
     "acc.none": "Кабинетов нет", "acc.loading": "Загрузка кабинетов…", "acc.noMatch": "Ничего не найдено", "acc.bmFilterClear": "Показать кабинеты всех бизнесов", "acc.noName": "Без имени",
     "acc.copyId": "Копировать ID", "acc.idCopied": "ID скопирован",
     "acc.noPeriod": "Нет данных за этот период — обнови список",
-    "acc.personal": "Личные кабинеты", "acc.noAccess": "Нет доступа", "acc.imp": "{n} показов",
-    "acc.spent": "Всего потрачено", "acc.balance": "Не оплачено", "acc.threshold": "Порог списания", "acc.daily": "Лимит в день",
-    "acc.noLimit": "без лимита", "acc.spendCap": "Spend cap", "acc.no": "нет", "acc.funding": "Оплата", "acc.pixels": "Пиксели",
-    "acc.clicks": "Клики", "acc.cpc": "CPC", "acc.timezone": "Часовой пояс", "acc.country": "Страна", "acc.created": "Создан",
+    "acc.personal": "Личные кабинеты", "acc.noAccess": "Нет доступа",
+    "acc.spent": "Потрачено", "acc.balance": "К оплате", "acc.threshold": "Порог списания", "acc.daily": "Лимит в день",
+    "acc.noLimit": "без лимита", "acc.spendCap": "Лимит трат", "acc.no": "нет", "acc.funding": "Оплата", "acc.pixels": "Пиксели",
+    "acc.clicksCpc": "Клики · CPC", "acc.createdOn": "создан {d}",
 
     "ads.btn": "Объявления", "ads.refresh": "Обновить объявления", "ads.none": "Объявлений нет",
     "ads.count": ["объявление", "объявления", "объявлений"], "ads.live": " · {n} активно", "ads.rejected": " · {n} отклонено",
@@ -104,7 +104,7 @@ const D = {
     "ads.noAll": "За всё время Graph не отдал метрики (слишком много данных)", "ads.old": "Метрики устарели — обнови объявления", "ads.stale": "Не обновилось: {m}. Показан прошлый список",
   },
   en: {
-    "lang.title": "Interface language",
+    "lang.title": "Interface language", "tabs.aria": "Sections",
     "tab.token": "Token", "tab.cookies": "Cookies", "tab.accounts": "Accounts", "tab.bms": "Businesses", "tab.pages": "Pages",
     "check": "Check", "check.title": "Profile, app and permissions of the token", "check.aria": "Check token",
     "token.refresh": "Re-read the token from the FB tab", "token.refreshed": "Token refreshed", "token.retry": "Same token — the dead-session mark is cleared, the next request will try it again",
@@ -187,10 +187,10 @@ const D = {
     "acc.none": "No ad accounts", "acc.loading": "Loading ad accounts…", "acc.noMatch": "Nothing found", "acc.bmFilterClear": "Show ad accounts of every business", "acc.noName": "Unnamed",
     "acc.copyId": "Copy ID", "acc.idCopied": "ID copied",
     "acc.noPeriod": "No data for this period — refresh the list",
-    "acc.personal": "Personal ad accounts", "acc.noAccess": "No access", "acc.imp": "{n} impressions",
-    "acc.spent": "Total spent", "acc.balance": "Unpaid balance", "acc.threshold": "Billing threshold", "acc.daily": "Daily limit",
+    "acc.personal": "Personal ad accounts", "acc.noAccess": "No access",
+    "acc.spent": "Spent", "acc.balance": "To pay", "acc.threshold": "Billing threshold", "acc.daily": "Daily limit",
     "acc.noLimit": "no limit", "acc.spendCap": "Spend cap", "acc.no": "none", "acc.funding": "Payment", "acc.pixels": "Pixels",
-    "acc.clicks": "Clicks", "acc.cpc": "CPC", "acc.timezone": "Timezone", "acc.country": "Country", "acc.created": "Created",
+    "acc.clicksCpc": "Clicks · CPC", "acc.createdOn": "created {d}",
 
     "ads.btn": "Ads", "ads.refresh": "Refresh ads", "ads.none": "No ads",
     "ads.count": ["ad", "ads"], "ads.live": " · {n} active", "ads.rejected": " · {n} disapproved",

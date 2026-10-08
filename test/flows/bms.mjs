@@ -96,7 +96,8 @@ const bodyOf = (p, name) => p.evaluate(([sel, n]) => {
 const row = (p, name) => p.locator(ROW).filter({ has: p.locator(".lrow-name", { hasText: name }) });
 const toggle = (p, name) => row(p, name).locator(".lrow-title").click();
 const spends = (p) => p.$$eval(ROW, (rs) => Object.fromEntries(rs.map((r) => [r.querySelector(".lrow-name").textContent, r.querySelector(".lrow-value").textContent.replace(/\s+/g, " ").trim()])));
-const totalOfTab = (p) => p.evaluate(() => ({ label: document.querySelector("#bmsTotal .total-label")?.textContent.trim(), meta: document.querySelector("#bmsTotal .total-meta")?.textContent.trim(), value: document.querySelector("#bmsTotal .total-value")?.textContent.replace(/\s+/g, " ").trim(),
+// The label is the text of .total-label itself: the muted "3 of 10 found" / "(not all)" is a span inside it (the meta, read apart).
+const totalOfTab = (p) => p.evaluate(() => ({ label: [...(document.querySelector("#bmsTotal .total-label")?.childNodes ?? [])].filter((n) => n.nodeType === 3).map((n) => n.textContent).join("").trim() || undefined, meta: document.querySelector("#bmsTotal .total-meta")?.textContent.trim(), value: document.querySelector("#bmsTotal .total-value")?.textContent.replace(/\s+/g, " ").trim(),
   sub: document.querySelector("#bmsTotal .total-sub")?.textContent.replace(/\s+/g, " ").trim() ?? null }));
 const period = (p, box) => p.evaluate((sel) => document.querySelector(`${sel} .seg-btn.active`)?.textContent.trim(), box);
 const settled = (p, n = 6) => until(p, (k) => document.querySelectorAll("#bmsList .lrow-status, #bmsList .lrow-sub .sr-only").length >= k, n);   // the Ad accounts list has arrived: every row has a state word
@@ -116,7 +117,7 @@ async function bmsFlow() {
     bmHits(b).length === 1 && has(bmHits(b)[0], "limit=50") && fieldsOf(bmHits(b)[0]) === "id,name,verification_status,profile_picture_uri", bmHits(b).join() + fieldsOf(bmHits(b)[0]));
   ok("…and it loads the Ad accounts list too (its spend, counts and state come from there): one request", accHits(b).length === 1, String(accHits(b).length));
   ok("…and no toast for an automatic load", (await toastOf(pop)) === "", await toastOf(pop));
-  ok("the tab is full height", await pop.evaluate(() => document.body.classList.contains("tall")));
+  ok("the tab is full height", await pop.evaluate(() => document.body.getBoundingClientRect().height >= 600));
   ok("one row grammar: shared .lrow rows with a 24 px business picture; no old row, pill or boxed action in the list", await pop.evaluate(() => document.querySelectorAll("#bmsList .lrow").length === 6 && !document.querySelector("#bmsList .row, #bmsList .acc, #bmsList .pill, #bmsList .btn, #bmsList .act-box")
     && [...document.querySelectorAll("#bmsList .lrow .lav")].every((a) => a.offsetWidth === 24 && a.classList.contains("lav-square"))));
   await settled(pop);
@@ -131,12 +132,12 @@ async function bmsFlow() {
   // a healthy row is silent
   const alpha = await rowOf(pop, "Alpha Media");
   ok("Alpha (3 ad accounts, one disabled): nothing on screen but the context; the state word is there for screen readers only", alpha.status === null && alpha.sr === "Active" && alpha.fixes === 0 && alpha.more === null && alpha.sub === "Active3 ad accounts · 1 disabled", JSON.stringify(alpha));
-  ok("…'3 ad accounts · 1 disabled': the disabled count in red, the rest muted", alpha.ctx.join("|") === "3 ad accounts · 1 disabled" && alpha.disabled.length === 1 && alpha.disabled[0].text === "1 disabled" && alpha.disabled[0].color === "rgb(216, 35, 42)", JSON.stringify([alpha.ctx, alpha.disabled]));
+  ok("…'3 ad accounts · 1 disabled': the disabled count in red, the rest muted", alpha.ctx.join("|") === "3 ad accounts · 1 disabled" && alpha.disabled.length === 1 && alpha.disabled[0].text === "1 disabled" && alpha.disabled[0].color === "rgb(207, 33, 39)", JSON.stringify([alpha.ctx, alpha.disabled]));
   ok("…the amount of today on the right (exact, two currencies), the ID under it, no pill", alpha.value === TODAY.Alpha && !alpha.valueMuted && alpha.id === "1001" && alpha.pills === 0, JSON.stringify(alpha));
   // problems: one word, one fix
   const beta = await rowOf(pop, "Beta Ads");
-  ok("Beta (failed verification, its one account disabled): 'Unverified' in red, ONE underlined fix 'Verify' to the Security page, '+1' for the other problem", beta.status?.text === "Unverified" && beta.status.tone === "bad" && beta.fixes === 1 && beta.fix.text === "Verify"
-    && beta.fix.href === LINKS.bmSecurity("1002") && beta.fix.target === "_blank" && beta.fix.rel === "noopener noreferrer" && !beta.fix.icon && beta.more === "+1", JSON.stringify(beta));
+  ok("Beta (failed verification, its one account disabled): 'Unverified' in red, ONE underlined fix 'Verify' to the Security page, '+1 more' for the other problem", beta.status?.text === "Unverified" && beta.status.tone === "bad" && beta.fixes === 1 && beta.fix.text === "Verify"
+    && beta.fix.href === LINKS.bmSecurity("1002") && beta.fix.target === "_blank" && beta.fix.rel === "noopener noreferrer" && !beta.fix.icon && beta.more === "+1 more", JSON.stringify(beta));
   ok("…its tooltip names the exact state; the context says '1 ad account · 1 disabled'; the fix has the owner in its accessible name", beta.status.title === "Business verification: Failed" && beta.ctx.join("|") === "1 ad account · 1 disabled" && beta.fix.aria === "Verify · Beta Ads", JSON.stringify(beta));
   ok("…the amount is exact ($10.00)", beta.value === TODAY.Beta, beta.value);
   const gamma = await rowOf(pop, "Gamma Group");
@@ -156,7 +157,7 @@ async function bmsFlow() {
     && !!document.querySelector("#bmsCard #bmsPeriod") && !!document.querySelector("#bmsCard #bmsTotal") && !/Copy IDs|ID бизнесов/.test(document.querySelector("#bmsCard").textContent)));
   ok("fixes are plain underlined links in the status colour (no pill, no box): Verify red, Create account amber", await pop.evaluate(() => {
     const f = (n) => { const r = [...document.querySelectorAll("#bmsList .lrow")].find((x) => x.querySelector(".lrow-name").textContent === n).querySelector(".lrow-fix"); const cs = getComputedStyle(r); return [cs.backgroundColor, getComputedStyle(r.querySelector(".act-label")).textDecorationLine, cs.color]; };
-    return JSON.stringify([f("Beta Ads"), f("Gamma Group")]) === JSON.stringify([["rgba(0, 0, 0, 0)", "underline", "rgb(216, 35, 42)"], ["rgba(0, 0, 0, 0)", "underline", "rgb(138, 97, 0)"]]);
+    return JSON.stringify([f("Beta Ads"), f("Gamma Group")]) === JSON.stringify([["rgba(0, 0, 0, 0)", "underline", "rgb(207, 33, 39)"], ["rgba(0, 0, 0, 0)", "underline", "rgb(138, 97, 0)"]]);
   }));
 
   // search: name or id
@@ -209,7 +210,7 @@ async function bmsSpendFlow() {
     "Today": { order: ORDER_TODAY, Alpha: "$100.00 + €50.00", Beta: "$10.00", Delta: "≈ $47.50", Epsilon: "$0", Partner: "$7.00", total: "≈ $227.00" },
     "Yesterday": { order: ORDER_TODAY, Alpha: "$80.00 + €40.00", Beta: "$8.00", Delta: "≈ $38.00", Epsilon: "$0", Partner: "$6.00", total: "≈ $182.00" },
     "7 days": { order: "Beta Ads,Alpha Media,Delta Co,Partner Agency,Epsilon Digital,Gamma Group", Alpha: "$600.00 + €300.00", Beta: "$1,000", Delta: "≈ $285.00", Epsilon: "$0", Partner: "$40.00", total: "≈ $2,300" },
-    "30 days": { order: "Alpha Media,Beta Ads,Delta Co,Partner Agency,Epsilon Digital,Gamma Group", Alpha: "$2,000 + €900.00", Beta: "$3,000", Delta: "≈ $950.00", Epsilon: "$0", Partner: "$100.00", total: "≈ $7,175" },
+    "30 days": { order: "Alpha Media,Beta Ads,Delta Co,Partner Agency,Epsilon Digital,Gamma Group", Alpha: "$2,000.00 + €900.00", Beta: "$3,000", Delta: "≈ $950.00", Epsilon: "$0", Partner: "$100.00", total: "≈ $7,175" },
     "All time": { order: "Alpha Media,Beta Ads,Delta Co,Partner Agency,Epsilon Digital,Gamma Group", Alpha: "$9,000 + €1,000", Beta: "$5,000", Delta: "≈ $4,600", Epsilon: "$300.00", Partner: "$500.00", total: "≈ $20,650" },
   };
   for (const [label, e] of Object.entries(expect)) {
@@ -224,7 +225,7 @@ async function bmsSpendFlow() {
   ok("the total of the rows is the sum of the rows: at today's rates $142 + €60 + VND 250 000 = $227.00 (the muted line lists the biggest currencies)", await (async () => {
     await pop.click('#bmsPeriod .seg-btn:has-text("Today")'); await pop.waitForTimeout(100);
     const t = await totalOfTab(pop);
-    return t.value === "≈ $227.00" && /^\$142\.00 \+ €60\.00 \+1 · rates /.test(t.sub) && has(t.sub, "ExchangeRate-API");
+    return t.value === "≈ $227.00" && /^\$142\.00 \+ €60\.00 \+1 more · rates /.test(t.sub) && has(t.sub, "ExchangeRate-API");
   })(), JSON.stringify(await totalOfTab(pop)));
   ok("only the total says '≈' for a two-currency sum; a row never does: Alpha stays 'a + b' next to the converted total", (await spends(pop))["Alpha Media"] === "$100.00 + €50.00");
 
@@ -234,7 +235,7 @@ async function bmsSpendFlow() {
   const np = await popup(nr, "bms");
   await rowsAre(np, ROW, 6); await settled(np);
   const raw = await spends(np);
-  ok("without rates (both sources down): rows keep exact amounts per currency (three: the first two + '+1'), the total is the per-currency sum, no '≈' anywhere", raw["Delta Co"] === "$25.00 + €10.00 +1" && raw["Alpha Media"] === TODAY.Alpha && !has(JSON.stringify(raw), "≈")
+  ok("without rates (both sources down): rows keep exact amounts per currency (three: the first two + '+1 more'), the total is the per-currency sum, no '≈' anywhere", raw["Delta Co"] === "$25.00 + €10.00 +1 more" && raw["Alpha Media"] === TODAY.Alpha && !has(JSON.stringify(raw), "≈")
     && (await totalOfTab(np)).value === "$142.00 + €60.00 + VND 250,000" && (await totalOfTab(np)).sub === null, JSON.stringify({ raw, t: await totalOfTab(np) }));
   ok("…and the order falls back to the plain sum of the amounts (documented: right only within one currency)", (await names(np))[0] === "Delta Co", (await names(np)).join());
   await nr.ctx.close();
@@ -344,8 +345,8 @@ async function bmsPermFlow() {
     const b = await boot({ fb: adsFb(TOK), graph: graphFor({ onBms: () => ({ status: 403, body: { error: err } }) }) });
     await adsPage(b);
     const pop = await popup(b, "bms");
-    const calm = await until(pop, () => /can't read business portfolios/.test(document.querySelector("#bmsList").textContent));
-    ok(`${label}: a calm message in the list, saying what to do`, calm && has(await text(pop, "#bmsList"), "refresh the token"), await text(pop, "#bmsList"));
+    const calm = await until(pop, () => /can't read the list/.test(document.querySelector("#bmsList").textContent));
+    ok(`${label}: a calm line above the businesses the ad accounts name, saying what to do (the same words on every tab)`, calm && (await text(pop, "#bmsList .list-note")) === "This token can't read the list — open Ads Manager or Business Manager, refresh the token (the refresh button on the Token tab) and try again.", await text(pop, "#bmsList"));
     ok(`${label}: no red toast, no red text`, !(await pop.evaluate(() => document.querySelector("#toast").classList.contains("err") && document.querySelector("#toast").classList.contains("show")))
       && (await pop.locator("#bmsList .err-text").count()) === 0, await toastOf(pop));
     // a permission error may be about ONE extra field: the extras are given up one tier at a time (verification, then the logo), then it is final
@@ -364,10 +365,10 @@ async function bmsPermFlow() {
   ok("loaded", await rowsAre(pop, ROW, 6));
   denied = true; await resetLocks(pop);
   await pop.click("#loadBms");
-  ok("refresh refused: the list stays and a note says the token can't read businesses", (await until(pop, () => !!document.querySelector("#bmsList .bm-note"))) && (await rowsAre(pop, ROW, 6)), await text(pop, "#bmsList"));
+  ok("refresh refused: the list stays and a note says the token can't read businesses", (await until(pop, () => !!document.querySelector("#bmsList .list-note"))) && (await rowsAre(pop, ROW, 6)), await text(pop, "#bmsList"));
   denied = false; await resetLocks(pop);
   await pop.click("#loadBms");
-  ok("a good refresh removes the note", (await until(pop, () => !document.querySelector("#bmsList .bm-note"))) && (await rowsAre(pop, ROW, 6)));
+  ok("a good refresh removes the note", (await until(pop, () => !document.querySelector("#bmsList .list-note"))) && (await rowsAre(pop, ROW, 6)));
   noErrs(b);
   await b.ctx.close();
 
@@ -405,13 +406,13 @@ async function bmsAccountsFlow() {
   // Beta: both problems in the body, the fix on line 2 is not repeated
   await toggle(pop, "Beta Ads");
   const be = await bodyOf(pop, "Beta Ads");
-  ok("Beta: 'Verification: Failed' in the body; What to do = both helps, ONE action (Manage ad accounts: the Verify fix is on line 2, not repeated), tone bad, no tinted box", be.kv.some((k) => k.join(": ") === "Verification: Failed") && be.todo?.title === "What to do" && has(be.todo.help, "Verify the business again.") && has(be.todo.help, "Check why the ad accounts are not active")
-    && be.todo.links.map((l) => `${l.text}>${l.href}`).join() === `Manage ad accounts>${LINKS.bmAdAccounts("1002")}` && be.todo.tone === "bad" && be.todo.bg === "rgba(0, 0, 0, 0)", JSON.stringify(be.todo));
+  ok("Beta: 'Verification: Failed' in the body; What to do = both helps and EVERY action, the Verify fix of line 2 first, then Manage ad accounts, tone bad (title and links), no tinted box", be.kv.some((k) => k.join(": ") === "Verification: Failed") && be.todo?.title === "What to do" && has(be.todo.help, "Verify the business again.") && has(be.todo.help, "Check why the ad accounts are not active")
+    && be.todo.links.map((l) => `${l.text}>${l.href}`).join() === `Verify>${LINKS.bmSecurity("1002")},Manage ad accounts>${LINKS.bmAdAccounts("1002")}` && be.todo.tone === "bad" && be.todo.bg === "rgba(0, 0, 0, 0)", JSON.stringify(be.todo));
   ok("…Beta's counts: '1 · 1 disabled' (no zero part)", be.kv[0].join(": ") === "Ad accounts: 1 · 1 disabled Show ad accounts →", JSON.stringify(be.kv));
   // Gamma: nothing to show on the Ad accounts tab
   await toggle(pop, "Gamma Group");
   const ga = await bodyOf(pop, "Gamma Group");
-  ok("Gamma: no ad accounts → no counts and no jump button (nothing to show there); What to do has the help only (the fix is on line 2); Business settings", ga.kv.length === 1 && ga.kv[0][0] === "Verification" && ga.go === null && ga.todo.help === "Create an ad account, or ask a business admin to give you access to an existing one." && ga.todo.links.length === 0 && ga.links.length === 1, JSON.stringify(ga));
+  ok("Gamma: no ad accounts → no counts and no jump button (nothing to show there); What to do has the help and the fix of line 2 (Create account); Business settings", ga.kv.length === 1 && ga.kv[0][0] === "Verification" && ga.go === null && ga.todo.help === "Create an ad account, or ask a business admin to give you access to an existing one." && ga.todo.links.map((l) => l.text).join() === "Create account" && ga.links.length === 1, JSON.stringify(ga));
   // Epsilon: no fix on the line, so the action is in the body
   await toggle(pop, "Epsilon Digital");
   const ep = await bodyOf(pop, "Epsilon Digital");
@@ -436,6 +437,8 @@ async function bmsAccountsFlow() {
   ok("…showing only that business's ad accounts (A one, A two, A three), no new request", (await until(pop, () => /A one/.test(document.querySelector("#accountsList").textContent))) && accHits(b).length === 1
     && /A two/.test(await listText()) && /A three/.test(await listText()) && !/B one|D one|Solo|P one/.test(await listText()), await listText());
   ok("…with the business named on the filter row (no 'BM' wording)", has(await text(pop, "#tab-accounts"), "Alpha Media") && !/\bBM\b/.test(await text(pop, "#statusChips")), await text(pop, "#statusChips"));
+  ok("…keyboard focus moved to the Accounts tab button (the control that asked for the jump is gone with its tab)", await pop.evaluate(() => document.activeElement?.id === "tabbtn-accounts"), await pop.evaluate(() => document.activeElement?.outerHTML.slice(0, 80)));
+  ok("…the business chip's accessible name says what pressing it does", await pop.evaluate(() => { const c = document.querySelector("#statusChips .chip"); return c.getAttribute("aria-label") === "Alpha Media: Show ad accounts of every business" && c.getAttribute("aria-pressed") === "true"; }), await pop.evaluate(() => document.querySelector("#statusChips .chip")?.getAttribute("aria-label")));
   await pop.click('[data-tab="bms"]');
   await toggle(pop, "Beta Ads");
   await row(pop, "Beta Ads").locator(".lbm-go").click();
@@ -499,7 +502,8 @@ async function bmsLimitsFlow() {
   await (await b.ctx.newPage()).goto("https://www.facebook.com/");
   let pop = await popup(b, "bms"); await pop.waitForTimeout(700);
   ok("no token: no request", bmHits(b).length === 0 && accHits(b).length === 0);
-  ok("…the list says which button to press", has(await text(pop, "#bmsList"), "press the refresh button above"), await text(pop, "#bmsList"));
+  ok("…the list says why in the Token tab's own words with one 'Try again' button; no period, no total", (await text(pop, "#bmsList .lempty-text")) === (await text(pop, "#tokenBox")) && (await text(pop, "#bmsList .lempty .btn")) === "Try again"
+    && (await pop.evaluate(() => ["#bmsPeriod", "#bmsTotal"].every((s) => getComputedStyle(document.querySelector(s)).display === "none"))), await text(pop, "#bmsList"));
   ok("…and shows no error toast", (await toastOf(pop)) === "", await toastOf(pop));
   await b.ctx.close();
 
@@ -579,7 +583,7 @@ async function bmsPagingFlow() {
   pages = 99;
   await resetLocks(pop);
   const toast = await clickToast(pop, "#loadBms");
-  ok("an endless list stops after 4 pages and says so", (await rowsAre(pop, ROW, 4)) && bmHits(b).length === 6 && has(toast, "4-page limit"), `${bmHits(b).length} ${toast}`);
+  ok("an endless list stops after 4 pages and says so", (await rowsAre(pop, ROW, 4)) && bmHits(b).length === 6 && has(toast, "load limit"), `${bmHits(b).length} ${toast}`);
   ok("…the total line says the list is not complete", has((await totalOfTab(pop)).meta, "(not all)"), JSON.stringify(await totalOfTab(pop)));
   noErrs(b);
   await b.ctx.close();
@@ -600,7 +604,7 @@ async function bmsLangFlow() {
   ok("RU: total line (Спенд · date, no count, the age is the refresh tooltip) and the converted total", /^Спенд · \d{2}\.\d{2}$/.test(t.label) && !t.meta && /^Обновить бизнесы и спенд · обновлено /.test(await pop.getAttribute("#loadBms", "title")) && /^≈ 227,00\s\$$/.test(t.value), JSON.stringify(t));
   const alpha = await rowOf(pop, "Alpha Media"), beta = await rowOf(pop, "Beta Ads"), gamma = await rowOf(pop, "Gamma Group"), eps = await rowOf(pop, "Epsilon Digital"), delta = await rowOf(pop, "Delta Co");
   ok("RU: context '3 кабинета · 1 заблокирован', the amounts in Russian format (2 currencies exact, 3 ≈)", alpha.ctx.join("|") === "3 кабинета · 1 заблокирован" && /^100,00\s\$ \+ 50,00\s€$/.test(alpha.value) && /^≈ 47,50\s\$$/.test(delta.value) && alpha.sr === "Активен", JSON.stringify([alpha.ctx, alpha.value, delta.value]));
-  ok("RU: the problem words and fixes — Не верифицирован → Верификация (+1), Нет кабинетов → Создать кабинет, Нет активных", beta.status.text === "Не верифицирован" && beta.fix.text === "Верификация" && beta.more === "+1" && gamma.status.text === "Нет кабинетов" && gamma.fix.text === "Создать кабинет" && eps.status.text === "Нет активных" && eps.ctx.join("|") === "2 кабинета · 1 заблокирован", JSON.stringify([beta, gamma, eps].map((r) => [r.status?.text, r.fix?.text, r.ctx])));
+  ok("RU: the problem words and fixes — Не верифицирован → Верификация (ещё 1), Нет кабинетов → Создать кабинет, Нет активных", beta.status.text === "Не верифицирован" && beta.fix.text === "Верификация" && beta.more === "ещё 1" && gamma.status.text === "Нет кабинетов" && gamma.fix.text === "Создать кабинет" && eps.status.text === "Нет активных" && eps.ctx.join("|") === "2 кабинета · 1 заблокирован", JSON.stringify([beta, gamma, eps].map((r) => [r.status?.text, r.fix?.text, r.ctx])));
   await toggle(pop, "Beta Ads");
   const bb = await bodyOf(pop, "Beta Ads");
   ok("RU: the expanded row (Кабинеты, Верификация: Не удалась, Что делать, Настройки бизнеса, the button)", bb.kv[0].join(": ") === "Кабинеты: 1 · 1 заблокирован Показать кабинеты →" && bb.kv[1].join(": ") === "Верификация: Не удалась" && bb.todo.title === "Что делать" && has(bb.todo.help, "Пройди верификацию бизнеса заново.") && bb.links[0].text === "Настройки бизнеса", JSON.stringify(bb));
@@ -680,7 +684,8 @@ async function bmsRowsFlow() {
   await pop.click('#bmsPeriod .seg-btn:has-text("Today")');
   await pop.focus('[data-focus="row:bm-1001"]'); await pop.keyboard.press("Enter");
   await pop.focus('[data-focus="bm-go:1001"]'); await pop.keyboard.press("Enter");
-  ok("…'Show ad accounts →' works from the keyboard too (opens the Ad accounts tab, filtered)", await until(pop, () => document.querySelector(".tab.active")?.dataset.tab === "accounts" && /Alpha Media/.test(document.querySelector("#tab-accounts").textContent)));
+  ok("…'Show ad accounts →' works from the keyboard too (opens the Ad accounts tab, filtered); focus lands on the tab's button", await until(pop, () => document.querySelector(".tab.active")?.dataset.tab === "accounts" && /Alpha Media/.test(document.querySelector("#tab-accounts").textContent)
+    && document.activeElement?.id === "tabbtn-accounts"));
   await pop.click('[data-tab="bms"]');
 
   // copy: the ID button copies that one ID and does not open the row; there is no Copy IDs
@@ -760,7 +765,7 @@ async function bmsLayoutFlow() {
   const b4 = await boot({ fb: adsFb(TOK), graph: graphFor({ rows: [], accounts: { data: [] } }) });
   await adsPage(b4);
   const p4 = await popup(b4, "bms");
-  ok("no businesses: says so", await until(p4, () => /No business portfolios on this profile/.test(document.querySelector("#bmsList").textContent)), await text(p4, "#bmsList"));
+  ok("no businesses: says so", await until(p4, () => /No businesses/.test(document.querySelector("#bmsList").textContent)), await text(p4, "#bmsList"));
   const again = await popup(b4); await again.waitForTimeout(700);
   ok("…an empty list is a loaded list: reopening does not ask again", bmHits(b4).length === 1, String(bmHits(b4).length));
   await b3.ctx.close(); await b4.ctx.close();

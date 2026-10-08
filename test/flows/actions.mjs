@@ -42,7 +42,7 @@ async function actionsFlow() {
   const attrs = await review.evaluate((n) => ({ href: n.href, target: n.target, rel: n.rel, tag: n.tagName, cls: n.className, tab: n.tabIndex, focus: n.dataset.focus, aria: n.getAttribute("aria-label"), inSub: !!n.closest(".lrow-sub"), icon: !!n.querySelector(".i"),
     deco: getComputedStyle(n.querySelector(".act-label")).textDecorationLine, color: getComputedStyle(n).color }));
   ok("…an <a> to Account Quality, new tab, noopener noreferrer, keyboard-focusable, red (bad), underlined, no ↗ icon, on line 2 after the problem word", attrs.tag === "A" && attrs.href === LINKS.accountQuality() && attrs.target === "_blank"
-    && attrs.rel === "noopener noreferrer" && attrs.tab === 0 && /\bbad\b/.test(attrs.cls) && attrs.focus === "rowfix:111" && attrs.inSub && !attrs.icon && attrs.deco === "underline" && attrs.color === "rgb(216, 35, 42)", JSON.stringify(attrs));
+    && attrs.rel === "noopener noreferrer" && attrs.tab === 0 && /\bbad\b/.test(attrs.cls) && attrs.focus === "rowfix:111" && attrs.inSub && !attrs.icon && attrs.deco === "underline" && attrs.color === "rgb(207, 33, 39)", JSON.stringify(attrs));
   ok("…its accessible name carries the account name (many identical 'Appeal' links on one list)", attrs.aria === `Appeal · ${LONG}`, attrs.aria);
   ok("…and its tooltip is the plain-language help line", (await review.getAttribute("title")) === STRINGS.en["next.help.r1"], await review.getAttribute("title"));
   const opened = await clickOpens(review);
@@ -70,7 +70,8 @@ async function actionsFlow() {
   ok("expanded: the 'What to do' block sits after the key-value list and before the places to open", (await box.count()) === 1
     && (await pop.evaluate((sel) => { const o = document.querySelector(`${sel}.open`), b = o.querySelector(".lrow-todo"), kv = o.querySelector(".lrow-kv"), l = o.querySelector(".lrow-links"); return !!(kv.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) && !!(b.compareDocumentPosition(l) & Node.DOCUMENT_POSITION_FOLLOWING); }, ROW)));
   ok("…help text in English, a plain title (no tinted box)", (await text(pop, `${ROW}.open .lrow-todo-help`)) === STRINGS.en["next.help.r1"] && (await box.evaluate((n) => getComputedStyle(n).backgroundColor)) === "rgba(0, 0, 0, 0)", await text(pop, `${ROW}.open .lrow-todo-help`));
-  ok("…no step is repeated: Appeal is on line 2, Ads Manager is in the links row", (await box.locator("a").count()) === 0);
+  ok("…every step is here, the one on line 2 included (Appeal, in the tone of the problem); Ads Manager is not repeated: it is in the links row", (await box.locator("a").allTextContents()).map((x) => x.trim()).join() === "Appeal"
+    && (await box.locator("a").first().evaluate((n) => n.classList.contains("bad"))));
   const places = await pop.locator(`${ROW}.open .lrow-links a`).evaluateAll((as) => as.map((a) => ({ t: a.textContent.trim(), href: a.href, target: a.target, rel: a.rel, icon: !!a.querySelector(".i-external") })));
   ok("…'Ads Manager ↗' and 'Billing ↗' of this account, with their icons, new tab, noopener noreferrer", places.length === 2 && places[0].t === "Ads Manager" && places[0].href === LINKS.adsManager("111") && places[1].t === "Billing" && places[1].href === LINKS.billing("111")
     && places.every((x) => x.icon && x.target === "_blank" && x.rel === "noopener noreferrer"), JSON.stringify(places));
@@ -83,7 +84,7 @@ async function actionsFlow() {
   await pop.click('[data-lang="en"]');
   await until(pop, () => document.querySelector("#accountsList .lrow.open .lrow-todo-title")?.textContent === "What to do");
   await title(LONG).click();                                                       // close again
-  for (const [name, key, labels] of [["Unpaid B", "next.help.unpaid", []], ["Closed D", "next.help.noAppeal", ["Support", "Account Quality"]], ["Risk E", "next.help.risk", []]]) {
+  for (const [name, key, labels] of [["Unpaid B", "next.help.unpaid", ["Pay"]], ["Closed D", "next.help.noAppeal", ["Support", "Account Quality"]], ["Risk E", "next.help.risk", ["Account Quality"]]]) {
     await title(name).click();
     const got = await row(name).locator(".lrow-todo a").allTextContents();
     ok(`${name}: help '${key}' and steps [${labels.join(" + ")}]`, (await text(pop, `${ROW}.open .lrow-todo-help`)) === STRINGS.en[key] && got.map((x) => x.trim()).join() === labels.join(), `${await text(pop, `${ROW}.open .lrow-todo-help`)} | ${got}`);

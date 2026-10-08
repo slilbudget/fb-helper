@@ -7,12 +7,10 @@ const tabs = new Map(), renders = [], inits = [], starts = [];
 // A tab. Its button (data-tab) and panel (#tab-<name>) are in popup.html; this adds what the code needs to know:
 //   onShow  runs every time the tab is shown AFTER start-up, and once at start-up when the popup opens on it.
 //           Guard it yourself when it must only act the first time (the Accounts auto-load does).
-//   tall    the popup opens at Chrome's full 600 px height on this tab (body.tall), so a list that arrives a moment
-//           later does not make the window jump.
-// Every registered name is a valid "last tab" to restore.
-export function registerTab(name, { onShow, tall = false } = {}) {
+// Every registered name is a valid "last tab" to restore. (Every tab has the same height: css body min-height.)
+export function registerTab(name, { onShow } = {}) {
   if (tabs.has(name)) throw new Error(`tab "${name}" is already registered`);
-  tabs.set(name, { onShow, tall });
+  tabs.set(name, { onShow });
 }
 export const tabInfo = (name) => tabs.get(name);
 export const tabNames = () => [...tabs.keys()];

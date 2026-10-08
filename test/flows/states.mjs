@@ -7,8 +7,8 @@ import { TOK, ok, has, boot, adsPage, popup, text, until, rowsAre, resetLocks, a
 const TABS = { accounts: { list: "#accountsList", btn: "#loadAccounts", hidden: ["#periodSeg", "#accountsTotal", "#copyLiveIds"], none: "No ad accounts", loading: "Loading ad accounts…" },
   bms: { list: "#bmsList", btn: "#loadBms", hidden: ["#bmsPeriod", "#bmsTotal"], none: "No businesses", loading: "Loading businesses…" },
   pages: { list: "#pagesList", btn: "#loadPages", hidden: [], none: "No pages", loading: "Loading pages…" } };
-const PERM_EN = "This token can't read the list — open Ads Manager or Business Manager, refresh the token (⟳ on the Token tab) and try again.";
-const PERM_RU = "Этим токеном список не прочитать — открой Ads Manager или Business Manager, обнови токен (⟳ на вкладке «Токен») и повтори.";
+const PERM_EN = "This token can't read the list — open Ads Manager or Business Manager, refresh the token (the refresh button on the Token tab) and try again.";
+const PERM_RU = "Этим токеном список не прочитать — открой Ads Manager или Business Manager, обнови токен (кнопка обновления на вкладке «Токен») и повтори.";
 const perm = (code = 10) => ({ status: 400, body: { error: { code, message: `(#${code}) Application does not have permission for this action` } } });
 const view = (p, list) => p.evaluate((sel) => { const e = document.querySelector(`${sel} .lempty`); return e && { kind: e.dataset.state, text: e.querySelector(".lempty-text")?.textContent, detail: e.querySelector(".lempty-detail")?.textContent ?? null,
   btn: [...e.querySelectorAll(".btn")].map((b) => b.textContent.trim()), icon: e.querySelectorAll(".i").length, iconColor: getComputedStyle(e.querySelector(".i")).color, textColor: getComputedStyle(e.querySelector(".lempty-text")).color }; }, list);

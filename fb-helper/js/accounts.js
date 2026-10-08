@@ -232,7 +232,7 @@ function renderHint() {
   const all = state.accounts.length, rows = visibleRows(), n = rows.length;
   // The count only when a search / filter is on ("3 of 10 found"); an incomplete list always says so.
   const metaText = `${isFiltered() ? t("acc.found", { n, all }) : ""}${state.truncated ? t("acc.notAll") : ""}`.trim();
-  if (!n) return fill(total, metaText ? el("span", { class: "total-meta" }, metaText) : null);
+  if (!n) return fill(total, metaText ? el("span", { class: "total-meta alone" }, metaText) : null);       // no rows: nothing to add up, only what the filter found
   // Row 1: what the number is (left: "Spend · Aug 29") + the filter count (right). Row 2: the number.
   fillTotal(total, { metaText, range: state.period === "all" ? "" : periodRange(), zeroCur: rows[0].currency,
     sum: addUp(rows.map((a) => ({ spend: statsOf(a)?.spend ?? null, currency: a.currency }))) });
@@ -263,13 +263,15 @@ function drawAccounts() {
   if (counts.size < 2) { state.statusFilter = null; counts.clear(); }
   // The BM filter (set from the BM tab) comes first as its own chip; clicking it clears it.
   const bm = state.bmFilter;
-  fill($("#statusChips"), bm ? el("button", { class: "pill chip on", "aria-pressed": "true", "data-focus": "chip:bm", title: t("acc.bmFilterClear"),
-      onclick: () => { state.bmFilter = null; renderAccounts(); } }, el("i", { class: "i i-bm" }), `${bm.name || bm.id} ✕`) : null,
+  // A chip's accessible name is "Active: 12" (the text alone would read "Active 12"); the business chip names what pressing it does.
+  fill($("#statusChips"), bm ? el("button", { type: "button", class: "pill chip on", "aria-pressed": "true", "data-focus": "chip:bm", title: t("acc.bmFilterClear"),
+      "aria-label": `${bm.name || bm.id}: ${t("acc.bmFilterClear")}`, onclick: () => { state.bmFilter = null; renderAccounts(); } }, el("i", { class: "i i-bm", "aria-hidden": "true" }), `${bm.name || bm.id} ✕`) : null,
   ...[...counts.values()].sort((x, y) => chipRank(x.chip.id) - chipRank(y.chip.id)).map(({ chip, n }) => {
     const on = state.statusFilter === chip.id;
-    return el("button", { class: `pill chip ${chip.tone}${on ? " on" : ""}`, "aria-pressed": String(on), "data-focus": `chip:${chip.id}`,
+    return el("button", { type: "button", class: `pill chip ${chip.tone}${on ? " on" : ""}`, "aria-pressed": String(on), "data-focus": `chip:${chip.id}`, "aria-label": `${word(chip)}: ${n}`,
       onclick: () => { state.statusFilter = on ? null : chip.id; renderAccounts(); } }, `${word(chip)} ${n}`);
   }));
+  scrollFade($("#statusChips"));
   const rows = visibleRows();
   if (!any) return fill(list, emptyView({ tab: "accounts", loaded: !!state.fetchedAt, loading: state.accLoading, none: t("acc.none"), loadingText: t("acc.loading"), retry: () => loader.retry() }));
   if (!rows.length) return fill(list, listNote("accounts"), el("div", { class: "empty" }, t("acc.noMatch")));
@@ -306,7 +308,9 @@ function groupEl(g, r) {
   const unknown = g.sum.unknown;
   const value = line.text || (unknown ? "—" : fmtMoney(0, g.accounts[0].currency));            // text: the same "+N" cut as a business row, never a line wider than the header
   const title = [line.title || (line.text !== line.full ? line.full : ""), unknown ? t(line.main ? "acc.notAllTitle" : "acc.noPeriod") : ""].filter(Boolean).join("\n") || null;
-  const h = groupHeader({ avatar: { kind: personal ? "page" : "business", url: null }, name: personal ? t("acc.personal") : g.name || g.id,
+  // The business's own picture when the Businesses tab has read it (state.bms is that tab's list: its logo is only a URL imageUrl() accepted).
+  const logo = personal ? null : state.bms?.find((b) => b?.id === g.id)?.profile_picture_uri ?? null;
+  const h = groupHeader({ avatar: { kind: personal ? "page" : "business", url: logo }, name: personal ? t("acc.personal") : g.name || g.id,
     count: g.accounts.length, value, valueTitle: title });
   if (personal) h.querySelector(".lav .i")?.classList.replace("i-flag", "i-user");
   return h;
@@ -352,23 +356,23 @@ function accountBody(a, s, st, name) {
   const long = (text) => (String(text).length > 24 ? { wide: true } : undefined);
   const places = [{ id: "ads", label: "next.adsManager", url: LINKS.adsManager(id) }, { id: "billing", label: "next.billing", url: LINKS.billing(id) }];
   const box = el("div", { class: "ads", "data-ads-box": id });
+  // ONE muted line for the small facts that are not worth a pair each: "UTC+3 Kiev · US · created 04.03.2025" (only what Graph gave).
+  const facts = [tzLabel(a.timezone_name), a.business_country_code, a.created_time && fullDate(a.created_time) ? t("acc.createdOn", { d: fullDate(a.created_time) }) : ""].filter(Boolean).join(" · ");
   const parts = [
     kv([
-      showClicks ? [t("acc.clicks"), n.format(st.clicks), t("acc.imp", { n: n.format(st.imp) })] : null,
-      showClicks && st.clicks ? [t("acc.cpc"), fmtMoney(st.spend / st.clicks, cur)] : null,
+      // The period's numbers first: "Clicks · CPC  310 · 4,00 $" (the impressions are its tooltip); then the account's own: spent, to pay, threshold, limits, payment.
+      showClicks ? [t("acc.clicksCpc"), st.clicks ? `${n.format(st.clicks)} · ${fmtMoney(st.spend / st.clicks, cur)}` : n.format(st.clicks), `${n.format(st.imp)} ${tn(st.imp, "ads.imp")}`] : null,
       [t("acc.spent"), fmtMoney(statsOf(a, "all").spend, cur)],                                  // same number as the "All time" period
       [t("acc.balance"), money(a.balance)],
       [t("acc.threshold"), money(threshold)],
       [t("acc.daily"), dsl === undefined ? "—" : Number(dsl) < 0 ? t("acc.noLimit") : fmtMoney(Number(dsl), cur)],
-      [t("acc.spendCap"), Number(a.spend_cap || 0) ? money(a.spend_cap) : t("acc.no")],
+      Number(a.spend_cap || 0) ? [t("acc.spendCap"), money(a.spend_cap)] : null,                // only when one is set
       [t("acc.funding"), funding, long(funding)],
       [t("acc.pixels"), a._noPixels ? "—" : pixelText || el("span", { class: "acc-warn" }, t("acc.no")), long(pixelText)],
-      [t("acc.timezone"), tzLabel(a.timezone_name) || "—"],
-      [t("acc.country"), a.business_country_code || "—"],
-      [t("acc.created"), a.created_time ? a.created_time.slice(0, 10) : "—"],
     ]),
-    // What to do: the help line and the steps that are not already on line 2 or in the links row below.
-    whatToDo({ help: s.help ? t(s.help) : null, actions: s.actions, skip: [...(s.fix ? [s.fix] : []), ...places], tone: s.tone === "ok" ? "" : s.tone, owner: name, focus: `todo:${id}` }),
+    facts ? el("p", { class: "lrow-meta" }, facts) : null,
+    // What to do: the help line and every step (the one on line 2 included) except the two places the links row below has.
+    whatToDo({ help: s.help ? t(s.help) : null, actions: s.actions, skip: places, tone: s.tone === "ok" ? "" : s.tone, owner: name, focus: `todo:${id}` }),
     linksRow(places, { owner: name, focus: `link:${id}` }),
     // The ads: a flat section (no tinted box). Its header is the same before the first load, collapsed and open: toggling only adds or removes the list below.
     el("div", { class: "ads-sec" }, adsControls(id), box),
@@ -441,7 +445,7 @@ function renderAds(box, { ads, more, error, stale, stats, statsAt, statsAll, sta
     const st = ad.effective_status;
     const [l, tone] = st in AD_STATUS ? [t(`ad.${st}`), AD_STATUS[st]] : [humanEnum(st), ""];     // a status of the future: plain words, not a raw constant
     const why = reviewLines(ad), steps = adSteps(ad, id);
-    return el("div", { class: "ad" }, el("span", { class: "ad-name" }, ad.name), adStatus(l, tone),
+    return el("div", { class: "ad" }, el("span", { class: "ad-name", dir: "auto" }, ad.name), adStatus(l, tone),
       shown ? adStatsLine(stats[ad.id]?.[alias] ?? null, st, acc?.currency) : null,
       why.length ? el("small", {}, why.map((line) => el("span", { class: "why" }, line))) : null,
       // Rejected ad: ask for a review / open it in Ads Manager (links only), in the style of a row's fix link.
@@ -572,10 +576,9 @@ async function readAndShowAds(id, gen, busy) {
 const todaySig = () => state.accounts.map((a) => (statsOf(a, "today") ? 1 : 0)).join("");
 let sig = "";
 
-// The Accounts tab takes Chrome's full 600 px from the start (tall), so a list arriving a moment later doesn't make the
-// window jump; showing it starts the auto-load.
+// Showing the tab starts the auto-load.
 // Showing the tab draws it again: a total or an order that wanted rates while the tab was hidden asks for them now.
-registerTab("accounts", { tall: true, onShow: () => { renderAccounts(); ensureAccounts(); } });
+registerTab("accounts", { onShow: () => { renderAccounts(); ensureAccounts(); } });
 // RU · EN: every word on the rows comes from keys, so a redraw from state is all it takes.
 registerRender(() => renderAccounts());
 registerRender(() => {

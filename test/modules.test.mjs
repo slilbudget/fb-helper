@@ -9,6 +9,7 @@ import { addStrings, setLang, t, tn, has } from "../fb-helper/js/i18n.js";
 import { setGraphUrl } from "../fb-helper/js/config.js";
 import { state, Stale, loadState, onLoad, registerCache, cacheKeys, dropCache, checkOwner, claimSlot, slotLeft, newGeneration, markDead, saveSession } from "../fb-helper/js/state.js";
 import { graph, readPaged, optionalFieldIn, pauseNote, budgetLeft } from "../fb-helper/js/graph.js";
+import { toastMs } from "../fb-helper/js/dom.js";
 
 // ---------- fakes ----------
 function fakeChrome({ session = {}, cookies = {} } = {}) {
@@ -46,15 +47,24 @@ test("bus: handlers run in subscription order, can unsubscribe, and one that thr
   emit("t.nobody", 1);                                    // no subscribers: nothing happens
 });
 
+// ---------- toast ----------
+test("toastMs: 2.6 s for a short text, 60 ms a character for a long one (an error nobody had time to read helps nobody)", () => {
+  assert.equal(toastMs("Copied"), 2600);
+  assert.equal(toastMs("x".repeat(43)), 2600, "43 characters = 2580 ms: still the minimum");
+  assert.equal(toastMs("x".repeat(44)), 2640);
+  assert.equal(toastMs("x".repeat(100)), 6000);
+  assert.equal(toastMs(""), 2600); assert.equal(toastMs(undefined), 2600); assert.equal(toastMs(null), 2600);
+});
+
 // ---------- registry ----------
-test("registry: tabs (names, tall, onShow, no duplicates), render filters, init / start order, a failing hook does not stop the rest", () => {
+test("registry: tabs (names, onShow, no duplicates), render filters, init / start order, a failing hook does not stop the rest", () => {
   const onShow = () => {};
   registerTab("t.plain");
-  registerTab("t.tall", { tall: true, onShow });
-  assert.deepEqual(tabNames().filter((n) => n.startsWith("t.")), ["t.plain", "t.tall"]);
-  assert.equal(tabInfo("t.tall").tall, true);
-  assert.equal(tabInfo("t.tall").onShow, onShow);
-  assert.equal(tabInfo("t.plain").tall, false);
+  registerTab("t.shown", { onShow });
+  assert.deepEqual(tabNames().filter((n) => n.startsWith("t.")), ["t.plain", "t.shown"]);
+  assert.equal(tabInfo("t.shown").onShow, onShow);
+  assert.equal(tabInfo("t.plain").onShow, undefined);
+  assert.ok(!("tall" in tabInfo("t.plain")), "every tab has the same height: nothing to register");
   assert.equal(tabInfo("t.missing"), undefined);
   assert.throws(() => registerTab("t.plain"), /already registered/);
 
