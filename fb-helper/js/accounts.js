@@ -7,10 +7,10 @@
 // on line 2 nothing for a healthy account, else the problem word, its one fix and "+N". The expanded body holds the numbers, what to do
 // and the ads. What a row says about an account is nextsteps.js accountState (pure, tested).
 
-import { t, tn, getLang } from "./i18n.js";
-import { AD_PROBLEMS, adRank, reviewLines, spendFloor, insightRow, cleanText, digitsId } from "./pure.js";
-import { $, $$, el, fill, toast, copy, keepFocus } from "./dom.js";
-import { numFmt, ago, sameDay, tzLabel, major } from "./format.js";
+import { t, tn, tnPlus, getLang } from "./i18n.js";
+import { AD_PROBLEMS, adRank, reviewLines, spendFloor, insightRow, cleanText, digitsId, humanEnum } from "./pure.js";
+import { $, $$, el, fill, toast, copy, keepFocus, scrollFade } from "./dom.js";
+import { numFmt, ago, sameDay, tzLabel, major, fullDate } from "./format.js";
 import { state, Stale, saveSession, claimSlot, slotLeft, onLoad, isDead, deadCode } from "./state.js";
 import { graph, readPaged, pauseNote } from "./graph.js";
 import { readBusinessEdges } from "./biz-edges.js";
@@ -307,7 +307,9 @@ function groupEl(g, r) {
 function valueOf(a, st, r) {
   if (!st) return { text: "—", muted: true, title: t("acc.noPeriod") };
   const usd = st.spend && (a.currency || "USD") !== "USD" ? toUsd(st.spend, a.currency, r) : null;
-  return { text: fmtMoney(st.spend, a.currency), muted: !st.spend, title: usd !== null ? `≈ ${fmtMoney(usd, "USD")}` : null };
+  // A million or more of an ISO-code currency is written short ("28,9 млн VND"); the exact amount is the tooltip's.
+  const text = fmtMoney(st.spend, a.currency, { compact: true }), exact = fmtMoney(st.spend, a.currency);
+  return { text, muted: !st.spend, title: [text !== exact ? exact : "", usd !== null ? `≈ ${fmtMoney(usd, "USD")}` : ""].filter(Boolean).join("\n") || null };
 }
 
 function renderAccount(a, st, r) {
@@ -419,7 +421,7 @@ function renderAds(box, { ads, more, error, stale, stats, statsAt, statsAll, sta
   const hint = statsFail ? t("ads.statsFail") : state.statsBusy.has(id) ? t("ads.statsLoading")
     : !stats ? "" : !fresh ? t("ads.old") : all && !statsAll ? t("ads.noAll") : "";
   fill(box, el("div", { class: "ads-sum" },
-      `${ads.length}${more ? "+" : ""} ${tn(ads.length, "ads.count")}`,
+      `${ads.length}${more ? "+" : ""} ${tnPlus(ads.length, "ads.count", more)}`,
       live ? t("ads.live", { n: live }) : "", rejected ? el("span", { class: "err-text" }, t("ads.rejected", { n: rejected })) : "",
       shown ? t("ads.statsAt", { a: ago(statsAt) }) : ""),
     stale ? el("div", { class: "hint err-text" }, t("ads.stale", { m: stale })) : null,
@@ -427,7 +429,7 @@ function renderAds(box, { ads, more, error, stale, stats, statsAt, statsAll, sta
     // Disapproved / with issues first, each with every reason and the placement it applies to.
     ...[...ads].sort((a, b) => adRank(a.effective_status) - adRank(b.effective_status)).map((ad) => {
     const st = ad.effective_status;
-    const [l, tone] = st in AD_STATUS ? [t(`ad.${st}`), AD_STATUS[st]] : [st, ""];
+    const [l, tone] = st in AD_STATUS ? [t(`ad.${st}`), AD_STATUS[st]] : [humanEnum(st), ""];     // a status of the future: plain words, not a raw constant
     const why = reviewLines(ad), steps = adSteps(ad, id);
     return el("div", { class: "ad" }, el("span", { class: "ad-name" }, ad.name), adStatus(l, tone),
       shown ? adStatsLine(stats[ad.id]?.[alias] ?? null, st, acc?.currency) : null,

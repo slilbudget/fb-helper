@@ -142,7 +142,8 @@ export async function graph(path, params = {}, retried = false) {
     throw sessionError(code);
   }
   if (e) {
-    const err = new Error(cleanText(e.error_user_msg || e.message, 500) || t("err.graph"));        // Graph's words reach a toast: cleaned like a name
+    const said = cleanText(e.error_user_msg || e.message, 500);                                    // Graph's words reach a toast: cleaned like a name, and introduced in the UI language
+    const err = new Error(said ? t("err.graphIs", { m: said }) : t("err.graph"));
     err.code = e.code; err.subcode = e.error_subcode; err.raw = cleanText(e.message, 500);
     throw err;
   }

@@ -1,9 +1,10 @@
 // Strings of the Businesses tab (js/bms.js). Plain data + one addStrings call, so test/pure.test.mjs can load it in Node and check
 // that every key used anywhere exists in both languages. Keys: "bms.<what>"; the generic ones (copied, ago.*, err.*, search,
 // acc.copyId / acc.idCopied / acc.spend / acc.noPeriod / acc.notAllTitle, period.*, next.title) come from the main dictionary.
-// Wording (design.md §7 + §8): short words, one word per idea; "бизнес-портфолио" / "business portfolio" is Meta's name for the thing
-// and stays in tooltips, where a short word is needed (tab, counts, buttons) it is "бизнесы" / "businesses". "BM" / "БМ" is slang and
-// is not used in the interface.
+// Wording (design.md §7 + §8, review round 1): short words, one word per idea; the thing is "бизнес" / "business" everywhere on screen
+// ("бизнес-портфолио" / "business portfolio" is Meta's long name and appears only in a tooltip). "BM" / "БМ" is slang and is not used in the
+// interface. Menu paths use the English names of Facebook's own interface (Business Settings → Security): that is what the person sees there.
+// The second tab is "Accounts" (EN) / "Кабинеты" (RU).
 import { addStrings } from "../i18n.js";
 
 export const STRINGS = {
@@ -32,12 +33,12 @@ export const STRINGS = {
     "bms.ver.verified": "Пройдена", "bms.ver.not_verified": "Не пройдена", "bms.ver.pending": "На проверке", "bms.ver.pending_need_more_info": "Нужны данные",
     "bms.ver.pending_submission": "Не отправлена", "bms.ver.ineligible": "Недоступна", "bms.ver.failed": "Не удалась", "bms.ver.rejected": "Отклонена",
     "bms.ver.revoked": "Отозвана", "bms.ver.expired": "Истекла",
-    "bms.help.verification": "Причина — в Business Settings → Безопасность. Пройди верификацию бизнеса заново.",
+    "bms.help.verification": "Причина — в Business Settings → Security. Пройди верификацию бизнеса заново.",
     "bms.help.noActive": "Проверь, почему кабинеты не активны, или добавь новый.",
     "bms.help.none": "Создай кабинет или попроси админа бизнеса дать доступ к существующему.",
-    "bms.fix.verify": "Верификация", "bms.fix.verifyTitle": "Business Settings → Безопасность: верификация этого бизнеса",
-    "bms.fix.accounts": "Управление кабинетами", "bms.fix.accountsTitle": "Рекламные кабинеты этого бизнеса в Business Settings",
-    "bms.fix.create": "Создать кабинет", "bms.fix.createTitle": "Business Settings → Рекламные кабинеты → Добавить: создай рекламный кабинет в этом бизнесе",
+    "bms.fix.verify": "Верификация", "bms.fix.verifyTitle": "Business Settings → Security: верификация этого бизнеса",
+    "bms.fix.accounts": "Управление кабинетами", "bms.fix.accountsTitle": "Рекламные кабинеты этого бизнеса: Business Settings → Ad accounts",
+    "bms.fix.create": "Создать кабинет", "bms.fix.createTitle": "Business Settings → Ad accounts → Add: создай рекламный кабинет в этом бизнесе",
   },
   en: {
     "bms.search.aria": "Search businesses",
@@ -53,14 +54,14 @@ export const STRINGS = {
     // line 2 of a row: the problem word (the status), the context
     "bms.st.active": "Active",
     "bms.st.noActive": "None active", "bms.st.noActive.title": "This business has ad accounts, but none is active (status Active)",
-    "bms.st.none": "No ad accounts", "bms.st.none.title": "None of the ad accounts loaded in the Ad accounts tab belongs to this business",
+    "bms.st.none": "No ad accounts", "bms.st.none.title": "None of the ad accounts loaded in the Accounts tab belongs to this business",
     "bms.st.unverified": "Unverified", "bms.verTitle": "Business verification",
     "bms.accCount": ["ad account", "ad accounts"], "bms.disabledWord": ["disabled", "disabled"],
     "bms.accsPartial": "The ad account list is not complete — there may be more",
     "bms.unread": "Couldn't read the ad accounts of this business — the list may be incomplete",
     // the expanded row
     "bms.kv.accounts": "Ad accounts", "bms.kv.verification": "Verification", "bms.activeWord": ["active", "active"],
-    "bms.show": "Show ad accounts →", "bms.showTitle": "Open the Ad accounts tab filtered by this business (the list loads by itself)",
+    "bms.show": "Show ad accounts →", "bms.showTitle": "Open the Accounts tab filtered by this business (the list loads by itself)",
     "bms.ver.verified": "Verified", "bms.ver.not_verified": "Not verified", "bms.ver.pending": "In review", "bms.ver.pending_need_more_info": "More info needed",
     "bms.ver.pending_submission": "Not submitted", "bms.ver.ineligible": "Not eligible", "bms.ver.failed": "Failed", "bms.ver.rejected": "Rejected",
     "bms.ver.revoked": "Revoked", "bms.ver.expired": "Expired",
@@ -68,7 +69,7 @@ export const STRINGS = {
     "bms.help.noActive": "Check why the ad accounts are not active, or add a new one.",
     "bms.help.none": "Create an ad account, or ask a business admin to give you access to an existing one.",
     "bms.fix.verify": "Verify", "bms.fix.verifyTitle": "Business Settings → Security: verification of this business",
-    "bms.fix.accounts": "Manage ad accounts", "bms.fix.accountsTitle": "Ad accounts of this business in Business Settings",
+    "bms.fix.accounts": "Manage ad accounts", "bms.fix.accountsTitle": "Ad accounts of this business: Business Settings → Ad accounts",
     "bms.fix.create": "Create account", "bms.fix.createTitle": "Business Settings → Ad accounts → Add: create an ad account in this business",
   },
 };

@@ -177,14 +177,14 @@ test("totalLine: two currencies → '≈ USD' + the exact breakdown, the date an
   const l = totalLine({ USD: 1695.7, EUR: 20 }, TABLE);
   assert.equal(l.main, "≈ $1,721");
   assert.equal(l.approx, true);
-  assert.equal(l.breakdown, "$1,696 + €20.00");
+  assert.equal(l.breakdown, "$1,695.70 + €20.00", "one string, one number of fraction digits: €20.00 has its cents, so $1,695.70 has them too");
   assert.equal(l.more, 0);
-  assert.equal(l.full, "$1,696 + €20.00");
+  assert.equal(l.full, "$1,695.70 + €20.00");
   assert.equal(l.note, "rates Oct 8");
   assert.deepEqual([l.date, l.source], ["2026-10-08", SRC_ER]);
   assert.equal(l.attribution, ATTRIBUTION);
   assert.equal(ATTRIBUTION.url, "https://www.exchangerate-api.com");
-  assert.ok(l.title.includes("$1,696 + €20.00") && l.title.includes("Oct 8, 2026") && l.title.includes("Rates By Exchange Rate API") && /^\$1,696/.test(l.title), l.title);
+  assert.ok(l.title.includes("$1,695.70 + €20.00") && l.title.includes("Oct 8, 2026") && l.title.includes("Rates By Exchange Rate API") && /^\$1,695\.70/.test(l.title), l.title);
   assert.deepEqual(l.parts.map((p) => p.cur), ["USD", "EUR"]);
 });
 
@@ -192,10 +192,10 @@ test("totalLine: three currencies (USD, EUR, VND) are ordered by their USD value
   const l = totalLine({ EUR: 20, USD: 1695.7, VND: 1234567 }, TABLE);
   assert.equal(l.main, "≈ $1,770");                        // 1695.7 + 25 + 49.38
   assert.deepEqual(l.parts.map((p) => p.cur), ["USD", "VND", "EUR"], "49 $ of VND is more than 25 $ of EUR");
-  assert.equal(flat(l.breakdown), "$1,696 + VND 1,234,567");
+  assert.equal(flat(l.breakdown), "$1,695.70 + VND 1.2M", "a million of an ISO-code currency is written short on the line…");
   assert.equal(l.more, 1);
-  assert.equal(flat(l.full), "$1,696 + VND 1,234,567 + €20.00");
-  assert.ok(flat(l.title).includes("$1,696 + VND 1,234,567 + €20.00"), "the tooltip lists every currency");
+  assert.equal(flat(l.full), "$1,695.70 + VND 1,234,567 + €20.00", "…and exact in full");
+  assert.ok(flat(l.title).includes("$1,695.70 + VND 1,234,567 + €20.00"), "the tooltip lists every currency, exactly");
 });
 
 test("totalLine: five currencies → two shown, '+3'; the sum is every one converted", () => {
@@ -209,7 +209,7 @@ test("totalLine: five currencies → two shown, '+3'; the sum is every one conve
 
 test("totalLine: no rates (null) or a currency without a rate → the exact sum, never a half-converted '≈'", () => {
   const none = totalLine({ USD: 1695.7, EUR: 20 }, null);
-  assert.deepEqual([none.main, none.approx, none.breakdown, none.title, none.note, none.date], ["$1,696 + €20.00", false, "", "", "", null]);
+  assert.deepEqual([none.main, none.approx, none.breakdown, none.title, none.note, none.date], ["$1,695.70 + €20.00", false, "", "", "", null]);
   const missing = totalLine({ USD: 100, EUR: 20, XYZ: 5 }, TABLE);
   assert.equal(missing.approx, false);
   assert.equal(flat(missing.main), "$100.00 + €20.00 + XYZ 5.00", "insertion order, every currency, nothing dropped");
@@ -231,7 +231,7 @@ test("totalLine in Russian: the date is '08.10', the line is '≈ 1 770 $'", asy
     const l = totalLine({ USD: 1695.7, EUR: 20, VND: 1234567 }, TABLE);
     assert.equal(flat(l.main), "≈ 1 770 $");
     assert.equal(l.note, "курс 08.10");
-    assert.equal(flat(l.breakdown), "1 696 $ + 1 234 567 VND");
+    assert.equal(flat(l.breakdown), "1 695,70 $ + 1,2 млн VND");
     assert.ok(l.title.includes("Примерно") && l.title.includes("Rates By Exchange Rate API"), l.title);
   } finally { await setLang("en"); }
 });
@@ -239,7 +239,7 @@ test("totalLine in Russian: the date is '08.10', the line is '≈ 1 770 $'", asy
 test("rowAmount.text: the row's one line; three or more currencies without rates: the two biggest and '+N'; a total (totalLine) keeps every currency", () => {
   const t3 = { USD: 5, EUR: 20, VND: 1000 };
   const noRates = rowAmount(t3, null);
-  assert.equal(flat(noRates.text), "$5.00 + €20.00 +1", "in the order of the amounts as they came (no rates to rank them)");
+  assert.equal(flat(noRates.text), "$5.00 + €20.00 +1 more", "in the order of the amounts as they came (no rates to rank them)");
   assert.equal(flat(noRates.full), "$5.00 + €20.00 + VND 1,000");
   assert.equal(flat(noRates.main), flat(noRates.full), "main stays the whole");
   assert.equal(rowAmount({ USD: 5 }, null).text, "$5.00");
@@ -259,7 +259,7 @@ test("rowAmount: one or two currencies are exact, three or more are '≈ USD'", 
   const three = rowAmount({ USD: 1695.7, EUR: 20, VND: 1234567 }, TABLE);
   assert.equal(three.main, "≈ $1,770");
   assert.equal(three.approx, true);
-  assert.equal(flat(three.full), "$1,696 + VND 1,234,567 + €20.00");
+  assert.equal(flat(three.full), "$1,695.70 + VND 1,234,567 + €20.00");
   assert.ok(three.title.includes("Rates By Exchange Rate API"));
   const noRates = rowAmount({ USD: 5, EUR: 20, VND: 1000 }, null);
   assert.deepEqual([noRates.approx, flat(noRates.main)], [false, "$5.00 + €20.00 + VND 1,000"]);
@@ -498,4 +498,37 @@ test("network: the only code that sends a request is graph.js and money.js, and 
   const senders = fs.readdirSync(new URL("js/", dir), { recursive: true }).filter((f) => f.endsWith(".js"))
     .filter((f) => /\b(fetch\(|XMLHttpRequest|WebSocket|sendBeacon|EventSource)/.test(fs.readFileSync(new URL(`js/${f}`, dir), "utf8"))).sort();
   assert.deepEqual(senders, ["graph.js", "money.js"]);
+});
+
+// ---------- review round 1: one fraction rule per string, a million of an ISO-code currency written short, "ещё N" / "+N more" ----------
+test("totalLine / rowAmount: the amounts of one string share their fraction digits (all with cents when any is under 1 000, none otherwise); a currency without cents has none", () => {
+  assert.equal(flat(rowAmount({ USD: 2500, EUR: 3000 }, null).main), "$2,500 + €3,000", "none under 1 000: no cents anywhere");
+  assert.equal(flat(rowAmount({ USD: 1696, EUR: 20 }, null).main), "$1,696.00 + €20.00", "one under 1 000: cents everywhere");
+  assert.equal(flat(rowAmount({ VND: 25000, USD: 20 }, null).main), "VND 25,000 + $20.00", "VND has no cents; the dollars keep theirs");
+  assert.equal(flat(rowAmount({ VND: 25000, USD: 2000 }, null).main), "VND 25,000 + $2,000");
+  assert.equal(flat(rowAmount({ USD: 1695.7 }, null).main), "$1,696", "one amount: the usual rule (1 000 and more has no cents)");
+  assert.equal(flat(rowAmount({ USD: 999.5 }, null).main), "$999.50");
+  assert.equal(flat(totalLine({ USD: 3000, EUR: 5 }, null).main), "$3,000.00 + €5.00");
+});
+
+test("fmtMoney compact: an ISO-code currency from a million up is short ('VND 28.9M' / '28,9 млн VND'), a familiar currency and anything below a million never is", async () => {
+  assert.equal(flat(fmtMoney(28900000, "VND", { compact: true })), "VND 28.9M");
+  assert.equal(flat(fmtMoney(1000000, "VND", { compact: true })), "VND 1M");
+  assert.equal(flat(fmtMoney(999999, "VND", { compact: true })), "VND 999,999");
+  assert.equal(flat(fmtMoney(5000000, "USD", { compact: true })), "$5,000,000", "a familiar currency keeps its full number");
+  assert.equal(flat(fmtMoney(28900000, "VND")), "VND 28,900,000", "without the option nothing changes");
+  assert.equal(flat(fmtMoney(-28900000, "VND", { compact: true })), "-VND 28.9M");
+  await setLang("ru");
+  try { assert.equal(flat(fmtMoney(28900000, "VND", { compact: true })), "28,9 млн VND"); } finally { await setLang("en"); }
+  // a row says it short and keeps the exact amount for its tooltip
+  const row = rowAmount({ VND: 28900000, USD: 76 }, null);
+  assert.equal(flat(row.text), "VND 28.9M + $76.00"); assert.equal(flat(row.full), "VND 28,900,000 + $76.00");
+  assert.equal(flat(rowAmount({ VND: 28900000 }, null).text), "VND 28.9M");
+});
+
+test("the 'and more' cut is written in the UI language: '+1 more' / 'ещё 1'", async () => {
+  const t3 = { USD: 5, EUR: 20, VND: 1000 };
+  assert.equal(flat(rowAmount(t3, null).text), "$5.00 + €20.00 +1 more");
+  await setLang("ru");
+  try { assert.equal(flat(rowAmount(t3, null).text), "5,00 $ + 20,00 € ещё 1"); } finally { await setLang("en"); }
 });

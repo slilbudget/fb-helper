@@ -51,10 +51,12 @@ test("the mapping: exactly the decided buttons per status / reason", () => {
     [2, [3], "review", ["review", "billing"]],                                              // payment risk
     [2, [15], "secure", ["secure", "review"]],                                              // compromised: secure the login, then appeal
     [2, [4, 7, 8, 9, 10], null, ["support", "quality"]],                                    // no self-serve appeal
-    [3, [0, 1, 3], "pay", ["pay"]], [8, [0, 3], "pay", ["pay"]], [9, [0, 3], "pay", ["pay"]],
+    [3, [0, 1, 3], "pay", ["pay"]], [9, [0, 3], "pay", ["pay"]],
+    [8, [0, 3], "billing", ["billing"]],                                                    // settling: nothing to pay, look at Billing if it takes long
+
     [7, [0, 1], null, ["quality"]],
     [100, [0, 7], null, ["support"]], [101, [0, 7], null, ["support"]],
-    [1, REASONS.slice(1), "review", ["review"]],                                            // restricted while active
+    [1, REASONS.slice(1), "requestReview", ["requestReview"]],                              // restricted while active: not an appeal, a request to look again
   ];
   for (const [st, reasons, prim, all] of rows) for (const r of reasons) {
     const s = steps(st, r);
@@ -66,6 +68,8 @@ test("the mapping: exactly the decided buttons per status / reason", () => {
   assert.equal(s.actions[0].url, LINKS.hacked());
   assert.equal(steps(2, 3).actions[1].url, LINKS.billing(ID));
   assert.equal(steps(3, 0).actions[0].url, LINKS.billing(ID));
+  assert.equal(steps(8, 0).actions[0].url, LINKS.billing(ID), "status 8 goes to Billing too, but as a look, not as 'Pay'");
+  assert.equal(steps(1, 1).actions[0].url, LINKS.accountQuality(), "'Request review' opens Account Quality, like Appeal");
   assert.match(steps(3, 0).actions[0].url, new RegExp(`act=${ID}$`));
   assert.equal(steps(2, 1).actions[0].url, LINKS.accountQuality());
   assert.equal(steps(2, 1).actions[1].url, LINKS.adsManager(ID));
@@ -144,9 +148,9 @@ test("strings: every label and help key exists in Russian and English, nothing i
     assert.ok(STRINGS[l][k].length <= 120, `${l} ${k} is ${STRINGS[l][k].length} characters`);
   // the labels are short verbs that fit line 2 of a row (Appeal, Pay, Secure, Support, Assign me)
   for (const l of LANGS) for (const a of Object.values(ACTIONS)) assert.ok(STRINGS[l][a.label].length <= 24, `${l} ${a.label}`);
-  const verbs = ["review", "pay", "secure", "support", "assign"];
-  assert.deepEqual(verbs.map((id) => STRINGS.en[ACTIONS[id].label]), ["Appeal", "Pay", "Secure", "Support", "Assign me"]);
-  assert.deepEqual(verbs.map((id) => STRINGS.ru[ACTIONS[id].label]), ["Апелляция", "Оплатить", "Защитить", "Поддержка", "Назначить себя"]);
+  const verbs = ["review", "requestReview", "pay", "billing", "secure", "support", "assign"];
+  assert.deepEqual(verbs.map((id) => STRINGS.en[ACTIONS[id].label]), ["Appeal", "Request review", "Pay", "Billing", "Secure", "Support", "Assign me"]);
+  assert.deepEqual(verbs.map((id) => STRINGS.ru[ACTIONS[id].label]), ["Апелляция", "Запросить проверку", "Оплатить", "Биллинг", "Защитить", "Поддержка", "Назначить себя"]);
   await setLang("en");
 });
 
@@ -196,10 +200,10 @@ test("accountState: the problem word REPLACES the status; no reason (or an unkno
     [2, 3, "reason.3", "problem", "bad", "review", 1],            // payment risk: Billing is a second step
     [2, 15, "reason.15", "problem", "bad", "secure", 1],          // compromised: Secure first, Appeal second
     [2, 0, "status.2", "problem", "bad", "review", 0], [2, 16, "status.2", "problem", "bad", "review", 0], [2, 99, "status.2", "problem", "bad", "review", 0],
-    [3, 0, "status.3", "problem", "warn", "pay", 0], [8, 0, "status.8", "problem", "warn", "pay", 0], [9, 0, "status.9", "problem", "warn", "pay", 0],
+    [3, 0, "status.3", "problem", "warn", "pay", 0], [8, 0, "status.8", "problem", "warn", "billing", 0], [9, 0, "status.9", "problem", "warn", "pay", 0],
     [7, 0, "status.7", "problem", "warn", "quality", 0],          // in review: nothing to push, the one link says where to look
     [100, 0, "status.100", "problem", "warn", "support", 0],
-    [1, 1, "status.restricted", "problem", "warn", "review", 0], [1, 15, "status.restricted", "problem", "warn", "review", 0],
+    [1, 1, "status.restricted", "problem", "warn", "requestReview", 0], [1, 15, "status.restricted", "problem", "warn", "requestReview", 0],
   ];
   for (const [st, r, word, group, tone, fix, more] of rows) {
     const s = state(st, r);
@@ -254,7 +258,7 @@ test("accountState: unassigned (read only through a business) = 'No access' + 'A
 });
 
 test("accountState: with a worse problem the problem stays the word and 'Assign me' is one more step (+1)", () => {
-  for (const [st, r, fix] of [[2, 1, "review"], [3, 0, "pay"], [1, 4, "review"], [2, 15, "secure"]]) {
+  for (const [st, r, fix] of [[2, 1, "review"], [3, 0, "pay"], [1, 4, "requestReview"], [2, 15, "secure"]]) {
     const plain = state(st, r), s = state(st, r, VIA);
     assert.equal(s.word.key, plain.word.key, `${st}/${r}: same word`);
     assert.equal(s.fix.id, fix, `${st}/${r}: same fix`);

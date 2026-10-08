@@ -177,19 +177,19 @@ test("i18n: status and reason words of an ad account are short, in both language
   const { setLang, t, has } = await import("../fb-helper/js/i18n.js");
   const en = { "status.1": "Active", "status.2": "Disabled", "status.3": "Unpaid", "status.7": "In review", "status.8": "Settling", "status.9": "Grace period",
     "status.100": "Closing", "status.101": "Closed", "status.restricted": "Restricted", "acc.noAccess": "No access",
-    "reason.1": "Ads policy", "reason.2": "IP review", "reason.3": "Payment risk", "reason.4": "Shut down", "reason.5": "AFC review", "reason.6": "Business integrity",
+    "reason.1": "Ads policy", "reason.2": "IP rights review", "reason.3": "Payment risk", "reason.4": "Shut down", "reason.5": "AFC review", "reason.6": "Business integrity",
     "reason.7": "Closed for good", "reason.8": "Unused", "reason.9": "Unused", "reason.10": "Unused", "reason.11": "Business integrity", "reason.12": "Misrepresented",
     "reason.13": "Entity unshared", "reason.14": "Thread review", "reason.15": "Compromised" };
-  const ru = { "status.1": "Активен", "status.2": "Заблокирован", "status.3": "Долг", "status.7": "Проверка", "status.8": "Оплата идёт", "status.9": "Отсрочка",
+  const ru = { "status.1": "Активен", "status.2": "Заблокирован", "status.3": "Долг", "status.7": "На проверке", "status.8": "Оплата идёт", "status.9": "Отсрочка",
     "status.100": "Закрывается", "status.101": "Закрыт", "status.restricted": "Ограничен", "acc.noAccess": "Нет доступа",
-    "reason.1": "Правила рекламы", "reason.2": "IP-проверка", "reason.3": "Платёжный риск", "reason.4": "Закрыт", "reason.5": "AFC-проверка", "reason.6": "Integrity бизнеса",
-    "reason.7": "Закрыт навсегда", "reason.8": "Не используется", "reason.9": "Не используется", "reason.10": "Не используется", "reason.11": "Integrity бизнеса",
+    "reason.1": "Правила рекламы", "reason.2": "Проверка прав (IP)", "reason.3": "Платёжный риск", "reason.4": "Закрыт", "reason.5": "AFC-проверка", "reason.6": "Правила бизнеса",
+    "reason.7": "Закрыт навсегда", "reason.8": "Не используется", "reason.9": "Не используется", "reason.10": "Не используется", "reason.11": "Правила бизнеса",
     "reason.12": "Искажение данных", "reason.13": "Юрлицо отвязано", "reason.14": "Проверка переписки", "reason.15": "Взлом" };
   for (const [lang, words] of [["en", en], ["ru", ru]]) {
     await setLang(lang);
     for (const [k, v] of Object.entries(words)) {
       assert.equal(t(k), v, `${lang} ${k}`);
-      assert.ok(!/[(/]/.test(t(k)) && t(k).length <= 20, `${lang} ${k}: one short word, no code`);
+      assert.ok(!/\(\d+\)|\//.test(t(k)) && t(k).length <= 20, `${lang} ${k}: one short word, no numeric code`);
     }
   }
   assert.ok(!has("reason.other"), "no generic 'Reason' word: an unknown code is a plain Disabled");

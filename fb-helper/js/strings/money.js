@@ -6,11 +6,11 @@ import { addStrings } from "../i18n.js";
 export const STRINGS = {
   ru: {
     "money.approx": "Примерно: по дневному курсу на {d}.",
-    "money.rates": "курс {d}",
+    "money.rates": "курс {d}", "money.more": "ещё {n}",
   },
   en: {
     "money.approx": "Approximate: converted at the daily rate of {d}.",
-    "money.rates": "rates {d}",
+    "money.rates": "rates {d}", "money.more": "+{n} more",
   },
 };
 addStrings(STRINGS);

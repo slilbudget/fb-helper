@@ -10,7 +10,7 @@
 // storage or the screen. The business edges are read with the same list (minus `tasks`) and the same whitelist.
 
 import { LINKS, imageUrl } from "./links.js";
-import { cleanText } from "./pure.js";
+import { cleanText, isPermError, humanEnum } from "./pure.js";
 
 // Fields asked for on top of id and name. Docs are thin and none of this is live-verified, so each one is optional:
 // readPaged drops the one Graph complains about and asks the same page again. { key: expression }.
@@ -40,12 +40,8 @@ const IG_KEYS = ["connected_page_backed_instagram_account", "instagram_business_
 
 // ---------- errors ----------
 // The token cannot read this edge at all: permission codes (10, 283, 200–299), or a 100 that names no field
-// (readPaged has already dealt with every complaint that names one of our fields).
-export function isPermissionError(e) {
-  const c = Number(e?.code);
-  if (c === 10 || c === 283 || (c >= 200 && c <= 299)) return true;
-  return c === 100 && !/field/i.test(e.raw || e.message || "");
-}
+// (readPaged has already dealt with every complaint that names one of our fields). One rule for every list tab (pure.js).
+export const isPermissionError = isPermError;
 // What to give up after readPaged threw. [] = nothing left to give up: show the error.
 // A token may answer the whole read with a permission error (or a 100 that names nothing) because ONE extra field needs a
 // permission it lacks (`business`: business_management; the Instagram fields: instagram_basic) instead of just skipping it.
@@ -149,7 +145,7 @@ export function adRightsOf(p) {
 // "Your access": a page found only through a business has no task of mine; otherwise the tasks Graph listed (plain-word keys in
 // strings/pages.js, the known ones first, ADVERTISE at the front; an unknown task is shown as plain words).
 const TASK_ORDER = ["ADVERTISE", "MANAGE", "CREATE_CONTENT", "MODERATE", "MESSAGING", "ANALYZE"];
-export const humanTask = (s) => { const w = String(s).toLowerCase().replace(/_+/g, " ").trim(); return w ? w[0].toUpperCase() + w.slice(1) : ""; };
+export const humanTask = humanEnum;
 export function accessOf(p) {
   if (p._viaBm) return { via: true, ...(p._unsure ? { unsure: true } : {}), tasks: [] };
   const tasks = Array.isArray(p.tasks) ? [...new Set(p.tasks)] : [];

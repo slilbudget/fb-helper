@@ -7,7 +7,7 @@
 // keeps and how the rows are built is bms-model.js (plain Node, tested), the strings are strings/bms.js.
 // Read-only like the rest: GET only, no token of a page or BM is ever asked for.
 
-import { t, tn, has, applyStatic } from "./i18n.js";
+import { t, tn, tnPlus, has, applyStatic } from "./i18n.js";
 import "./strings/bms.js";
 import { $, el, fill, toast, keepFocus } from "./dom.js";
 import { state, Stale, saveSession } from "./state.js";
@@ -157,7 +157,7 @@ const verLabel = (s) => (has(`bms.ver.${s}`) ? t(`bms.ver.${s}`) : String(s).rep
 function contextOf(r) {
   const c = r.counts;
   if (!state.fetchedAt || !c.total) return [];
-  return [el("span", { class: "lrow-ctx", title: r.partial ? t("bms.accsPartial") : null }, `${c.total}${r.partial ? "+" : ""} ${tn(c.total, "bms.accCount")}`,
+  return [el("span", { class: "lrow-ctx", title: r.partial ? t("bms.accsPartial") : null }, `${c.total}${r.partial ? "+" : ""} ${tnPlus(c.total, "bms.accCount", r.partial)}`,
     c.disabled ? [el("span", { class: "lbm-sep" }, " · "), el("span", { class: "lbm-dis" }, `${c.disabled} ${tn(c.disabled, "bms.disabledWord")}`)] : null)];
 }
 // The right-hand amount: exact for one or two currencies, "≈ $" from three (the breakdown is its tooltip and the expanded row); a dash

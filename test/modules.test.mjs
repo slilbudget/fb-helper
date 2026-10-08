@@ -287,7 +287,7 @@ test("graph(): only word segments are a path; anything else is refused before th
   for (const good of ["me", "me/adaccounts", "act_123/ads", "123/owned_ad_accounts"]) await graph(good);
   assert.equal(urls.length, 4);
   for (const bad of ["", "/me", "me/", "me//x", "../me", "me/../x", "act_1/ads?x=1", "1 2/ads", "me/ads#x", "act_1/ads\n", "https://evil.test/x", "a-b", "me/adaccounts/", "%2e%2e/x", "é/x"]) {
-    await assert.rejects(graph(bad), (e) => e.local === true && /disallowed path/.test(e.message), JSON.stringify(bad));
+    await assert.rejects(graph(bad), (e) => e.local === true && /invalid path/.test(e.message), JSON.stringify(bad));
   }
   assert.equal(urls.length, 4, "nothing of the refused ones was sent");
 });
@@ -320,9 +320,9 @@ test("graph(): the soft hourly budget (600) counts every request per 10-minute b
   const left = budgetLeft(now);
   assert.ok(left > 9 * 60000 && left <= 10 * 60000, `room again in ${left} ms (the 50-minute-old bucket leaves in 10 minutes)`);
   const before = urls.length;
-  await assert.rejects(graph("me/adaccounts"), (e) => e.local === true && e.pause === true && /600 requests per hour.*(9|10) min/.test(e.message), "calm message with the minutes");
+  await assert.rejects(graph("me/adaccounts"), (e) => e.local === true && e.pause === true && /600 requests.*(9|10) min/.test(e.message), "calm message with the minutes");
   assert.equal(urls.length, before, "nothing sent past the budget");
-  assert.match(pauseNote(), /600 requests per hour/);
+  assert.match(pauseNote(), /600 requests/);
   // buckets older than an hour do not count
   state.budget = [[now - 61 * 60000, 600]];
   assert.equal(budgetLeft(now), 0);
@@ -354,7 +354,18 @@ test("graph(): a refusal before the network says so (local); a Graph error answe
 test("graph(): Graph's own words are cleaned like a name (bidi and control characters)", async () => {
   prime();
   fakeGraph(() => ({ status: 400, body: { error: { code: 1, message: "Bad \u202Eexe.pdf\nsecond line" } } }));
-  await assert.rejects(graph("me"), (e) => e.message === "Bad exe.pdf second line" && !/[\u202A-\u202E]/.test(e.raw));
+  await assert.rejects(graph("me"), (e) => e.message === "Graph says: Bad exe.pdf second line" && e.raw === "Bad exe.pdf second line" && !/[\u202A-\u202E]/.test(e.raw));
+});
+
+test("graph(): Graph's words come with a lead in the UI language (English text, Russian lead); an answer with no words is the localized 'Graph error'", async () => {
+  prime();
+  fakeGraph(() => ({ status: 400, body: { error: { code: 1, message: "Invalid parameter" } } }));
+  await setLang("ru");
+  try {
+    await assert.rejects(graph("me"), (e) => e.message === "Ответ Graph: Invalid parameter" && e.raw === "Invalid parameter");
+    fakeGraph(() => ({ status: 400, body: { error: { code: 1 } } }));
+    await assert.rejects(graph("me"), (e) => e.message === "Ошибка Graph");
+  } finally { await setLang("en"); }
 });
 
 test("saveSession never rejects: a refused write resolves false (nobody leaves an unhandled rejection behind)", async () => {

@@ -39,12 +39,12 @@ const D = {
     "period.noToday": "Без сегодняшнего дня", "period.allNote": "Большее из двух: итог Meta или 30 дней + сегодня",
 
     // Short words: the status of an ad account as one word. A disable reason REPLACES "Заблокирован" on the row (it says more), so it is one word too.
-    "status.1": "Активен", "status.2": "Заблокирован", "status.3": "Долг", "status.7": "Проверка",
+    "status.1": "Активен", "status.2": "Заблокирован", "status.3": "Долг", "status.7": "На проверке",
     "status.8": "Оплата идёт", "status.9": "Отсрочка", "status.100": "Закрывается", "status.101": "Закрыт",
     "status.restricted": "Ограничен", "status.other": "Статус {n}",
-    "reason.1": "Правила рекламы", "reason.2": "IP-проверка", "reason.3": "Платёжный риск", "reason.4": "Закрыт",
-    "reason.5": "AFC-проверка", "reason.6": "Integrity бизнеса", "reason.7": "Закрыт навсегда", "reason.8": "Не используется",
-    "reason.9": "Не используется", "reason.10": "Не используется", "reason.11": "Integrity бизнеса", "reason.12": "Искажение данных",
+    "reason.1": "Правила рекламы", "reason.2": "Проверка прав (IP)", "reason.3": "Платёжный риск", "reason.4": "Закрыт",
+    "reason.5": "AFC-проверка", "reason.6": "Правила бизнеса", "reason.7": "Закрыт навсегда", "reason.8": "Не используется",
+    "reason.9": "Не используется", "reason.10": "Не используется", "reason.11": "Правила бизнеса", "reason.12": "Искажение данных",
     "reason.13": "Юрлицо отвязано", "reason.14": "Проверка переписки", "reason.15": "Взлом",
     "ad.ACTIVE": "Активно", "ad.PAUSED": "Пауза", "ad.PENDING_REVIEW": "На проверке", "ad.IN_PROCESS": "Обработка",
     "ad.DISAPPROVED": "Отклонено", "ad.WITH_ISSUES": "С ошибками", "ad.CAMPAIGN_PAUSED": "Кампания на паузе",
@@ -57,13 +57,13 @@ const D = {
 
     "err.noToken": "Сначала возьми токен",
     "err.cooldown": "Пауза после лимита API ещё {n} мин — не трогаем",
-    "err.timeout": "Graph не ответил за {n} с", "err.net": "Сеть: {m}",
+    "err.timeout": "Graph не ответил за {n} с", "err.net": "Нет связи с Graph — проверь сеть",
     "err.limit": "Лимит API ({c}). Пауза 30 мин, повторять нельзя", "err.code": "код {c}",
     "err.version": "Версия Graph API {v} устарела, а новую Graph не назвал — обнови расширение (API_VERSION в config.js)",
-    "err.graph": "Ошибка Graph", "err.empty": "Пустой ответ Graph", "err.noData": "Неожиданный ответ Graph (нет data)",
+    "err.graph": "Ошибка Graph", "err.graphIs": "Ответ Graph: {m}", "err.empty": "Пустой ответ Graph", "err.noData": "Неожиданный ответ Graph (нет data)",
     "err.slot": "Не удалось занять слот запроса: {m}",
-    "err.path": "Запрос с недопустимым адресом не отправлен",
-    "err.budget": "Лимит расширения — 600 запросов в час. Пауза ещё {n} мин",
+    "err.path": "Запрос не отправлен: неверный адрес",
+    "err.budget": "Лимит 600 запросов в час исчерпан — пауза ещё {n} мин",
     "err.session": "Сессия недействительна или токен от другого аккаунта (код {c}) — запросы остановлены. Обнови вкладку FB или войди заново",
 
     "grab.noTab": "Открой Facebook в этом профиле", "grab.noAccess": "Нет доступа к вкладке FB — обнови её",
@@ -83,7 +83,7 @@ const D = {
     "env.unverified": "Токен + cookie + UA скопированы — владелец токена не проверен",
 
     "acc.wait": "Обновить можно через {n} с", "acc.loaded": "Кабинетов: {n}", "acc.truncated": " (не все — лимит загрузки)", "acc.readFail": " (не удалось прочитать: {n} {w})",
-    "acc.bizCount": ["бизнес", "бизнеса", "бизнесов"], "acc.bmHint": "Часть бизнесов не удалось прочитать — их кабинеты могут не показываться",
+    "acc.listFail": " (список бизнесов не прочитался)", "acc.bizCount": ["бизнес", "бизнеса", "бизнесов"], "acc.bmHint": "Часть бизнесов не удалось прочитать — их кабинеты могут не показываться",
     "acc.noLive": "Активных кабинетов нет", "acc.idsCopied": "Скопировано ID: {n}", "acc.partial": " (список неполный)",
     "acc.found": "найдено {n} из {all}", "acc.count": ["кабинет", "кабинета", "кабинетов"], "acc.notAll": " (не все)",
     "acc.updated": "обновлено {t}", "acc.spend": "Спенд", "acc.refreshDash": "— обнови",
@@ -138,7 +138,7 @@ const D = {
     "status.1": "Active", "status.2": "Disabled", "status.3": "Unpaid", "status.7": "In review",
     "status.8": "Settling", "status.9": "Grace period", "status.100": "Closing", "status.101": "Closed",
     "status.restricted": "Restricted", "status.other": "Status {n}",
-    "reason.1": "Ads policy", "reason.2": "IP review", "reason.3": "Payment risk", "reason.4": "Shut down",
+    "reason.1": "Ads policy", "reason.2": "IP rights review", "reason.3": "Payment risk", "reason.4": "Shut down",
     "reason.5": "AFC review", "reason.6": "Business integrity", "reason.7": "Closed for good", "reason.8": "Unused",
     "reason.9": "Unused", "reason.10": "Unused", "reason.11": "Business integrity", "reason.12": "Misrepresented",
     "reason.13": "Entity unshared", "reason.14": "Thread review", "reason.15": "Compromised",
@@ -153,13 +153,13 @@ const D = {
 
     "err.noToken": "Grab a token first",
     "err.cooldown": "API limit hit — hands off for another {n} min",
-    "err.timeout": "Graph did not answer in {n} s", "err.net": "Network: {m}",
+    "err.timeout": "Graph did not answer in {n} s", "err.net": "Can't reach Graph — check the network",
     "err.limit": "API limit ({c}). Paused 30 min, do not retry", "err.code": "code {c}",
     "err.version": "Graph API {v} is deprecated and Graph named no newer one — update the extension (API_VERSION in config.js)",
-    "err.graph": "Graph error", "err.empty": "Empty Graph response", "err.noData": "Unexpected Graph response (no data)",
+    "err.graph": "Graph error", "err.graphIs": "Graph says: {m}", "err.empty": "Empty Graph response", "err.noData": "Unexpected Graph response (no data)",
     "err.slot": "Could not claim a request slot: {m}",
-    "err.path": "A request with a disallowed path was not sent",
-    "err.budget": "Extension limit reached — 600 requests per hour. Paused for another {n} min",
+    "err.path": "Request not sent: invalid path",
+    "err.budget": "Hourly limit of 600 requests reached — hands off for another {n} min",
     "err.session": "Session is no longer valid, or the token is from another account (code {c}) — requests stopped. Reload the FB tab or log in again",
 
     "grab.noTab": "Open Facebook in this profile", "grab.noAccess": "No access to the FB tab — reload it",
@@ -179,7 +179,7 @@ const D = {
     "env.unverified": "Token + cookies + UA copied — token owner not verified",
 
     "acc.wait": "Refresh available in {n} s", "acc.loaded": "Ad accounts: {n}", "acc.truncated": " (not all — load limit)", "acc.readFail": " (couldn't read {n} {w})",
-    "acc.bizCount": ["business", "businesses"], "acc.bmHint": "Some businesses couldn't be read, so their ad accounts may be missing",
+    "acc.listFail": " (couldn't read the business list)", "acc.bizCount": ["business", "businesses"], "acc.bmHint": "Some businesses couldn't be read, so their ad accounts may be missing",
     "acc.noLive": "No active ad accounts", "acc.idsCopied": "Copied IDs: {n}", "acc.partial": " (list incomplete)",
     "acc.found": "{n} of {all} found", "acc.count": ["ad account", "ad accounts"], "acc.notAll": " (not all)",
     "acc.updated": "updated {t}", "acc.spend": "Spend", "acc.refreshDash": "— refresh",
@@ -228,6 +228,9 @@ export function tn(n, key) {
   const m10 = n % 10, m100 = n % 100;
   return m10 === 1 && m100 !== 11 ? f[0] : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? f[1] : f[2];
 }
+
+// The count word for "at least n" (written "10+"): the many / plural form whatever n is - "10+ объявлений", "1+ ad accounts" - never "1+ ad account".
+export const tnPlus = (n, key, plus) => tn(plus ? 5 : n, key);
 
 // Static markup: data-i18n = text, data-i18n-title / -placeholder / -aria = that attribute.
 export function applyStatic(root = document) {

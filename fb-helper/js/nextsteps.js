@@ -27,6 +27,7 @@ import { AD_PROBLEMS } from "./pure.js";
 // ("In review" -> Account Quality). assign needs the business, not an ad: accountState calls ACTIONS.assign.url(account, null, business).
 export const ACTIONS = {
   review:     { label: "next.review",     url: () => LINKS.accountQuality() },
+  requestReview: { label: "next.requestReview", url: () => LINKS.accountQuality() },                    // an active account with a restriction: not an appeal, a request to look again
   quality:    { label: "next.quality",    url: () => LINKS.accountQuality(), nav: true },
   adsManager: { label: "next.adsManager", url: (a) => LINKS.adsManager(a), nav: true },
   billing:    { label: "next.billing",    url: (a) => LINKS.billing(a) },
@@ -61,14 +62,16 @@ export const ACCOUNT_ROWS = [
   { status: [2], reason: DEAD_REASONS, tone: "bad", help: "next.help.noAppeal", primary: null, more: ["support", "quality"] },   // closed for good: no self-serve appeal
   { status: [2], reason: ANY,  tone: "bad", help: "next.help.r0",  primary: "review", more: ["adsManager"] },     // NONE or a code this table does not know
   // unpaid: the account stops until the balance is paid
-  { status: [3, 8, 9], reason: ANY, tone: "warn", help: "next.help.unpaid", primary: "pay", more: [] },
+  { status: [3, 9], reason: ANY, tone: "warn", help: "next.help.unpaid", primary: "pay", more: [] },
+  // the payment is being settled: nothing to pay, only to look at Billing if it takes long
+  { status: [8], reason: ANY, tone: "warn", help: "next.help.settling", primary: "billing", more: [] },
   // Meta is looking at it: nothing to push, just wait
   { status: [7], reason: ANY, tone: "warn", help: "next.help.risk", primary: null, more: ["quality"] },
   // being closed / closed
   { status: [100], reason: ANY, tone: "bad", help: "next.help.closing", primary: null, more: ["support"] },
   { status: [101], reason: ANY, tone: "bad", help: "next.help.closed",  primary: null, more: ["support"] },
   // restricted while still active
-  { status: [1], reason: SET, tone: "warn", help: "next.help.restricted", primary: "review", more: [] },
+  { status: [1], reason: SET, tone: "warn", help: "next.help.restricted", primary: "requestReview", more: [] },
 ];
 // Ads in AD_PROBLEMS (DISAPPROVED, WITH_ISSUES): ask for a review, or look at the ad itself.
 export const AD_ROW = { primary: "review", more: ["openAd"] };

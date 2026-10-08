@@ -17,6 +17,17 @@ export function isSessionError(code) {
   const c = Number(code);
   return c === 190 || c === 102;
 }
+// The token cannot read this at all: (#10) permission, (#283) a permission the app lacks, (#200–299) the permission family, or a (#100) that is not
+// about a field (a complaint that names a field is handled where the field is optional). One rule for every list tab: a calm "this token can't
+// read the list", not a red toast with Graph's English. e = an Error from graph() (code, raw), or anything.
+export function isPermError(e) {
+  const code = Number(e?.code);
+  if (code === 10 || code === 283 || (code >= 200 && code <= 299)) return true;
+  return code === 100 && !/field/i.test(e?.raw || e?.message || "");
+}
+// An enum Graph sends that no string of ours covers ("PENDING_BILLING_INFO", a page task of the future) is shown as plain words, never as a raw
+// constant: "Pending billing info". The known ones have translated words (ad.<status>, pages.task.<task>).
+export const humanEnum = (s) => { const w = String(s ?? "").toLowerCase().replace(/_+/g, " ").trim(); return w ? w[0].toUpperCase() + w.slice(1) : ""; };
 // "190/463" for messages.
 export const sessionLabel = (code, subcode) => (subcode ? `${code}/${subcode}` : String(code));
 

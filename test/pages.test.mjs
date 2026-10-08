@@ -304,7 +304,7 @@ test("every problem has exactly one fix link, to the page that fixes it", () => 
   assert.equal(FIX_URL.noAdv, "https://www.facebook.com/accountquality/");
   assert.equal(FIX_URL.noAccess, "https://business.facebook.com/settings/pages?business_id=555");
   assert.deepEqual(Object.fromEntries(Object.entries(FIXES).map(([k, f]) => [k, f.label])),
-    { noAccess: "pages.fix.assign", unpublished: "pages.fix.publish", noAdv: "pages.fix.appeal", noIg: "pages.fix.ig" }, "Assign me · Publish · Appeal · Set «Use Facebook Page»");
+    { noAccess: "pages.fix.assign", unpublished: "pages.fix.publish", noAdv: "pages.fix.appeal", noIg: "pages.fix.ig" }, "Assign me · Publish · Appeal · Set “Use Facebook Page”");
 });
 
 test("fixes: 'Assign me' goes to the Pages settings of the business the page was found through, else its owner, else Business Suite; a bad id drops the link, never a half URL", () => {
@@ -365,11 +365,11 @@ test("every label and tooltip of the problems and their fixes exists in both lan
   // the words of design.md §8
   assert.deepEqual(["pages.p.noAccess", "pages.p.unpublished", "pages.p.noAdv", "pages.p.noIg"].map((k) => STRINGS.en[k]), ["No access", "Unpublished", "Can't advertise", "No Instagram"]);
   assert.deepEqual(["pages.p.noAccess", "pages.p.unpublished", "pages.p.noAdv", "pages.p.noIg"].map((k) => STRINGS.ru[k]), ["Нет доступа", "Не опубликована", "Нельзя рекламировать", "Нет Instagram"]);
-  assert.deepEqual(Object.values(FIXES).map((f) => STRINGS.en[f.label]), ["Assign me", "Publish", "Appeal", "Set «Use Facebook Page»"]);
+  assert.deepEqual(Object.values(FIXES).map((f) => STRINGS.en[f.label]), ["Assign me", "Publish", "Appeal", "Set “Use Facebook Page”"]);
   assert.deepEqual(Object.values(FIXES).map((f) => STRINGS.ru[f.label]), ["Назначить себя", "Опубликовать", "Апелляция", "Выбрать «Use Facebook Page»"]);
   // labels of links stay short enough for a 380 px window
   for (const l of ["ru", "en"]) for (const f of Object.values(FIXES)) assert.ok(STRINGS[l][f.label].length <= 32, `${l} ${f.label}`);
-  for (const part of ["«Use Facebook Page»", "Identity → Instagram account", "once", "automated launches to Instagram placements fail"]) assert.ok(STRINGS.en["pages.igNoneTitle"].includes(part), part);
+  for (const part of ["“Use Facebook Page”", "Identity → Instagram account", "once", "automated launches to Instagram placements fail"]) assert.ok(STRINGS.en["pages.igNoneTitle"].includes(part), part);
 });
 
 test("slimPage: control and bidi characters leave every name (page, business, Instagram handle, ineligibility reason)", () => {

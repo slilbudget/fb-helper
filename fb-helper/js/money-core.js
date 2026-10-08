@@ -32,14 +32,27 @@ function formatter(cur, digits) {
 }
 // fmtMoney(1727.3, "USD") → "1 727 $" (ru) / "$1,727" (en); fmtMoney(20, "EUR") → "20,00 €"; fmtMoney(1234567, "VND") → "1 234 567 VND";
 // fmtMoney(0, "USD") → "0 $". null / "" / NaN → "—". `cur` missing = USD (the old fmt() did the same).
-export function fmtMoney(amount, cur) {
+// opts.digits  force the fraction digits (0 or 2; a currency without cents always has 0): the amounts of ONE string share them (see build)
+// opts.compact a currency written with its ISO code and a million or more is written short: "28,9 млн VND" / "VND 28.9M" (the exact number is
+//              the tooltip's: build keeps both); a familiar currency never is
+const compactFmts = new Map();
+function compactFormatter(cur) {
+  const k = `${locale()}:${cur}`;
+  if (!compactFmts.has(k)) {
+    try { compactFmts.set(k, new Intl.NumberFormat(locale(), { style: "currency", currency: cur, currencyDisplay: "code", notation: "compact", compactDisplay: "short", maximumFractionDigits: 1 })); }
+    catch { compactFmts.set(k, null); }
+  }
+  return compactFmts.get(k);
+}
+export function fmtMoney(amount, cur, { digits: want, compact = false } = {}) {
   if (amount === null || amount === undefined || amount === "") return "—";
   const n = Number(amount);
   if (!Number.isFinite(n)) return "—";
   const c = String(cur || "USD").toUpperCase();
   // What would print as zero IS zero: −0, −0.001 and 0.004 are "0", never "-0.00" / "-$0.00" (Intl keeps the sign of a rounded zero).
   const v = Math.round(Math.abs(n) * (ZERO_DECIMAL.has(c) ? 1 : 100)) === 0 ? 0 : n;
-  const digits = ZERO_DECIMAL.has(c) || v === 0 || Math.abs(Math.round(v * 100) / 100) >= 1000 ? 0 : 2;
+  if (compact && !SYMBOL_CURRENCIES.has(c) && Math.abs(v) >= 1e6) { const cf = compactFormatter(c); if (cf) return cf.format(v); }
+  const digits = ZERO_DECIMAL.has(c) || v === 0 ? 0 : want ?? (Math.abs(Math.round(v * 100) / 100) >= 1000 ? 0 : 2);
   const f = formatter(c, digits);
   return f ? f.format(v) : `${new Intl.NumberFormat(locale(), { maximumFractionDigits: digits }).format(v)} ${cur}`;
 }
@@ -138,28 +151,33 @@ export function usdEquivalent(totals, r) {
 
 // ---------- one line from several currencies ----------
 // totals = { USD: 1695.7, EUR: 20 } (spend.js addUp: a currency that spent nothing is not in it). Returns
-//   main        the line: "$1,696" · "$75 + €20.00" · "≈ $1,770"
+//   main        the line: "$1,696" · "$75.00 + €20.00" · "≈ $1,770" (an ISO-code currency of a million or more is short: "VND 28.9M")
 //   text        what a ROW prints on one line (rowAmount): main, except three or more currencies without rates, which would be a line wider than
-//               the row: the two biggest and "+N" ("$1,696 + VND 1,234,567 +1"). A total (totalLine) keeps every currency: text = main
+//               the row: the two biggest and "+N more" ("$1,696 + VND 1.2M +1 more"). A total (totalLine) keeps every currency: text = main
 //   approx      main is a USD conversion (starts with "≈")
 //   breakdown   what it is made of, at most two currencies, biggest first: "$1,696 + VND 1,234,567" ("" when main already says it)
 //   more        how many currencies breakdown leaves out (the caller prints "+N")
 //   full        every currency, exact: "$1,696 + VND 1,234,567 + €20.00" (always filled: the tooltip / expanded body)
 //   title       tooltip: full + "Approximate: converted at the daily rate of Oct 8, 2026. Rates By Exchange Rate API" ("" when exact)
 //   note        "rates Oct 8" ("rates 08.10" in Russian); date, source, attribution (ATTRIBUTION when SRC_ER was used, else null)
-//   parts       [{ cur, amount, text, usd }] in the order of full
+//   parts       [{ cur, amount, text (as printed on a line), exact, usd }] in the order of full
 function build(totals, r, approxFrom) {
-  const parts = Object.entries(totals || {}).filter(([, v]) => Number.isFinite(v) && v !== 0)
-    .map(([cur, amount]) => ({ cur, amount, text: fmtMoney(amount, cur), usd: toUsd(amount, cur, r) }));
+  const list = Object.entries(totals || {}).filter(([, v]) => Number.isFinite(v) && v !== 0);
+  // The amounts of one string share their fraction digits: with any amount under 1 000 every amount has its cents ("1 695,70 $ + 20,00 €"), with
+  // none under it no amount has them ("1 696 $ + 2 500 €"). A currency without cents has none either way.
+  const cents = list.some(([cur, v]) => !ZERO_DECIMAL.has(cur) && Math.abs(Math.round(v * 100) / 100) < 1000);
+  const digits = cents ? 2 : 0;
+  const parts = list.map(([cur, amount]) => ({ cur, amount, text: fmtMoney(amount, cur, { digits, compact: true }), exact: fmtMoney(amount, cur, { digits }), usd: toUsd(amount, cur, r) }));
   const out = { main: "", text: "", approx: false, breakdown: "", more: 0, full: "", title: "", note: "", date: null, source: null, attribution: null, parts };
   if (!parts.length) return out;
   const convertible = !!r && parts.every((p) => p.usd !== null);
   if (convertible) parts.sort((a, b) => b.usd - a.usd || (a.cur < b.cur ? -1 : 1));
-  out.full = parts.map((p) => p.text).join(" + ");
+  out.full = parts.map((p) => p.exact).join(" + ");                        // always exact: the tooltip / the expanded body
+  const shortFull = parts.map((p) => p.text).join(" + ");                   // what a line prints: a million of an ISO-code currency is written short
   if (parts.length < approxFrom || !convertible) {
-    out.main = out.full;
-    // A row (approxFrom 3) with three or more currencies and no rates: the two biggest + "+N", never a line wider than the row.
-    out.text = approxFrom === 3 && parts.length > 2 ? `${parts[0].text} + ${parts[1].text} +${parts.length - 2}` : out.full;
+    out.main = shortFull;
+    // A row (approxFrom 3) with three or more currencies and no rates: the two biggest + "ещё N", never a line wider than the row.
+    out.text = approxFrom === 3 && parts.length > 2 ? `${parts[0].text} + ${parts[1].text} ${t("money.more", { n: parts.length - 2 })}` : shortFull;
     return out;
   }
   const shown = parts.slice(0, 2);

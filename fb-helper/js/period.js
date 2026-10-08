@@ -63,7 +63,7 @@ export function fillTotal(box, opts) {
 function paintTotal(box, { label = t("acc.spend"), metaText, range = "", sum = null, zeroCur = null }, r) {
   const line = sum ? totalLine(sum.totals, r) : null;
   const value = !sum ? "—" : sum.unknown && !line.main ? t("acc.refreshDash") : line.main || (zeroCur ? fmtMoney(0, zeroCur) : "—");
-  const parts = line?.approx ? [`${line.breakdown}${line.more ? ` +${line.more}` : ""}`, line.note] : [];
+  const parts = line?.approx ? [`${line.breakdown}${line.more ? ` ${t("money.more", { n: line.more })}` : ""}`, line.note] : [];
   fill(box,
     el("span", { class: "total-label" }, `${label}${range ? ` · ${range}` : ""}`),
     metaText ? el("span", { class: "total-meta" }, metaText) : null,

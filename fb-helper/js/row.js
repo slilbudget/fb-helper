@@ -159,7 +159,7 @@ export function row({ key, avatar, name, value, valueTitle, valueMuted = false, 
     el("i", { class: "lrow-dot", "aria-hidden": "true" }), el("span", { class: "lrow-status-text" }, status.text)));
   for (const c of context || []) if (present(c)) items.push(c instanceof Node ? c : el("span", { class: "lrow-ctx" }, c));
   const fixEl = fix ? fixLink(fix, { tone: fix.tone || tone, focus: `rowfix:${k}`, owner: label }) : null;
-  const moreEl = more > 0 ? el("span", { class: "lrow-more", title: t("row.moreTitle", { n: more }) }, `+${more}`) : null;
+  const moreEl = more > 0 ? el("span", { class: "lrow-more", title: t("row.moreTitle", { n: more }) }, t("row.more", { n: more })) : null;
   const sub = items.length || fixEl || moreEl || silent
     ? el("div", { class: "lrow-sub", id: subId }, silent, items.map((i) => el("span", { class: "lrow-it" }, i)),
       fixEl || moreEl ? el("span", { class: "lrow-it fixed" }, fixEl, moreEl) : null)

@@ -210,11 +210,11 @@ test("spendOf: one currency exact, two 'a + b' exact, three or more '≈ USD' (r
   assert.match(three.title.replace(/[\u00a0\u202f]/g, " "), /^\$25\.00 \+ €10\.00 \+ VND 250,000\nApproximate: converted at the daily rate of /);
 });
 
-test("spendOf: three currencies without rates stay exact and short (the first two + '+N'), never a '≈' and never a line as wide as three amounts", () => {
+test("spendOf: three currencies without rates stay exact and short (the first two + '+N more'), never a '≈' and never a line as wide as three amounts", () => {
   for (const rates of [null, { rates: { USD: 1, EUR: 0.8 }, date: "2026-10-08", source: "exchangerate-api" }]) {   // no table at all, or no rate for VND
     const s = spendOf(rowWith([["USD", 25], ["EUR", 10], ["VND", 250000]]), { loaded: true, rates });
     assert.equal(s.kind, "exact");
-    assert.equal(flat(s.text), "$25.00 + €10.00 +1");
+    assert.equal(flat(s.text), "$25.00 + €10.00 +1 more");
     assert.equal(flat(s.title), "$25.00 + €10.00 + VND 250,000", "the whole truth is the tooltip");
     assert.ok(!s.text.includes("≈"));
   }

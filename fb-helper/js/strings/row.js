@@ -5,10 +5,10 @@ import { addStrings } from "../i18n.js";
 
 export const STRINGS = {
   ru: {
-    "row.moreTitle": "Ещё {n} — открой строку, чтобы увидеть все",
+    "row.more": "ещё {n}", "row.moreTitle": "Ещё {n} — открой строку, чтобы увидеть все",
   },
   en: {
-    "row.moreTitle": "{n} more — open the row to see them all",
+    "row.more": "+{n} more", "row.moreTitle": "{n} more — open the row to see them all",
   },
 };
 addStrings(STRINGS);

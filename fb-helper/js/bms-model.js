@@ -10,7 +10,7 @@
 import { LINKS, imageUrl } from "./links.js";
 import { addUp, mergeUp, groupByBusiness, membersByBusiness, compareSpend } from "./spend.js";
 import { rowAmount } from "./money-core.js";
-import { cleanText } from "./pure.js";
+import { cleanText, isPermError } from "./pure.js";
 
 // One paged read of me/businesses (graph.js readPaged). A token that cannot read an extra field just loses that field.
 // Only what the tab uses: the verification state (a failed one is a problem) and the logo.
@@ -187,12 +187,6 @@ export function bmKeysToDrop(e, skipped) {
   return next ? [next] : [];
 }
 
-// The token cannot read the business edge at all: (#10) permission, (#200–299) permission family, or (#100) that is not about
-// a field (a field error names the field and is handled by readPaged; one that still gets here names a base field, which is
-// a plain error). Shown as a calm note in the list, not a red toast. A session error (190/102) never gets here: graph.js
-// turns it into the dead-session path.
-export function isPermError(e) {
-  const code = Number(e?.code);
-  if (code === 10 || (code >= 200 && code <= 299)) return true;
-  return code === 100 && !/field/i.test(e?.raw || e?.message || "");
-}
+// The token cannot read the business edge at all (pure.js isPermError: one rule for every list tab). Shown as a calm state in the list, not a red
+// toast. A session error (190/102) never gets here: graph.js turns it into the dead-session path.
+export { isPermError };
