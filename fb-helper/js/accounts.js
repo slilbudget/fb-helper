@@ -10,6 +10,8 @@ import { state, Stale, saveSession, fbUser, claimSlot, slotLeft, registerCache, 
 import { graph, readPaged } from "./graph.js";
 import { settledGrab, grabToken, tokenReady } from "./token.js";
 import { on } from "./bus.js";
+import { accountSteps, adSteps } from "./nextsteps.js";
+import "./strings/actions.js";
 import { registerTab, registerRender, registerInit, registerStart } from "./registry.js";
 
 const MIN_REFRESH_MS = 60 * 1000;            // accounts: one attempt per minute (failed attempts count too)
@@ -207,6 +209,11 @@ function accStatus(a) {
   const c = a.account_status;
   return c in ACCOUNT_STATUS ? [t(`status.${c}`), ACCOUNT_STATUS[c]] : [t("status.other", { n: c }), "warn"];
 }
+// A "next step" (nextsteps.js) as a plain link to a Facebook page: new tab, keyboard-focusable, and it must never toggle the
+// row it sits in (the collapsed row toggles on any click). The URL was built and checked in links.js; nothing is sent or changed.
+// owner = the account / ad name: a list of identical "Request review" links is useless to a screen reader without it.
+const actLink = (x, cls, focus, { tip, owner } = {}) => el("a", { class: cls, href: x.url, target: "_blank", rel: "noopener noreferrer", title: tip,
+  "aria-label": owner ? `${t(x.label)} · ${owner}` : null, "data-focus": focus, onclick: (ev) => ev.stopPropagation() }, el("span", { class: "act-label" }, t(x.label)), el("i", { class: "i i-external", "aria-hidden": "true" }));
 function renderHint() {
   const total = $("#accountsTotal");
   if (!state.fetchedAt) return fill(total);
@@ -275,6 +282,7 @@ function renderAccount(a, st) {
   const dsl = a.adtrust_dsl;
   const cpc = st?.clicks ? st.spend / st.clicks : null;
   const isOpen = state.open.has(a.account_id);
+  const steps = accountSteps(a), primary = steps.actions.find((x) => x.primary);
   const card = el("div", { class: `acc${isOpen ? " open" : ""}` });
   const toggle = () => {
     const open = card.classList.toggle("open");
@@ -298,7 +306,9 @@ function renderAccount(a, st) {
       // Open in Ads Manager straight from the collapsed row; must not toggle the row.
       el("a", { class: "acc-link", title: t("acc.openAds"), "aria-label": t("acc.openAds"), target: "_blank", rel: "noopener noreferrer", "data-focus": `link:${a.account_id}`,
                 href: `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${a.account_id}`,
-                onclick: (ev) => ev.stopPropagation() }, el("i", { class: "i i-external" }))),
+                onclick: (ev) => ev.stopPropagation() }, el("i", { class: "i i-external" })),
+      // The one next step of a problem account (appeal, pay…), tinted like its status; the help line is its tooltip.
+      primary ? actLink(primary, `act-btn ${steps.tone}`, `act:${a.account_id}:${primary.id}`, { tip: t(steps.help), owner: a.name }) : null),
     st ? el("div", { class: "acc-spend" }, fmt(st.spend, cur))
        : el("div", { class: "acc-spend muted", title: t("acc.noPeriod") }, "—"),  // .acc-spend uses the number font in CSS
     el("div", { class: "acc-meta" },
@@ -315,6 +325,12 @@ function renderAccount(a, st) {
   const adsBox = el("div", { class: "ads", "data-ads-box": a.account_id });
   const pixels = a.adspixels?.data;
   const body = el("div", { class: "acc-body" },
+    // What to do: the help line and every next step, above the numbers (only for an account that has a problem).
+    steps.help ? el("div", { class: `act-box ${steps.tone}`, role: "group", "aria-label": t("next.title") },
+      el("div", { class: "act-title" }, t("next.title")),
+      el("p", { class: "act-help" }, t(steps.help)),
+      steps.actions.length ? el("div", { class: "act-btns" },
+        steps.actions.map((x) => actLink(x, `btn act-link${x.primary ? " primary" : ""}`, `step:${a.account_id}:${x.id}`))) : null) : null,
     el("dl", { class: "kv" },
       el("dt", {}, t("acc.spent")), el("dd", {}, numEl(fmt(statsOf(a, "all").spend, cur))),   // same number as the "All time" period
       el("dt", {}, t("acc.balance")), el("dd", {}, numEl(money(a.balance, cur))),
@@ -395,10 +411,12 @@ function renderAds(box, { ads, more, error, stale, stats, statsAt, statsAll, sta
     ...[...ads].sort((a, b) => adRank(a.effective_status) - adRank(b.effective_status)).map((ad) => {
     const st = ad.effective_status;
     const [l, tone] = st in AD_STATUS ? [t(`ad.${st}`), AD_STATUS[st]] : [st, ""];
-    const why = reviewLines(ad);
+    const why = reviewLines(ad), steps = adSteps(ad, id);
     return el("div", { class: "ad" }, el("span", {}, ad.name), pill(l, tone),
       shown ? adStatsLine(stats[ad.id]?.[alias] ?? null, st, acc?.currency) : null,
-      why.length ? el("small", {}, why.map((line) => el("span", { class: "why" }, line))) : null);
+      why.length ? el("small", {}, why.map((line) => el("span", { class: "why" }, line))) : null,
+      // Rejected ad: ask for a review / open it in Ads Manager (links only).
+      steps.length ? el("div", { class: "ad-acts" }, steps.map((x) => actLink(x, "ad-act", `adact:${ad.id}:${x.id}`, { owner: ad.name }))) : null);
   }), ...(more ? [el("div", { class: "hint" }, t("ads.more", { n: ads.length }))] : []));
 }
 // One GET of an account's ads. issues_info (the reason for "with issues") is optional like the account fields:
