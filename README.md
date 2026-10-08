@@ -53,9 +53,13 @@ The Chrome Web Store package (`chrome-web-store/release/ads-helper-<version>.zip
 ## Tests
 
 ```
-node --test test/*.test.mjs   # unit tests, no browser
-node test/e2e.mjs             # real Chromium + the unpacked extension, Facebook and Graph mocked; needs playwright-core (CI runs it too)
+node --test test/*.test.mjs   # unit tests, no browser, no install
+npm ci && npx playwright-core install chromium    # once: the dev tooling (playwright-core, pinned); nothing of it ships
+node test/e2e.mjs             # real Chromium + the unpacked extension, Facebook and Graph mocked
+node test/e2e.mjs --jobs 3    # the same, three flows at a time; --shard 2/4 runs one balanced slice (CI uses 4 shards)
 ```
+
+`EXT_DIR=chrome-web-store/release/unpacked node test/e2e.mjs` runs the same flows against the store build.
 
 Icons: Lucide (ISC). Font: Golos Text (SIL OFL 1.1). Licenses sit next to the files.
 

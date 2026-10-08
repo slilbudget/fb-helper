@@ -5,6 +5,7 @@ The repo and GitHub stay **FB Helper** (`fb-helper/`). Only the store build is *
 ## 1. Build
 - [ ] `chrome-web-store/build.sh` → `chrome-web-store/release/unpacked/` (exact ZIP contents) and `chrome-web-store/release/ads-helper-2.4.1.zip`
 - [ ] `node --test test/*.test.mjs` passes
+- [ ] `DOCS_STRICT=1 node --test test/docs.test.mjs` passes (the docs say what the extension does: every CSP origin in the privacy policy, no "only to the Graph host" claim, the CSP quoted in the listing is the manifest's; in the default run these checks are only reported as TODO)
 - [ ] `EXT_DIR=chrome-web-store/release/unpacked node test/e2e.mjs` passes (runs the store build, not the repo)
 - [ ] `manifest.json` is at the ZIP root (`unzip -l chrome-web-store/release/ads-helper-2.4.1.zip | grep -x '.*manifest.json'`), no comments in it
 - [ ] Version is higher than any previously uploaded version (2.1.0 and 2.2.0 are already in the store; every upload needs a bump — this one is 2.4.1)

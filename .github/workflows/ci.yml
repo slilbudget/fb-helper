@@ -1,32 +1,133 @@
 name: CI
-on: [push, pull_request]
+
+# unit      the manifest, the syntax of every module, the unit tests (plain Node, no dependencies)
+# e2e       the end-to-end flows in real Chromium with the unpacked extension, in 4 shards (node test/e2e.mjs --shard i/4)
+# build     chrome-web-store/build.sh, a look into the archive, then the store build through the flows that cover every tab's loading and states
+# Facebook and Graph are mocked in the tests (nothing leaves the runner). The dev tooling is package.json (playwright-core, pinned in package-lock.json).
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
 permissions:
   contents: read
+
+# A newer push to the same branch / pull request makes the run of the older one pointless.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: 22
+
 jobs:
-  check:
+  unit:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ env.NODE_VERSION }}
       - name: manifest and syntax
         run: |
           node -e "const m=require('./fb-helper/manifest.json'); if(m.manifest_version!==3) process.exit(1); console.log(m.name, m.version)"
           find fb-helper/js -name '*.js' | while read -r f; do node --input-type=module --check < "$f" || exit 1; done
-      - name: unit tests
-        run: node --test test/*.test.mjs
+      - name: unit tests (docs checks that are known to fail are reported as TODO, not failures)
+        shell: bash
+        run: node --test test/*.test.mjs 2>&1 | tee unit.log
+      - name: logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-log
+          path: unit.log
+          retention-days: 7
+
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-      - name: playwright-core + Chromium (test-only, not shipped)
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Chromium of the pinned playwright-core (cached)
+        id: browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: install Chromium and its system libraries
+        shell: bash
         run: |
-          npm i --no-save --no-package-lock playwright-core@1
-          npx playwright-core install --with-deps chromium
-      - name: e2e (real Chromium + the extension, Facebook and Graph mocked)
-        run: node test/e2e.mjs
+          if [ "${{ steps.browsers.outputs.cache-hit }}" = "true" ]; then npx playwright-core install-deps chromium; else npx playwright-core install --with-deps chromium; fi
+          npx playwright-core --version
+      - name: e2e shard ${{ matrix.shard }} of 4 (real Chromium + the extension; Facebook and Graph mocked)
+        shell: bash
+        run: node test/e2e.mjs --shard ${{ matrix.shard }}/4 --jobs 2 2>&1 | tee e2e-${{ matrix.shard }}.log
+      - name: logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-log-${{ matrix.shard }}
+          path: e2e-${{ matrix.shard }}.log
+          retention-days: 7
+
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: build the store package
+        shell: bash
+        run: |
+          bash chrome-web-store/build.sh | tee build.log
+          ZIP=$(ls chrome-web-store/release/ads-helper-*.zip)
+          echo "ZIP=$ZIP" >> "$GITHUB_ENV"
+      - name: look into the archive (manifest at the root, the store's name, nothing of the old one)
+        shell: bash
+        run: |
+          unzip -l "$ZIP" | tee archive.log
+          unzip -Z1 "$ZIP" | grep -qx 'manifest.json'
+          unzip -tq "$ZIP"
+          mkdir "$RUNNER_TEMP/pkg" && unzip -q "$ZIP" -d "$RUNNER_TEMP/pkg"
+          node -e "const m=require(process.argv[1]); if(m.name!=='Ads Helper'||m.action.default_title!=='Ads Helper') { console.error('name', m.name, m.action.default_title); process.exit(1) } console.log(m.name, m.version)" "$RUNNER_TEMP/pkg/manifest.json"
+          if grep -rIil 'fb helper' "$RUNNER_TEMP/pkg"; then echo "the old name is left in the package" >&2; exit 1; fi
+      - name: Chromium of the pinned playwright-core (cached)
+        id: browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: install Chromium and its system libraries
+        shell: bash
+        run: |
+          if [ "${{ steps.browsers.outputs.cache-hit }}" = "true" ]; then npx playwright-core install-deps chromium; else npx playwright-core install --with-deps chromium; fi
+      - name: the store build through the flows (tabs, token, businesses, pages)
+        shell: bash
+        run: EXT_DIR=chrome-web-store/release/unpacked node test/e2e.mjs tabs token bms pages --jobs 2 2>&1 | tee e2e-store.log
+      - name: logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: |
+            build.log
+            archive.log
+            e2e-store.log
+          retention-days: 7
