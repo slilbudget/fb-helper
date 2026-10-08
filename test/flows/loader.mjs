@@ -3,7 +3,7 @@
 // whatever happens; another window's list is taken over; a list loaded after the FB user changed drops the other lists; the Businesses refresh
 // says when the Ad accounts slot is taken; a try without a token is not used up; another window's saved ads never replace an entry that is
 // still being read; the caps and failures of the business edges. Graph is a mock (fictional data).
-import { GRAPH, TOK, ok, has, boot, adsPage, popup, text, until, rowsAre, resetLocks, clickToast, accountsJson, isAds, adsFb, stored, ROW, boxWait, GONE } from "../harness.mjs";
+import { TOK, ok, has, boot, adsPage, popup, text, until, rowsAre, resetLocks, clickToast, accountsJson, isAds, adsFb, stored, ROW, boxWait, GONE, done, agoRe, autoDone, esc, idle, settle, toastOf, tr, trx, waitFor, ACC, GRAPH, trn, untilText } from "../harness.mjs";
 
 const day = new Date().toISOString().slice(0, 10);
 const PAGE = { id: "100000000000001", name: "Page One", is_published: true, tasks: ["ADVERTISE"], instagram_business_account: { id: "1", username: "p" }, promotion_eligible: true };
@@ -20,14 +20,11 @@ const baseGraph = (over = {}) => (u, n) => {
   return { body: { data: [] } };
 };
 const TABS = {
-  accounts: { slot: "accounts", btn: "#loadAccounts", rows: "#accountsList .lrow", panel: "#tab-accounts", reads: (b) => b.hits.filter((h) => h.startsWith("/me/adaccounts")).length },
-  bms: { slot: "bms", btn: "#loadBms", rows: "#bmsList .lrow", panel: "#tab-bms", reads: (b) => b.hits.filter((h) => h.startsWith("/me/businesses") && h.includes("limit=50")).length },
-  pages: { slot: "pages", btn: "#loadPages", rows: "#pagesList .lrow", panel: "#tab-pages", reads: (b) => b.hits.filter((h) => h.startsWith("/me/accounts")).length },
+  accounts: { slot: "accounts", list: "#accountsList", waitKey: "acc.wait", btn: "#loadAccounts", rows: "#accountsList .lrow", panel: "#tab-accounts", reads: (b) => b.hits.filter((h) => h.startsWith("/me/adaccounts")).length },
+  bms: { slot: "bms", list: "#bmsList", waitKey: "bms.wait", btn: "#loadBms", rows: "#bmsList .lrow", panel: "#tab-bms", reads: (b) => b.hits.filter((h) => h.startsWith("/me/businesses") && h.includes("limit=50")).length },
+  pages: { slot: "pages", list: "#pagesList", waitKey: "pages.wait", btn: "#loadPages", rows: "#pagesList .lrow", panel: "#tab-pages", reads: (b) => b.hits.filter((h) => h.startsWith("/me/accounts")).length },
 };
 const slotsOf = (p) => p.evaluate(() => chrome.storage.session.get("locks").then((o) => Object.keys(o.locks?.slots || {})));
-const toastOf = (p) => p.evaluate(() => document.querySelector("#toast").textContent.trim());
-const noErrs = (b) => ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
-const idle = (p, panel) => until(p, (sel) => !document.querySelector(sel).dataset.loading, panel);
 
 // ---------- a pause refuses before the slot, in every tab ----------
 async function pauseFlow() {
@@ -38,21 +35,20 @@ async function pauseFlow() {
     let pop = await popup(b);
     await pop.evaluate(() => chrome.storage.session.set({ cooldownUntil: Date.now() + 10 * 60000 }));
     await pop.reload();
-    await pop.click(`[data-tab="${name}"]`); await pop.waitForTimeout(700);
+    await pop.click(`[data-tab="${name}"]`); await autoDone(pop, t.list);       // the automatic try has ended: it met the pause and stopped
     ok(`${name}: during the API pause the automatic load sends nothing, takes no slot, writes no "this FB page was loaded" mark, and stays quiet`,
       b.hits.length === 0 && !(await slotsOf(pop)).includes(t.slot) && (await stored(pop, "autoPage")) === undefined && (await toastOf(pop)) === "", `${b.hits.length} ${await slotsOf(pop)} ${await toastOf(pop)}`);
     const toast = await clickToast(pop, t.btn);
     ok(`${name}: a click says how long (a pause, not "refresh available in N s"), sends nothing and takes no slot`,
-      /hands off for another (9|10) min/.test(toast) && b.hits.length === 0 && !(await slotsOf(pop)).includes(t.slot), `${toast} ${b.hits.length} ${await slotsOf(pop)}`);
+      trx("err.cooldown", { n: /9|10/ }).test(toast) && b.hits.length === 0 && !(await slotsOf(pop)).includes(t.slot), `${toast} ${b.hits.length} ${await slotsOf(pop)}`);
     ok(`${name}: the button is back and the panel is idle`, !(await pop.$eval(t.btn, (n) => n.disabled || n.hasAttribute("aria-busy"))) && (await idle(pop, t.panel)));
     // the pause ends (another window cleared it): the very next click goes out — the slot was never spent
     await pop.evaluate(() => chrome.storage.session.set({ cooldownUntil: 0 }));
-    await pop.waitForTimeout(200);
+    await until(pop, async () => (await import(chrome.runtime.getURL("js/state.js"))).state.cooldownUntil === 0);       // this window has taken the change over
     await pop.click(t.btn);
     ok(`${name}: when the pause is over the same click loads the list`, await rowsAre(pop, t.rows, 1) || (name === "bms" && (await rowsAre(pop, t.rows, 1))), `${await text(pop, t.rows.split(" ")[0])}`);
     ok(`${name}: …and only now the slot is taken`, (await slotsOf(pop)).includes(t.slot));
-    noErrs(b);
-    await b.ctx.close();
+    await done(b);
   }
 
   // the hourly budget is a pause too: refused before the slot, an automatic load stays quiet, the FB page is not marked as loaded
@@ -61,18 +57,17 @@ async function pauseFlow() {
   let pop = await popup(b);
   await pop.evaluate(() => chrome.storage.session.set({ budget: [[Date.now() - 20 * 60000, 600]] }));
   pop = await popup(b, "accounts");
-  await pop.waitForTimeout(600);
+  await autoDone(pop, "#accountsList");
   ok("budget used up: the automatic load sends nothing, takes no slot, marks nothing, and stays quiet", b.hits.length === 0 && !(await slotsOf(pop)).includes("accounts") && (await stored(pop, "autoPage")) === undefined && (await toastOf(pop)) === "", `${b.hits.length} ${await toastOf(pop)}`);
   const toast = await clickToast(pop, "#loadAccounts");
-  ok("a click says so calmly, with the minutes (the oldest bucket leaves the hour in about 40)", b.hits.length === 0 && /600 requests/.test(toast) && /(39|40|41) min/.test(toast) && !(await slotsOf(pop)).includes("accounts"), `${b.hits.length} ${toast}`);
+  ok("a click says so calmly, with the minutes (the oldest bucket leaves the hour in about 40)", b.hits.length === 0 && trx("err.budget", { n: /39|40|41/ }).test(toast) && !(await slotsOf(pop)).includes("accounts"), `${b.hits.length} ${toast}`);
   await pop.evaluate(() => chrome.storage.session.set({ budget: [[Date.now() - 61 * 60000, 600]] }));
   await pop.click("#loadAccounts");
   ok("buckets older than an hour do not count: the refresh goes out", (await rowsAre(pop, ROW, 1)) && b.hits.length >= 1, String(b.hits.length));
   ok("…and only a request that really went out marks the FB page as loaded", (await stored(pop, "autoPage")) !== undefined);
   const used = (await stored(pop, "budget")) || [];
   ok("every request is counted in storage.session", used.reduce((n, [, c]) => n + c, 0) === b.hits.length, JSON.stringify(used) + " vs " + b.hits.length);
-  noErrs(b);
-  await b.ctx.close();
+  await done(b);
 }
 
 // ---------- the button and the panel while a load runs ----------
@@ -88,15 +83,15 @@ async function busyFlow() {
       const pop = await popup(b, name);
       const mid = await until(pop, ([btn, panel]) => document.querySelector(btn).disabled && document.querySelector(btn).getAttribute("aria-busy") === "true" && document.querySelector(panel).dataset.loading === "true", [t.btn, t.panel]);
       ok(`${name}${fail ? " (fails)" : ""}: while loading the button is disabled with aria-busy and the panel carries data-loading`, mid);
+      await waitFor(() => t.reads(b) >= 1);                                  // the request is on its way (the mock holds the answer)
       const reads = t.reads(b);
       await pop.click(t.btn, { force: true }).catch(() => {});
-      await pop.waitForTimeout(250);
-      ok(`${name}${fail ? " (fails)" : ""}: a forced click during the load neither doubles the request nor complains`, t.reads(b) === reads && !has(await toastOf(pop), "Refresh available") && !has(await toastOf(pop), "wait"), `${reads} -> ${t.reads(b)} ${await toastOf(pop)}`);
+      await settle(pop);
+      ok(`${name}${fail ? " (fails)" : ""}: a forced click during the load neither doubles the request nor complains`, t.reads(b) === reads && !trx(t.waitKey).test(await toastOf(pop)), `${reads} -> ${t.reads(b)} ${await toastOf(pop)}`);
       ok(`${name}${fail ? " (fails)" : ""}: afterwards the button is enabled again, without aria-busy, and the panel is idle`, (await idle(pop, t.panel)) && !(await pop.$eval(t.btn, (n) => n.disabled || n.hasAttribute("aria-busy"))), await text(pop, t.btn));
       if (fail) ok(`${name} (fails): the error is shown`, await until(pop, () => /boom/.test(document.querySelector("#toast").textContent)), await toastOf(pop));
       else ok(`${name}: the list is there`, await rowsAre(pop, t.rows, 1));
-      noErrs(b);
-      await b.ctx.close();
+      await done(b);
     }
   }
 }
@@ -118,8 +113,7 @@ async function followFlow() {
     await loader.click(t.btn);
     await until(loader, (btn) => !document.querySelector(btn).disabled, t.btn);
     ok(`${name}: window 2 is not disturbed by window 1's second load (still one list)`, await rowsAre(watcher, t.rows, 1));
-    noErrs(b);
-    await b.ctx.close();
+    await done(b);
   }
 }
 
@@ -143,9 +137,8 @@ async function ownerFlow() {
   ok("the accounts list is stored under 2002", (await stored(pop, "owner")) === "2002" && !!(await stored(pop, "accounts")));
   ok("…and the Businesses and Pages caches of the other login are gone, not stamped with the new user", (await stored(pop, "bms")) === undefined && (await stored(pop, "pages")) === undefined, JSON.stringify([await stored(pop, "bmsAt"), await stored(pop, "pagesAt")]));
   await pop.click('[data-tab="bms"]');
-  ok("…the Businesses tab is empty again for the new user (the one automatic try of this popup was used up: 'Not loaded yet' and a Load button)", (await pop.locator("#bmsList .lrow").count()) === 0 && (await text(pop, "#bmsList .lempty-text")) === "Not loaded yet" && (await text(pop, "#bmsList .lempty .btn")) === "Load", await text(pop, "#bmsList"));
-  noErrs(b);
-  await b.ctx.close();
+  ok("…the Businesses tab is empty again for the new user (the one automatic try of this popup was used up: 'Not loaded yet' and a Load button)", (await pop.locator("#bmsList .lrow").count()) === 0 && (await text(pop, "#bmsList .lempty-text")) === tr("list.idle") && (await text(pop, "#bmsList .lempty .btn")) === tr("list.load"), await text(pop, "#bmsList"));
+  await done(b);
 }
 
 // ---------- the Businesses refresh says when the Ad accounts slot is taken ----------
@@ -160,17 +153,15 @@ async function waitFlow() {
   const a0 = accReads(), own0 = TABS.bms.reads(b);
   // the Businesses slot is free, the Ad accounts slot is taken for another 45 s
   await pop.evaluate(() => chrome.storage.session.set({ locks: { slots: { accounts: Date.now() + 45000 } } }));
-  await pop.waitForTimeout(200);
+  await until(pop, async () => (await import(chrome.runtime.getURL("js/state.js"))).slotLeft("accounts") > 30000);       // this window has taken the slot over
   await pop.click("#loadBms");
-  for (let i = 0; i < 50 && TABS.bms.reads(b) < own0 + 1; i++) await pop.waitForTimeout(100);
+  await waitFor(() => TABS.bms.reads(b) >= own0 + 1);
   ok("the Businesses list refreshes (one request of its own)", TABS.bms.reads(b) === own0 + 1, `${own0} -> ${TABS.bms.reads(b)}`);
-  ok("…and the toast says the Accounts are not refreshed yet (the spend is not updated), with the seconds left", await until(pop, () => /Accounts: refresh available in (4\d|3\d) s — spend not updated yet/.test(document.querySelector("#toast").textContent)), await toastOf(pop));
+  ok("…and the toast says the Accounts are not refreshed yet (the spend is not updated), with the seconds left", await until(pop, (src) => new RegExp(src).test(document.querySelector("#toast").textContent), trx("bms.accWait", { n: /3\d|4\d/ }).source), await toastOf(pop));
   ok("…no request went to the Ad accounts", accReads() === a0, `${a0} -> ${accReads()}`);
   // the refresh button's tooltip is the age of the BUSINESS list
-  await pop.waitForTimeout(100);
-  ok("the refresh tooltip says 'updated just now' for the business list", /^Refresh businesses and spend · updated (just now|\d+ min ago)$/.test(await pop.locator("#loadBms").getAttribute("title")), await pop.locator("#loadBms").getAttribute("title"));
-  noErrs(b);
-  await b.ctx.close();
+  ok("the refresh tooltip says 'updated just now' for the business list", new RegExp(`^${esc(tr("bms.refresh"))} · ${trx("acc.updated", { t: agoRe() }).source}$`).test(await pop.locator("#loadBms").getAttribute("title")), await pop.locator("#loadBms").getAttribute("title"));
+  await done(b);
 }
 
 // ---------- a try without a token is not used up ----------
@@ -182,7 +173,7 @@ async function tokenFlow() {
     const b = await boot({ fb: (u) => adsFb(withToken ? TOK : null)(u), graph: baseGraph() });
     const feed = await b.ctx.newPage(); await feed.goto("https://www.facebook.com/");
     const pop = await popup(b, name);
-    await pop.waitForTimeout(500);
+    await until(pop, (sel) => !!document.querySelector(`${sel} .lempty[data-state="notoken"]`), t.list);       // the automatic try found no token and ended
     ok(`${name}: no token anywhere: nothing is sent, the list says what to do`, b.hits.length === 0 && (await boxWait(pop, GONE)), `${b.hits.length} ${await text(pop, "#tokenBox")}`);
     withToken = true;
     await feed.close();
@@ -191,8 +182,7 @@ async function tokenFlow() {
     ok(`${name}: the token is read from the new tab`, await until(pop, () => /^EAA/.test(document.querySelector("#tokenBox").textContent.trim())));
     await pop.click(`[data-tab="${name}"]`);
     ok(`${name}: showing the tab again loads the list by itself (the first visit did not use up the one try)`, await rowsAre(pop, t.rows, 1) && t.reads(b) >= 1, `${t.reads(b)}`);
-    noErrs(b);
-    await b.ctx.close();
+    await done(b);
   }
 }
 
@@ -209,17 +199,17 @@ async function flightFlow() {
   const pop1 = await popup(b, "accounts");
   ok("window 1: the account is listed", await rowsAre(pop1, ROW, 1));
   await pop1.click(`${ROW} .lrow-title`); await pop1.click(`${ROW}.open [data-ads]`);
-  ok("window 1: the ads list is on screen while the numbers are still being read", await until(pop1, () => /Ad one/.test(document.querySelector("#accountsList .lrow.open .ads")?.textContent || "") && /Loading metrics/.test(document.querySelector("#accountsList .lrow.open .ads")?.textContent || "")));
+  ok("window 1: the ads list is on screen while the numbers are still being read", await until(pop1, (s) => /Ad one/.test(document.querySelector("#accountsList .lrow.open .ads")?.textContent || "") && (document.querySelector("#accountsList .lrow.open .ads")?.textContent || "").includes(s), tr("ads.statsLoading")));
   // window 2 loads the account list again: window 1 follows the new list (fetchedAt changes)
   const pop2 = await popup(b, "accounts");
   await resetLocks(pop2);
   await pop2.click("#loadAccounts");
   ok("window 2 refreshes the list", await until(pop2, () => !document.querySelector("#loadAccounts").disabled) && (await stored(pop2, "fetchedAt")) > 0);
-  await pop1.waitForTimeout(400);
+  const fetchedAt = await stored(pop2, "fetchedAt");
+  await until(pop1, async (f) => (await import(chrome.runtime.getURL("js/state.js"))).state.fetchedAt === f, fetchedAt);       // window 1 has taken window 2's list over
   ok("window 1 still shows its ads while the numbers load (the saved copy of the other window did not replace the entry)", has(await text(pop1, "#accountsList .lrow.open .ads"), "Ad one"), await text(pop1, "#accountsList .lrow.open .ads"));
-  ok("…and the numbers arrive: the entry they were meant for is still the one on screen", await until(pop1, () => /metrics updated/.test(document.querySelector("#accountsList .lrow.open .ads")?.textContent || ""), null, 12000) && has(await text(pop1, ".ad"), "$12.40"), await text(pop1, "#accountsList .lrow.open .ads"));
-  noErrs(b);
-  await b.ctx.close();
+  ok("…and the numbers arrive: the entry they were meant for is still the one on screen", await untilText(pop1, "#accountsList .lrow.open .ads", trx("ads.statsAt"), 12000) && has(await text(pop1, `${ACC} .ad`), "$12.40"), await text(pop1, "#accountsList .lrow.open .ads"));
+  await done(b);
 }
 
 // ---------- the business edges of the Ad accounts list: caps and failures ----------
@@ -242,8 +232,8 @@ async function edgesFlow() {
   ok("…the business list is asked with limit 51 (one over the cap of 50) and only id,name", has(bmRead, "limit=51") && has(decodeURIComponent(bmRead), "fields=id,name") && !has(decodeURIComponent(bmRead), "fields=id,name,"), bmRead);
   ok("…only 50 businesses are walked: 100 edge requests, none for the 51st", edgeHits(b).length === 100 && !edgeHits(b).some((h) => h.startsWith("/1050/")), String(edgeHits(b).length));
   ok("…and the list is stored as not complete", (await stored(pop, "truncated")) === true);
-  ok("…the count line says so", has(await text(pop, "#accountsTotal .total-meta"), "(not all)"), await text(pop, "#accountsTotal"));
-  await b.ctx.close();
+  ok("…the count line says so", has(await text(pop, "#accountsTotal .total-meta"), tr("acc.notAll").trim()), await text(pop, "#accountsTotal"));
+  await done(b);
 
   // an edge that answers an error: that business is named (failedBms), the rest of the list is whole, a click says why, the automatic load is silent
   b = await boot({ fb: adsFb(TOK), graph: baseGraph({
@@ -259,12 +249,11 @@ async function edgesFlow() {
   ok("…the automatic load says nothing about it", (await toastOf(pop)) === "", await toastOf(pop));
   ok("…the refused business is NAMED (failedBms), not the whole list called incomplete: not stored as truncated, no 'not all' on the count line", (await stored(pop, "truncated")) === false
     && JSON.stringify(await stored(pop, "failedBms")) === '["1001"]' && (await text(pop, "#accountsTotal .total-meta")) === null, `${await stored(pop, "truncated")} ${JSON.stringify(await stored(pop, "failedBms"))} ${await text(pop, "#accountsTotal")}`);
-  ok("…one muted line under the list says some businesses could not be read (their accounts may be missing)", has(await text(pop, "#accountsList .acc-foot"), "Some businesses couldn't be read, so their ad accounts may be missing"), await text(pop, "#accountsList"));
+  ok("…one muted line under the list says some businesses could not be read (their accounts may be missing)", has(await text(pop, "#accountsList .acc-foot"), tr("acc.bmHint")), await text(pop, "#accountsList"));
   await resetLocks(pop);
   const toast = await clickToast(pop, "#loadAccounts");
-  ok("a click says why: how many businesses could not be read", await until(pop, () => /Ad accounts: 2 \(couldn't read 1 business\)/.test(document.querySelector("#toast").textContent)), toast);
-  noErrs(b);
-  await b.ctx.close();
+  ok("a click says why: how many businesses could not be read", await until(pop, (s) => document.querySelector("#toast").textContent.includes(s), `${tr("acc.loaded", { n: 2 })}${tr("acc.readFail", { n: 1, w: trn(1, "acc.bizCount") })}`), toast);
+  await done(b);
 
   // an edge with endless pages: 3 pages, then it stops
   b = await boot({ fb: adsFb(TOK), graph: baseGraph({
@@ -276,7 +265,7 @@ async function edgesFlow() {
   pop = await popup(b, "accounts");
   ok("an endless edge: three pages are read (4 rows with the assigned one), no more", await rowsAre(pop, ROW, 4) && edgeHits(b).filter((h) => h.startsWith("/1000/owned_ad_accounts")).length === 3, String(edgeHits(b).length));
   ok("…and the list says it is not all (a page limit is a real limit: truncated for everybody, no business is 'unread')", (await stored(pop, "truncated")) === true && JSON.stringify(await stored(pop, "failedBms")) === "[]");
-  await b.ctx.close();
+  await done(b);
 
   // the business list itself cannot be read: nothing was walked, no business can be named, so the whole list is "not all" (the global flag stays for this)
   b = await boot({ fb: adsFb(TOK), graph: baseGraph({
@@ -287,8 +276,8 @@ async function edgesFlow() {
   pop = await popup(b, "accounts");
   await rowsAre(pop, ROW, 1); await idle(pop, "#tab-accounts");
   ok("an unreadable business list: stored as truncated with no business named, and the count line says 'not all'", (await stored(pop, "truncated")) === true && JSON.stringify(await stored(pop, "failedBms")) === "[]"
-    && has(await text(pop, "#accountsTotal .total-meta"), "(not all)") && (await pop.locator("#accountsList .acc-foot").count()) === 0, `${await stored(pop, "truncated")} ${await text(pop, "#accountsTotal")}`);
-  await b.ctx.close();
+    && has(await text(pop, "#accountsTotal .total-meta"), tr("acc.notAll").trim()) && (await pop.locator("#accountsList .acc-foot").count()) === 0, `${await stored(pop, "truncated")} ${await text(pop, "#accountsTotal")}`);
+  await done(b);
 
   // a field refused on the first edge is not asked for again on the next ones (one skip set for the walk), and never reaches the assigned list's reads
   const refuseDeep = (u) => ((u.searchParams.get("fields") || "").includes("adspixels")
@@ -306,8 +295,7 @@ async function edgesFlow() {
   const asked = edgeHits(b).map((h) => has(decodeURIComponent(h), "adspixels"));
   ok("six edges: only the first asked for the refused field (twice in all: refused, then without), the other five did not", edgeHits(b).length === 7 && asked.filter(Boolean).length === 1 && asked[0], `${edgeHits(b).length} ${asked}`);
   ok("…the assigned list's own read had asked for it and was not affected", has(decodeURIComponent(b.hits.find((h) => h.startsWith("/me/adaccounts"))), "adspixels"));
-  noErrs(b);
-  await b.ctx.close();
+  await done(b);
 }
 
 export const flows = { loaderPause: pauseFlow, loaderBusy: busyFlow, loaderFollow: followFlow, loaderOwner: ownerFlow, loaderWait: waitFlow, loaderToken: tokenFlow, loaderFlight: flightFlow, loaderEdges: edgesFlow };

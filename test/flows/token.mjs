@@ -1,5 +1,5 @@
 // Token tab: reading the token from FB tabs, the DOM fallback, "Token + cookies + UA", dead token + refresh, a hung tab.
-import { TOK, TOK2, TOK_H, TOK_W, ok, has, boot, adsPage, popup, text, until, resetLocks, clickToast, captureClipboard, clip, accountsJson, adsFb, boxWait, GONE, loadAccounts, stored } from "../harness.mjs";
+import { TOK, TOK2, TOK_H, TOK_W, ok, has, boot, adsPage, popup, text, until, resetLocks, clickToast, captureClipboard, clip, accountsJson, adsFb, boxWait, GONE, loadAccounts, stored, done, tr } from "../harness.mjs";
 
 // ---------- token ----------
 async function tokenFlows() {
@@ -20,16 +20,15 @@ async function tokenFlows() {
   // refresh button: reads the CURRENT token from the tab, writes nothing to the clipboard
   tok = TOK2; await ads.reload(); await captureClipboard(pop);
   const rt = await clickToast(pop, "#refreshToken");
-  ok("refresh: picks up the token now on the tab", (await boxWait(pop, /^EAABy/)) && has(rt, "Token refreshed"), `${await text(pop, "#tokenBox")} / ${rt}`);
+  ok("refresh: picks up the token now on the tab", (await boxWait(pop, /^EAABy/)) && has(rt, tr("token.refreshed")), `${await text(pop, "#tokenBox")} / ${rt}`);
   ok("refresh: nothing copied to the clipboard", (await clip(pop)).length === 0);
   tok = null; await ads.reload();
   const rt2 = await clickToast(pop, "#refreshToken");
-  ok("refresh with no token on any tab: says why, field emptied", (await boxWait(pop, GONE)) && rt2.length > 0 && !has(rt2, "refreshed"), rt2);
+  ok("refresh with no token on any tab: says why, field emptied", (await boxWait(pop, GONE)) && rt2.length > 0 && !has(rt2, tr("token.refreshed")), rt2);
   await ads.close(); await pop.reload();
   ok("no ads tab -> field shows a reason", await boxWait(pop, GONE), await text(pop, "#tokenBox"));
   ok("no ads tab -> nothing stored", !(await stored(pop, "token")));
-  ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
-  await b.ctx.close();
+  await done(b);
 }
 
 // The rendered-DOM fallback: read on ads / billing pages, never on feed-like pages full of other people's text.
@@ -52,7 +51,7 @@ async function fallbackFlows() {
     await boxWait(pop, /^(?!—)/);
     const got = (await text(pop, "#tokenBox")).startsWith("EAAW");
     ok(`${new URL(url).host}${new URL(url).pathname}: token in plain DOM text ${expect ? "found" : "ignored"}`, got === expect, await text(pop, "#tokenBox"));
-    await b.ctx.close();
+    await done(b);
   }
 }
 
@@ -66,23 +65,23 @@ async function exportFlows() {
     const toast = await clickToast(pop, "#copyEnv");
     const out = await clip(pop);
     ok(name, check(out, toast, b.hits, ua), `clip=${JSON.stringify(out).slice(0, 80)} toast=${toast} hits=${b.hits}`);
-    await b.ctx.close();
+    await done(b);
   };
   await run("same account -> copied, one /me read (with name + BMs)", TOK, { body: { id: "1001", name: "Alex Carter", businesses: { data: [{ id: "111", name: "Nova Media" }, { id: "222", name: "Lumen Traffic" }] } } },
-    (c, t, h, ua) => c.length === 1 && c[0].startsWith(TOK) && has(c[0], "c_user=1001") && has(t, "Token + cookies + UA copied") && !has(t, "not verified") && h.length === 1
+    (c, t, h, ua) => c.length === 1 && c[0].startsWith(TOK) && has(c[0], "c_user=1001") && has(t, tr("env.copied")) && !has(t, tr("env.unverified")) && h.length === 1
       && has(h[0], "businesses") && c[0].split("\n\n").length === 4 && c[0].split("\n\n")[0] === TOK && c[0].split("\n\n")[2] === ua
       && c[0].split("\n\n")[3] === "Profile: Alex Carter (1001)\nBM: Nova Media (111), Lumen Traffic (222)");
   await run("no BMs (Graph leaves the edge out) -> BM: none", TOK, { body: { id: "1001", name: "Alex Carter" } },
     (c, t, h) => c.length === 1 && h.length === 1 && c[0].endsWith("\n\nProfile: Alex Carter (1001)\nBM: none"));
   await run("BMs refused (#200) -> once more with id,name, BM: not available", TOK,
     (u) => u.searchParams.get("fields").includes("businesses") ? { status: 400, body: { error: { code: 200, message: "(#200) Requires business_management permission" } } } : { body: { id: "1001", name: "Alex Carter" } },
-    (c, t, h) => c.length === 1 && h.length === 2 && !has(t, "not verified") && c[0].endsWith("\n\nProfile: Alex Carter (1001)\nBM: not available"));
+    (c, t, h) => c.length === 1 && h.length === 2 && !has(t, tr("env.unverified")) && c[0].endsWith("\n\nProfile: Alex Carter (1001)\nBM: not available"));
   await run("token of another account -> NOT copied, both ids in the toast", TOK, { body: { id: "999" } },
-    (c, t) => c.length === 0 && has(t, "999") && has(t, "1001"));
+    (c, t) => c.length === 0 && has(t, tr("env.mismatch", { a: "999", b: "1001" })));
   await run("custom-app token (app-scoped /me.id) -> copied, marked unverified", TOK_W, { body: { id: "122190171494905792" } },
-    (c, t) => c.length === 1 && has(t, "not verified") && !has(c[0], "122190171494905792"));
+    (c, t) => c.length === 1 && has(t, tr("env.unverified")) && !has(c[0], "122190171494905792"));
   await run("/me fails with an ordinary error -> copied, marked unverified, no retry, no profile paragraph", TOK, { status: 500, body: { error: { code: 2, message: "temporary" } } },
-    (c, t, h) => c.length === 1 && has(t, "not verified") && h.length === 1 && c[0].split("\n\n").length === 3);
+    (c, t, h) => c.length === 1 && has(t, tr("env.unverified")) && h.length === 1 && c[0].split("\n\n").length === 3);
   await run("/me says the session is dead -> NOT copied", TOK, { status: 400, body: { error: { code: 190, error_subcode: 463, message: "expired" } } },
     (c, t) => c.length === 0 && has(t, "190/463"));
 
@@ -98,7 +97,7 @@ async function exportFlows() {
     const out = (await clip(pop))[0] || "";
     const parts = out.split("\n\n");
     ok("block = token, cookies, the page's (spoofed) UA, profile + BMs — four paragraphs", parts.length === 4 && parts[3].startsWith("Profile: 1001\nBM: ") && parts[0] === TOK && has(parts[1], "c_user=1001") && parts[2] === SPOOFED && parts[2] !== await pop.evaluate(() => navigator.userAgent), JSON.stringify(parts.map((p) => p.slice(0, 30))));
-    await b.ctx.close();
+    await done(b);
   }
 
   // no readable UA on the page -> the block is not copied (it would be an incomplete set), and no /me request is spent
@@ -109,8 +108,8 @@ async function exportFlows() {
     await pg.goto("https://adsmanager.facebook.com/adsmanager/manage/campaigns");
     const pop = await popup(b, "token"); await captureClipboard(pop);
     const toast = await clickToast(pop, "#copyEnv");
-    ok("unreadable UA -> NOT copied, says why, no /me request", (await clip(pop)).length === 0 && has(toast, "No access") && b.hits.length === 0, `${JSON.stringify(await clip(pop))} / ${toast} / ${b.hits}`);
-    await b.ctx.close();
+    ok("unreadable UA -> NOT copied, says why, no /me request", (await clip(pop)).length === 0 && has(toast, tr("grab.noAccess")) && b.hits.length === 0, `${JSON.stringify(await clip(pop))} / ${toast} / ${b.hits}`);
+    await done(b);
   }
 
   // the answer is remembered for the token + login: the second export makes no request
@@ -119,7 +118,7 @@ async function exportFlows() {
   const pop = await popup(b, "token"); await captureClipboard(pop);
   await clickToast(pop, "#copyEnv"); await clickToast(pop, "#copyEnv");
   ok("second export reuses the owner check", (await clip(pop)).length === 2 && b.hits.length === 1, `${b.hits.length} hits`);
-  await b.ctx.close();
+  await done(b);
 }
 
 // dead token + a cached "owner ok": still not exported; the refresh button is the way to try the same token again
@@ -136,14 +135,14 @@ async function deadExportFlows() {
   await pop.click('[data-tab="accounts"]'); await clickToast(pop, "#loadAccounts");
   await pop.click('[data-tab="token"]');
   const t = await clickToast(pop, "#copyEnv");
-  ok("token now dead: export refused although the owner check is cached", (await clip(pop)).length === 1 && has(t, "no longer valid"), `${(await clip(pop)).length} ${t}`);
+  ok("token now dead: export refused although the owner check is cached", (await clip(pop)).length === 1 && has(t, tr("err.session", { c: "190/463" })), `${(await clip(pop)).length} ${t}`);
   const rt = await clickToast(pop, "#refreshToken");
-  ok("refresh of the same dead token says so and clears the record (it holds the token)", has(rt, "dead-session mark is cleared") && await until(pop, () => chrome.storage.session.get("dead").then((o) => !(o.dead || []).length)), rt);
+  ok("refresh of the same dead token says so and clears the record (it holds the token)", has(rt, tr("token.retry")) && await until(pop, () => chrome.storage.session.get("dead").then((o) => !(o.dead || []).length)), rt);
   dead = false; await resetLocks(pop);
   const before = b.hits.length;
   await pop.click('[data-tab="accounts"]'); const ok2 = await loadAccounts(pop, 1);
   ok("after refresh the same token is tried again", ok2 && b.hits.length > before, `${b.hits.length} vs ${before}`);
-  await b.ctx.close();
+  await done(b);
 }
 
 // ---------- a hung FB tab must not hold the popup ----------
@@ -154,12 +153,12 @@ async function hungFlows() {
     ? "<script>setTimeout(() => { const end = Date.now() + 60000; while (Date.now() < end); }, 300)</script>hung"
     : u.hostname.startsWith("business") ? `<script>window.__accessToken=${JSON.stringify(TOK)}</script>bm` : "<p>feed</p>" });
   await (await b.ctx.newPage()).goto("https://business.facebook.com/settings/");
-  const hung = await b.ctx.newPage(); await hung.goto("https://adsmanager.facebook.com/hang"); await hung.waitForTimeout(600);
+  const hung = await b.ctx.newPage(); await hung.goto("https://adsmanager.facebook.com/hang"); await hung.waitForTimeout(600);   // a fixed wait on purpose: the page's own 300 ms timer has to fire and start the busy loop before the popup opens; a hung page cannot say it hangs
   const pop = await popup(b);
   const t0 = Date.now();
   const got = await boxWait(pop, /^EAAB/);
   ok("token from the healthy tab within a few seconds although another FB tab hangs", got && Date.now() - t0 < 6000, `${got} ${Date.now() - t0} ms`);
-  await b.ctx.close();
+  await done(b);
 }
 
 export const flows = { token: tokenFlows, fallback: fallbackFlows, export: exportFlows, deadexport: deadExportFlows, hung: hungFlows };

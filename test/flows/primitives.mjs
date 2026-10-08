@@ -1,6 +1,6 @@
 // The shared building blocks a new tab relies on, exercised inside the real popup with the extension's own module
 // instances: rate slots across windows, readPaged against the Graph mock, redraw registrations.
-import { GRAPH, TOK, ok, has, boot, adsPage, popup, text, until, rowsAre, resetLocks, accountsJson, adsFb, stored, openAds, ROW } from "../harness.mjs";
+import { GRAPH, TOK, ok, has, boot, adsPage, popup, text, until, rowsAre, resetLocks, accountsJson, adsFb, stored, openAds, ROW, done, tr } from "../harness.mjs";
 
 async function slotFlows() {
   console.log("\n# primitives: rate slots (claimSlot)");
@@ -30,8 +30,7 @@ async function slotFlows() {
   await resetLocks(p1); await openAds(p1);
   const ad = (await slots(p1))["ads:111"] - Date.now();
   ok("one account's ads hold theirs for 30 s (key ads:<id>)", ad > 25000 && ad <= 30500, String(ad));
-  ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
-  await b.ctx.close();
+  await done(b);
 }
 
 async function pagedFlows() {
@@ -62,8 +61,7 @@ async function pagedFlows() {
   refuse.picture = false;
   const cut = await run({ maxPages: 1 });
   ok("maxPages stops the walk and reports truncated", cut.ids.join() === "1,2" && cut.truncated === true, JSON.stringify(cut));
-  ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
-  await b.ctx.close();
+  await done(b);
 }
 
 async function renderFlows() {
@@ -80,10 +78,9 @@ async function renderFlows() {
     state.fetchedAt -= 5 * 60000;
     runRenders("tick");
   });
-  ok("the 30 s tick redraws the header pill and the 'updated … ago' of the refresh button's tooltip", (await text(pop, "#usage")) === "Paused 5 min" && has(await pop.getAttribute("#loadAccounts", "title"), "updated 5 min ago") && before.pill === "" && has(before.meta, "just now"),
+  ok("the 30 s tick redraws the header pill and the 'updated … ago' of the refresh button's tooltip", (await text(pop, "#usage")) === tr("usage.pause", { n: 5 }) && has(await pop.getAttribute("#loadAccounts", "title"), tr("acc.updated", { t: tr("ago.min", { n: 5 }) })) && before.pill === "" && has(before.meta, tr("ago.now")),
     `${before.pill} | ${before.meta} -> ${await text(pop, "#usage")} | ${await pop.getAttribute("#loadAccounts", "title")}`);
-  ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
-  await b.ctx.close();
+  await done(b);
 }
 
 async function tabApiFlows() {
@@ -114,8 +111,7 @@ async function tabApiFlows() {
   ok("the next tab shows, at the same height", s.tab === "zy" && s.h >= 600 && s.shown === "zz,zy", JSON.stringify(s));
   await pop.keyboard.press("ArrowLeft"); await pop.keyboard.press("Space"); s = await look();      // Space activates a focused tab too
   ok("onShow runs every time the tab is shown", s.tab === "zz" && s.shown === "zz,zy,zz", JSON.stringify(s));
-  ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
-  await b.ctx.close();
+  await done(b);
 }
 
 export const flows = { slotapi: slotFlows, pagedapi: pagedFlows, renderapi: renderFlows, tabapi: tabApiFlows };

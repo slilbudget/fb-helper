@@ -1,5 +1,5 @@
 // Cookies tab: "Copy cookies + UA", the page's User-Agent.
-import { TOK, ok, has, boot, popup, clickToast, captureClipboard, clip, adsFb } from "../harness.mjs";
+import { TOK, ok, has, boot, popup, clickToast, captureClipboard, clip, adsFb, done, tr } from "../harness.mjs";
 
 // ---------- Cookies tab: "Copy cookies + UA" ----------
 async function uaFlows() {
@@ -15,12 +15,12 @@ async function uaFlows() {
   const b = await boot({ fb: adsFb(TOK) });
 
   let pop = await popup(b, "cookies");
-  ok("Cookies tab: one main button + JSON, no UA field or Copy UA / Copy cookies buttons",
+  ok("Cookies tab: one main button + JSON and nothing else to press or type into (no UA field, no separate Copy UA / Copy cookies buttons)",
     (await pop.locator("#copyCookiesUa.primary").count()) === 1 && (await pop.locator("#copyCookieJson").count()) === 1
-      && (await pop.locator("#uaBox, #copyUa, #copyCookies").count()) === 0);
+      && (await pop.locator("#tab-cookies button").count()) === 2 && (await pop.locator("#tab-cookies input, #tab-cookies textarea, #tab-cookies [contenteditable]").count()) === 0);
   await captureClipboard(pop);
   const noTab = await clickToast(pop, "#copyCookiesUa");
-  ok("no FB tab -> the click says why and copies nothing", (await clip(pop)).length === 0 && has(noTab, "Open Facebook"), `${noTab} / ${JSON.stringify(await clip(pop))}`);
+  ok("no FB tab -> the click says why and copies nothing", (await clip(pop)).length === 0 && has(noTab, tr("grab.noTab")), `${noTab} / ${JSON.stringify(await clip(pop))}`);
 
   // the button is also the retry: the popup is still open from before the FB tab existed, one click re-reads it
   let pg = await uaPage(b);
@@ -29,7 +29,7 @@ async function uaFlows() {
   const hitsBefore = b.hits.length;
   const retry = await clickToast(pop, "#copyCookiesUa");
   let p = await parts(pop);
-  ok("FB tab opened after the popup -> cookie string, blank line, the page's UA; no Graph request", p.length === 2 && has(p[0], "c_user=1001") && has(p[0], "xs=") && p[1] === real && has(retry, "Cookies + UA copied") && b.hits.length === hitsBefore, `${retry} / ${JSON.stringify(p.map((x) => x.slice(0, 30)))}`);
+  ok("FB tab opened after the popup -> cookie string, blank line, the page's UA; no Graph request", p.length === 2 && has(p[0], "c_user=1001") && has(p[0], "xs=") && p[1] === real && has(retry, tr("ckUa.copied")) && b.hits.length === hitsBefore, `${retry} / ${JSON.stringify(p.map((x) => x.slice(0, 30)))}`);
 
   // an antidetect profile spoofs the UA for pages: the extension must copy what the page reports, not its own navigator
   await pg.close(); pg = await uaPage(b, SPOOF);
@@ -45,10 +45,9 @@ async function uaFlows() {
     pop = await popup(b, "cookies");
     await captureClipboard(pop);
     const tst = await clickToast(pop, "#copyCookiesUa");
-    ok(`UA with ${name} -> rejected: the click says why, nothing copied`, has(tst, "No access") && (await clip(pop)).length === 0, `${tst} / ${JSON.stringify(await clip(pop))}`);
+    ok(`UA with ${name} -> rejected: the click says why, nothing copied`, has(tst, tr("grab.noAccess")) && (await clip(pop)).length === 0, `${tst} / ${JSON.stringify(await clip(pop))}`);
   }
-  ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
-  await b.ctx.close();
+  await done(b);
 }
 
 export const flows = { ua: uaFlows };

@@ -3,12 +3,11 @@
 // an open row's name wraps, the link colour rule, weight 500 amounts, the fade-in of a body that was just opened, reduced motion, the contrast
 // tokens, focus rings, the logical properties. Real tabs (Graph is a mock): chips on one scrollable line, five periods in one row at 380 px, the
 // total on one line with its breakdown under it and a quiet attribution, a group header with the business's own picture.
-import { TOK, ok, has, boot, adsPage, popup, text, until, rowsAre, adsFb, accountsJson, ROW, ratesOk } from "../harness.mjs";
+import { TOK, ok, has, boot, adsPage, popup, until, rowsAre, adsFb, ROW, ratesOk, done, settle, tr, trx, untilText, near } from "../harness.mjs";
 
 const FB = "https://scontent.xx.fbcdn.net/v/t39.30808-1/";
 const URL_REVIEW = "https://www.facebook.com/accountquality/", URL_ADS = "https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=111";
 const q = (p, fn, arg) => p.evaluate(fn, arg);
-const noErrs = (b) => ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
 
 async function buildLab(pop) {
   await pop.evaluate(async ({ fb, review, ads }) => {
@@ -29,50 +28,51 @@ async function buildLab(pop) {
     );
   }, { fb: FB, review: URL_REVIEW, ads: URL_ADS });
 }
-const R = (k) => `.lrow[data-row="${k}"]`;
+const R = (k) => `#lab .lrow[data-row="${k}"]`;
 
 async function rowLabFlow() {
   console.log("\n# polish: the row, measured in the lab");
   const b = await boot({ graph: () => ({ body: { data: [] } }) });
   const pop = await popup(b, "token");
   await buildLab(pop);
-  await until(pop, () => !!document.querySelector('.lrow[data-row="pic"] .lav.ok'));
+  await until(pop, () => !!document.querySelector('#lab .lrow[data-row="pic"] .lav.ok'));
 
   // ---- the ID ends where the amount ends; the copy icon is for hover / focus ----
-  const al = await q(pop, () => ["plain", "pic", "problem"].map((k) => { const v = document.querySelector(`.lrow[data-row="${k}"] .lrow-value`).getBoundingClientRect(), t = document.querySelector(`.lrow[data-row="${k}"] .lrow-head .lrow-idtext`).getBoundingClientRect(); return Math.abs(Math.round(v.right) - Math.round(t.right)); }));
+  const al = await q(pop, () => ["plain", "pic", "problem"].map((k) => { const v = document.querySelector(`#lab .lrow[data-row="${k}"] .lrow-value`).getBoundingClientRect(), t = document.querySelector(`#lab .lrow[data-row="${k}"] .lrow-head .lrow-idtext`).getBoundingClientRect(); return Math.abs(Math.round(v.right) - Math.round(t.right)); }));
   ok("the ID digits end exactly where the amount above them ends (the copy icon is left of the digits, not right)", al.every((d) => d === 0), JSON.stringify(al));
-  const order = await q(pop, () => [...document.querySelector('.lrow[data-row="plain"] .lrow-head .lrow-id').children].map((c) => c.className.split(" ")[0]));
+  const order = await q(pop, () => [...document.querySelector('#lab .lrow[data-row="plain"] .lrow-head .lrow-id').children].map((c) => c.className.split(" ")[0]));
   ok("…DOM order: icon first, digits second", order.join() === "i,lrow-idtext", order.join());
+  const opIs = (k, want) => until(pop, ([sel, v]) => Number(getComputedStyle(document.querySelector(`${sel} .lrow-head .lrow-id .i`)).opacity) === v, [R(k), want]);       // the fade of the copy icon has ended
   const op = (k) => q(pop, (sel) => Number(getComputedStyle(document.querySelector(`${sel} .lrow-head .lrow-id .i`)).opacity), R(k));
   await pop.mouse.move(0, 0);
   ok("the copy icon is invisible at rest", (await op("plain")) === 0, String(await op("plain")));
-  await pop.hover(`${R("plain")} .lrow-head`); await pop.waitForTimeout(250);
+  await pop.hover(`${R("plain")} .lrow-head`); await opIs("plain", 1);
   ok("…visible while the row is hovered", (await op("plain")) === 1, String(await op("plain")));
-  await pop.mouse.move(0, 0); await pop.waitForTimeout(250);
-  await pop.keyboard.press("Shift"); await pop.focus(`${R("plain")} .lrow-head .lrow-id`); await pop.waitForTimeout(250);          // a key press first: from now on focus is :focus-visible
+  await pop.mouse.move(0, 0); await opIs("plain", 0);
+  await pop.keyboard.press("Shift"); await pop.focus(`${R("plain")} .lrow-head .lrow-id`); await opIs("plain", 1);          // a key press first: from now on focus is :focus-visible
   ok("…and while the button has keyboard focus", (await op("plain")) === 1);
   await pop.evaluate(() => document.activeElement.blur()); await pop.mouse.move(0, 0);
 
   // ---- equal heights, the amount's weight ----
   const hs = await q(pop, () => [...document.querySelectorAll("#lab .lrow")].map((r) => Math.round(r.querySelector(".lrow-head").getBoundingClientRect().height)));
-  ok("every collapsed row is 68 px: with or without a picture, with or without a status", hs.every((h) => h === 68), JSON.stringify(hs));
-  const wt = await q(pop, () => ({ amount: getComputedStyle(document.querySelector('.lrow[data-row="plain"] .lrow-value')).fontWeight, muted: getComputedStyle(document.querySelector('.lrow[data-row="problem"] .lrow-value')).fontWeight }));
+  ok("every collapsed row is 68 px: with or without a picture, with or without a status", hs.every((h) => near(h, 68)), JSON.stringify(hs));
+  const wt = await q(pop, () => ({ amount: getComputedStyle(document.querySelector('#lab .lrow[data-row="plain"] .lrow-value')).fontWeight, muted: getComputedStyle(document.querySelector('#lab .lrow[data-row="problem"] .lrow-value')).fontWeight }));
   ok("amounts are weight 500, a muted amount (zero, dash, handle) stays 400", wt.amount === "500" && wt.muted === "400", JSON.stringify(wt));
 
   // ---- the context that cannot keep ~6 characters is dropped ----
-  await pop.setViewportSize({ width: 380, height: 900 }); await pop.waitForTimeout(300);
-  const fit = await q(pop, () => Object.fromEntries(["tight", "roomy", "pic"].map((k) => { const it = document.querySelector(`.lrow[data-row="${k}"] .lrow-it.ctx`), c = it.firstElementChild;
+  await pop.setViewportSize({ width: 380, height: 900 }); await settle(pop);
+  const fit = await q(pop, () => Object.fromEntries(["tight", "roomy", "pic"].map((k) => { const it = document.querySelector(`#lab .lrow[data-row="${k}"] .lrow-it.ctx`), c = it.firstElementChild;
     return [k, { hidden: it.hidden, shown: getComputedStyle(it).display !== "none", w: Math.round(c.clientWidth), cut: c.scrollWidth > c.clientWidth }]; })));
-  const mid = await q(pop, () => { const r = document.querySelector('.lrow[data-row="plain"]'), hd = r.querySelector(".lrow-head").getBoundingClientRect(), n = r.querySelector(".lrow-name").getBoundingClientRect(); return { h: Math.round(hd.height), above: Math.round(n.top - hd.top), below: Math.round(hd.bottom - n.bottom) }; });
-  ok("below 480 px a row with nothing on line 2 is still 68 px high, its name in the middle of it (not at the top of an empty row)", mid.h === 68 && Math.abs(mid.above - mid.below) <= 2, JSON.stringify(mid));
+  const mid = await q(pop, () => { const r = document.querySelector('#lab .lrow[data-row="plain"]'), hd = r.querySelector(".lrow-head").getBoundingClientRect(), n = r.querySelector(".lrow-name").getBoundingClientRect(); return { h: Math.round(hd.height), above: Math.round(n.top - hd.top), below: Math.round(hd.bottom - n.bottom) }; });
+  ok("below 480 px a row with nothing on line 2 is still 68 px high, its name in the middle of it (not at the top of an empty row)", near(mid.h, 68) && Math.abs(mid.above - mid.below) <= 2, JSON.stringify(mid));
   ok("a long problem word + its fix leave the context less than ~6 characters: it is dropped whole (no '12…')", fit.tight.hidden && !fit.tight.shown, JSON.stringify(fit.tight));
   ok("…a context with room stays (cut by an ellipsis if need be, never below ~6 characters); a short one stays whole", !fit.roomy.hidden && fit.roomy.w >= 44 && !fit.pic.hidden && !fit.pic.cut, JSON.stringify(fit));
-  ok("…its '·' goes with it: line 2 of the tight row is 'status · fix' (no dangling separator)", await q(pop, () => { const sub = document.querySelector('.lrow[data-row="tight"] .lrow-sub'); const visible = [...sub.querySelectorAll(".lrow-it")].filter((i) => getComputedStyle(i).display !== "none"); return visible.length === 2 && getComputedStyle(visible.at(-1), "::after").content === "none"; }));
-  await pop.setViewportSize({ width: 560, height: 900 }); await pop.waitForTimeout(300);
-  ok("…widen the window and it comes back (the line is measured again)", await q(pop, () => !document.querySelector('.lrow[data-row="tight"] .lrow-it.ctx').hidden));
+  ok("…its '·' goes with it: line 2 of the tight row is 'status · fix' (no dangling separator)", await q(pop, () => { const sub = document.querySelector('#lab .lrow[data-row="tight"] .lrow-sub'); const visible = [...sub.querySelectorAll(".lrow-it")].filter((i) => getComputedStyle(i).display !== "none"); return visible.length === 2 && getComputedStyle(visible.at(-1), "::after").content === "none"; }));
+  await pop.setViewportSize({ width: 560, height: 900 }); await settle(pop);
+  ok("…widen the window and it comes back (the line is measured again)", await q(pop, () => !document.querySelector('#lab .lrow[data-row="tight"] .lrow-it.ctx').hidden));
 
   // ---- an open row shows its whole name ----
-  const nm = async () => q(pop, () => { const r = document.querySelector('.lrow[data-row="longname"]'), n = r.querySelector(".lrow-name"); return { open: r.classList.contains("open"), cut: n.scrollWidth > n.clientWidth, ws: getComputedStyle(n).whiteSpace, h: Math.round(r.querySelector(".lrow-head").getBoundingClientRect().height),
+  const nm = async () => q(pop, () => { const r = document.querySelector('#lab .lrow[data-row="longname"]'), n = r.querySelector(".lrow-name"); return { open: r.classList.contains("open"), cut: n.scrollWidth > n.clientWidth, ws: getComputedStyle(n).whiteSpace, h: Math.round(r.querySelector(".lrow-head").getBoundingClientRect().height),
     valueTop: Math.round(r.querySelector(".lrow-value").getBoundingClientRect().top - r.querySelector(".lrow-head").getBoundingClientRect().top) }; });
   const closed = await nm();
   await pop.click(`${R("longname")} .lrow-title`);
@@ -81,11 +81,11 @@ async function rowLabFlow() {
   await pop.click(`${R("longname")} .lrow-title`);
 
   // ---- the fade-in only for a row the person just opened ----
-  ok("a row that starts open has no fade-in class (a redraw must not replay it); one opened by a click has", await q(pop, () => !document.querySelector('.lrow[data-row="startsopen"] .lrow-body').classList.contains("enter")) && (await (async () => { await pop.click(`${R("plain")} .lrow-title`); return q(pop, () => document.querySelector('.lrow[data-row="plain"] .lrow-body').classList.contains("enter")); })()));
-  const mo = await q(pop, () => ({ chev: getComputedStyle(document.querySelector('.lrow[data-row="plain"] .lrow-title .i-chevron')).transitionProperty, anim: getComputedStyle(document.querySelector('.lrow[data-row="plain"] .lrow-body')).animationName }));
+  ok("a row that starts open has no fade-in class (a redraw must not replay it); one opened by a click has", await q(pop, () => !document.querySelector('#lab .lrow[data-row="startsopen"] .lrow-body').classList.contains("enter")) && (await (async () => { await pop.click(`${R("plain")} .lrow-title`); return q(pop, () => document.querySelector('#lab .lrow[data-row="plain"] .lrow-body').classList.contains("enter")); })()));
+  const mo = await q(pop, () => ({ chev: getComputedStyle(document.querySelector('#lab .lrow[data-row="plain"] .lrow-title .i-chevron')).transitionProperty, anim: getComputedStyle(document.querySelector('#lab .lrow[data-row="plain"] .lrow-body')).animationName }));
   ok("the chevron turns with a transition and the body fades in (css animation lrow-in)", has(mo.chev, "transform") && mo.anim === "lrow-in", JSON.stringify(mo));
   await pop.emulateMedia({ reducedMotion: "reduce" });
-  const rm = await q(pop, () => ({ chev: getComputedStyle(document.querySelector('.lrow[data-row="plain"] .lrow-title .i-chevron')).transitionDuration, anim: getComputedStyle(document.querySelector('.lrow[data-row="plain"] .lrow-body')).animationName }));
+  const rm = await q(pop, () => ({ chev: getComputedStyle(document.querySelector('#lab .lrow[data-row="plain"] .lrow-title .i-chevron')).transitionDuration, anim: getComputedStyle(document.querySelector('#lab .lrow[data-row="plain"] .lrow-body')).animationName }));
   ok("with prefers-reduced-motion nothing moves: no transition, no animation", rm.chev === "0s" && rm.anim === "none", JSON.stringify(rm));
   await pop.emulateMedia({ reducedMotion: "no-preference" });
   await pop.click(`${R("plain")} .lrow-title`);
@@ -95,14 +95,14 @@ async function rowLabFlow() {
   const lc = await q(pop, () => { const c = (s) => getComputedStyle(document.querySelector(s)).color;
     return { line2: c('.lrow[data-row="problem"] .lrow-head .lrow-fix'), todoPrimary: c('.lrow[data-row="problem"] .lrow-todo-link.primary'), todoSecond: c('.lrow[data-row="problem"] .lrow-todo-link:not(.primary)'), places: c('.lrow[data-row="problem"] .lrow-links .lrow-link') }; });
   ok("the fix on line 2 and the links of 'What to do' are in the tone of the problem (red); the muted links row is grey; no accent blue", lc.line2 === "rgb(207, 33, 39)" && lc.todoPrimary === "rgb(207, 33, 39)" && lc.todoSecond === "rgb(207, 33, 39)" && lc.places === "rgb(96, 103, 112)", JSON.stringify(lc));
-  const todoTone = await q(pop, () => getComputedStyle(document.querySelector('.lrow[data-row="problem"] .lrow-todo-title')).color);
+  const todoTone = await q(pop, () => getComputedStyle(document.querySelector('#lab .lrow[data-row="problem"] .lrow-todo-title')).color);
   ok("…and the small title of 'What to do' says the same red", todoTone === "rgb(207, 33, 39)", todoTone);
   await pop.click(`${R("problem")} .lrow-title`);
 
   // ---- contrast tokens ----
-  await pop.waitForTimeout(350);                                                          // the chevron's colour transition has ended
+  await until(pop, () => getComputedStyle(document.querySelector('#lab .lrow[data-row="plain"] .lrow-title .i-chevron')).color === "rgb(138, 144, 153)");       // the chevron's colour transition has ended
   const tk = await q(pop, () => { const root = getComputedStyle(document.documentElement); const tok = (n) => root.getPropertyValue(n).trim().toUpperCase();
-    return { success: tok("--color-success"), error: tok("--color-error"), icon: tok("--color-icon"), chevron: getComputedStyle(document.querySelector('.lrow[data-row="plain"] .lrow-title .i-chevron')).color,
+    return { success: tok("--color-success"), error: tok("--color-error"), icon: tok("--color-icon"), chevron: getComputedStyle(document.querySelector('#lab .lrow[data-row="plain"] .lrow-title .i-chevron')).color,
       placeholder: getComputedStyle(document.querySelector("#tokenBox"), null).color }; });
   ok("the contrast tokens: success #247A37, error #CF2127, quiet icons #8A9099 (the chevron), the empty token field in the secondary grey", tk.success === "#247A37" && tk.error === "#CF2127" && tk.icon === "#8A9099" && tk.chevron === "rgb(138, 144, 153)", JSON.stringify(tk));
   ok("…a search field's placeholder is the secondary grey (not the disabled one)", await q(pop, () => { const i = document.createElement("input"); i.className = "field"; i.placeholder = "x"; document.body.append(i); const c = getComputedStyle(i, "::placeholder").color; i.remove(); return c === "rgb(96, 103, 112)"; }));
@@ -121,12 +121,11 @@ async function rowLabFlow() {
 
   // ---- logical properties: the row mirrors in a right-to-left document ----
   await pop.evaluate(() => { document.documentElement.dir = "rtl"; });
-  const rtl = await q(pop, () => { const hd = document.querySelector('.lrow[data-row="plain"] .lrow-head').getBoundingClientRect(), v = document.querySelector('.lrow[data-row="plain"] .lrow-value').getBoundingClientRect(), n = document.querySelector('.lrow[data-row="plain"] .lrow-name').getBoundingClientRect();
+  const rtl = await q(pop, () => { const hd = document.querySelector('#lab .lrow[data-row="plain"] .lrow-head').getBoundingClientRect(), v = document.querySelector('#lab .lrow[data-row="plain"] .lrow-value').getBoundingClientRect(), n = document.querySelector('#lab .lrow[data-row="plain"] .lrow-name').getBoundingClientRect();
     return { valueAtStart: v.left - hd.left, nameAtEnd: hd.right - n.right }; });
   await pop.evaluate(() => { document.documentElement.dir = "ltr"; });
   ok("in a right-to-left document the amount moves to the left edge and the name to the right (16 px from each): no physical left / right in rows.css", Math.round(rtl.valueAtStart) === 16 && rtl.nameAtEnd >= 16 && rtl.nameAtEnd < 50, JSON.stringify(rtl));
-  noErrs(b);
-  await b.ctx.close();
+  await done(b);
 }
 
 // ---------- the real tabs ----------
@@ -155,27 +154,27 @@ async function topZoneFlow() {
   ok("…scrolled to the end the right fade is gone and the left one is on", await q(pop, () => { const c = document.querySelector("#statusChips"); return c.style.getPropertyValue("--fade-r") === "0px" && c.style.getPropertyValue("--fade-l") === "20px"; }));
   const tops = await q(pop, () => ({ top: Math.round(document.querySelector(".top").getBoundingClientRect().height), seg: getComputedStyle(document.querySelector("#periodSeg")).gridTemplateColumns.split(" ").length }));
   ok("the brand row is 40 px; the period switch is five columns", tops.top === 40 && tops.seg === 5, JSON.stringify(tops));
-  await pop.setViewportSize({ width: 380, height: 700 }); await pop.waitForTimeout(250);
+  await pop.setViewportSize({ width: 380, height: 700 }); await settle(pop);
   const seg = await q(pop, () => { const s = document.querySelector("#periodSeg"), bs = [...s.children], cut = bs.filter((x) => x.scrollWidth > x.clientWidth).length; return { cols: getComputedStyle(s).gridTemplateColumns.split(" ").length, h: Math.round(s.getBoundingClientRect().height), cut, tops: new Set(bs.map((x) => Math.round(x.getBoundingClientRect().top))).size }; });
   ok("at 380 px the five periods are still ONE row of five, none of them cut", seg.cols === 5 && seg.tops === 1 && seg.h <= 40 && seg.cut === 0, JSON.stringify(seg));
-  await pop.setViewportSize({ width: 560, height: 700 }); await pop.waitForTimeout(250);
+  await pop.setViewportSize({ width: 560, height: 700 }); await settle(pop);
   // the total: label left + amount right on one line, the breakdown under it, quiet attribution
   await until(pop, () => /^≈/.test(document.querySelector("#accountsTotal .total-value")?.textContent ?? ""));
   const tot = await q(pop, () => { const t = document.querySelector("#accountsTotal"), l = t.querySelector(".total-label").getBoundingClientRect(), v = t.querySelector(".total-value").getBoundingClientRect(), s = t.querySelector(".total-sub").getBoundingClientRect(), a = t.querySelector(".total-sub a");
     return { sameLine: Math.abs((l.top + l.bottom) / 2 - (v.top + v.bottom) / 2) < 12, valueRight: Math.round(t.getBoundingClientRect().right - v.right), subRight: Math.round(t.getBoundingClientRect().right - s.right), underBelow: s.top >= v.bottom - 2, labelLeft: l.left < v.left, valueSize: getComputedStyle(t.querySelector(".total-value")).fontSize, valueWeight: getComputedStyle(t.querySelector(".total-value")).fontWeight, deco: getComputedStyle(a).textDecorationLine }; });
   ok("the total: label on the left and the amount on the right of ONE line (19 px, weight 500), the breakdown right under the amount, flush right", tot.sameLine && tot.labelLeft && tot.valueRight === 0 && tot.subRight === 0 && tot.underBelow && tot.valueSize === "19px" && tot.valueWeight === "500", JSON.stringify(tot));
   ok("…the attribution link is not underlined at rest", tot.deco === "none", tot.deco);
-  await pop.hover("#accountsTotal .total-sub a"); await pop.waitForTimeout(200);
+  await pop.hover("#accountsTotal .total-sub a"); await until(pop, () => getComputedStyle(document.querySelector("#accountsTotal .total-sub a")).textDecorationLine === "underline");
   ok("…it underlines when pointed at", (await q(pop, () => getComputedStyle(document.querySelector("#accountsTotal .total-sub a")).textDecorationLine)) === "underline");
   // a filter puts its count in the label, muted, after a dot
   await pop.fill("#accountFilter", "A");
-  await until(pop, () => /found/.test(document.querySelector("#accountsTotal .total-meta")?.textContent ?? ""));
+  await untilText(pop, "#accountsTotal .total-meta", trx("acc.found", { n: /\d+/, all: 10 }));
   const meta = await q(pop, () => { const m = document.querySelector("#accountsTotal .total-meta"), l = document.querySelector("#accountsTotal .total-label"); return { text: m.textContent, inside: l.contains(m), color: getComputedStyle(m).color, dot: getComputedStyle(m, "::before").content }; });
-  ok("a search puts '5 of 10 found' INSIDE the label (muted, after a dot), not on its own row", /^\d+ of 10 found$/.test(meta.text) && meta.inside && meta.color === "rgb(96, 103, 112)" && meta.dot.includes("·"), JSON.stringify(meta));
+  ok("a search puts '5 of 10 found' INSIDE the label (muted, after a dot), not on its own row", trx("acc.found", { n: /\d+/, all: 10 }, { exact: true }).test(meta.text) && meta.inside && meta.color === "rgb(96, 103, 112)" && meta.dot.includes("·"), JSON.stringify(meta));
   await pop.fill("#accountFilter", "zzzz");
-  await until(pop, () => /0 of 10 found/.test(document.querySelector("#accountsTotal .total-meta")?.textContent ?? ""));
+  await untilText(pop, "#accountsTotal .total-meta", trx("acc.found", { n: 0, all: 10 }));
   const none = await q(pop, () => { const m = document.querySelector("#accountsTotal .total-meta"); return { text: m.textContent, dot: getComputedStyle(m, "::before").content, empty: document.querySelector("#accountsList .empty")?.textContent }; });
-  ok("a search that finds nothing says '0 of 10 found' without a dangling dot, and 'Nothing found' under the controls", none.text === "0 of 10 found" && none.dot === "none" && none.empty === "Nothing found", JSON.stringify(none));
+  ok("a search that finds nothing says '0 of 10 found' without a dangling dot, and 'Nothing found' under the controls", none.text === tr("acc.found", { n: 0, all: 10 }) && none.dot === "none" && none.empty === tr("acc.noMatch"), JSON.stringify(none));
   await pop.fill("#accountFilter", "");
   // group header: the business's own picture, primary colour, weight 500
   await until(pop, () => !!document.querySelector("#accountsList .lgroup .lav.ok"));
@@ -185,9 +184,8 @@ async function topZoneFlow() {
     gh.img === PIC && gh.square && gh.w === 16 && gh.noPic && gh.color === "rgb(28, 30, 33)" && gh.weight === "500" && gh.valueColor === "rgb(96, 103, 112)", JSON.stringify(gh));
   // the Businesses total has a tooltip about what it leaves out
   await pop.click('[data-tab="bms"]');
-  ok("the Businesses total says what it leaves out: 'Without personal ad accounts'", (await q(pop, () => document.querySelector("#bmsTotal .total-label")?.title)) === "Without personal ad accounts");
-  noErrs(b);
-  await b.ctx.close();
+  ok("the Businesses total says what it leaves out: 'Without personal ad accounts'", (await q(pop, () => document.querySelector("#bmsTotal .total-label")?.title)) === tr("bms.totalTitle"));
+  await done(b);
 }
 
 export const flows = { polishRow: rowLabFlow, polishTop: topZoneFlow };

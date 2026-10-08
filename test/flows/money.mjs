@@ -2,7 +2,7 @@
 // origins (never the network): "≈ $…" + the muted breakdown + the tooltip with the date and the attribution; the fallback source;
 // both sources down (the per-currency sum, no "≈", no console error, no retry for 20 minutes); the 24 h cache across popups;
 // one currency (no request at all); Russian. Graph is a mock (fictional data).
-import { TOK, ok, has, boot, adsPage, popup, text, until, rowsAre, adsFb, ratesOk, fxEr, fxCdn, FX, ROW } from "../harness.mjs";
+import { TOK, ok, has, boot, adsPage, popup, text, until, rowsAre, adsFb, ratesOk, fxEr, fxCdn, FX, ROW, done, agoRe, esc, ratesIdle, tr, trx, useLang, waitFor } from "../harness.mjs";
 
 const day = new Date().toISOString().slice(0, 10);
 const ins = (spend) => ({ data: [{ spend: String(spend), impressions: "100", inline_link_clicks: "10", date_start: day, date_stop: day }] });
@@ -29,9 +29,8 @@ const totalOf = (p, box) => p.evaluate((sel) => {
 }, box);
 const approx = (p, box = "#accountsTotal") => until(p, (sel) => /^≈/.test(document.querySelector(`${sel} .total-value`)?.textContent.trim() ?? ""), box);
 const plain = (p, box = "#accountsTotal") => until(p, (sel) => /\$1,695\.70/.test(document.querySelector(`${sel} .total-value`)?.textContent ?? "") && !/≈/.test(document.querySelector(`${sel} .total-value`).textContent), box);
-const noErrs = (b) => ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
 // Waits (up to 5 s) until the mock has seen n requests.
-const hitsReach = async (b, p, n) => { for (let i = 0; i < 50 && b.rateHits.length < n; i++) await p.waitForTimeout(100); return b.rateHits.length === n; };
+const hitsReach = async (b, p, n) => { await waitFor(() => b.rateHits.length >= n, 5000); return b.rateHits.length === n; };
 const open3 = async (b) => { await adsPage(b); const pop = await popup(b, "accounts"); ok("three accounts load", await rowsAre(pop, ROW,3)); return pop; };
 
 // ---------- rates answered by the primary source ----------
@@ -41,12 +40,12 @@ async function ratesFlows() {
   const pop = await open3(b);
   ok("the total becomes '≈ $1,770' (USD + EUR + VND converted at the daily rate)", await approx(pop), JSON.stringify(await totalOf(pop, "#accountsTotal")));
   const t = await totalOf(pop, "#accountsTotal");
-  ok("…label 'Spend · <date>' (no period word), no count while nothing is filtered", new RegExp(`^Spend · ${shortEn}$`).test(t.label) && t.meta === null, JSON.stringify(t));
+  ok("…label 'Spend · <date>' (no period word), no count while nothing is filtered", new RegExp(`^${esc(tr("acc.spend"))} · ${shortEn}$`).test(t.label) && t.meta === null, JSON.stringify(t));
   ok("…value '≈ $1,770' (no decimals from 1 000 up)", t.value === "≈ $1,770", t.value);
-  ok("…muted line: two biggest currencies (one string, one fraction rule: cents everywhere; a million of VND is short), '+1 more', the date of the rates and the credit", t.sub === `$1,695.70 + VND 1.2M +1 more · rates ${shortEn} · ExchangeRate-API`, t.sub);
+  ok("…muted line: two biggest currencies (one string, one fraction rule: cents everywhere; a million of VND is short), '+1 more', the date of the rates and the credit", t.sub === `$1,695.70 + VND 1.2M ${tr("money.more", { n: 1 })} · ${tr("money.rates", { d: shortEn })} · ExchangeRate-API`, t.sub);
   ok("…the credit is a link to the provider (new tab, noopener noreferrer)", t.link?.text === "ExchangeRate-API" && t.link.href === "https://www.exchangerate-api.com/" && t.link.target === "_blank" && has(t.link.rel, "noopener") && has(t.link.rel, "noreferrer"), JSON.stringify(t.link));
-  ok("…tooltip: every currency, 'Approximate', the date, 'Rates By Exchange Rate API'", has(flat(t.valueTitle), "$1,695.70 + VND 1,234,567 + €20.00") && has(t.valueTitle, "Approximate") && has(t.valueTitle, longEn) && has(t.valueTitle, "Rates By Exchange Rate API") && t.valueTitle === t.subTitle, t.valueTitle);
-  ok("…the refresh button says how old the list is (not the screen)", /^Refresh · updated (just now|\d+ min ago)$/.test(await pop.locator("#loadAccounts").getAttribute("title")), await pop.locator("#loadAccounts").getAttribute("title"));
+  ok("…tooltip: every currency, 'Approximate', the date, 'Rates By Exchange Rate API'", has(flat(t.valueTitle), "$1,695.70 + VND 1,234,567 + €20.00") && has(t.valueTitle, tr("money.approx", { d: longEn })) && has(t.valueTitle, longEn) && has(t.valueTitle, "Rates By Exchange Rate API") && t.valueTitle === t.subTitle, t.valueTitle);
+  ok("…the refresh button says how old the list is (not the screen)", new RegExp(`^${esc(tr("refresh"))} · ${trx("acc.updated", { t: agoRe() }).source}$`).test(await pop.locator("#loadAccounts").getAttribute("title")), await pop.locator("#loadAccounts").getAttribute("title"));
   ok("…exactly one request to the primary source, none to the fallback", b.rateHits.length === 1 && b.rateHits[0] === ER, b.rateHits.join());
   const fx = await pop.evaluate(() => chrome.storage.local.get(["fx", "fxFail"]));
   ok("…the table is kept in chrome.storage.local (USD base, source, date, numbers) and there is no failure mark", fx.fx?.base === "USD" && fx.fx.source === "exchangerate-api" && fx.fx.date === day && fx.fx.rates.VND === FX.VND && typeof fx.fx.fetchedAt === "number" && !fx.fxFail, JSON.stringify(fx).slice(0, 200));
@@ -56,15 +55,15 @@ async function ratesFlows() {
   await pop.click('[data-tab="bms"]');
   ok("the Businesses total is '≈ $1,770' too, with the same muted line", await approx(pop, "#bmsTotal"), JSON.stringify(await totalOf(pop, "#bmsTotal")));
   const bt = await totalOf(pop, "#bmsTotal");
-  ok("…label 'Spend · <date>', same breakdown", new RegExp(`^Spend · ${shortEn}$`).test(bt.label) && bt.sub === t.sub, JSON.stringify(bt));
+  ok("…label 'Spend · <date>', same breakdown", new RegExp(`^${esc(tr("acc.spend"))} · ${shortEn}$`).test(bt.label) && bt.sub === t.sub, JSON.stringify(bt));
   ok("…still one request in all", b.rateHits.length === 1, b.rateHits.join());
-  ok("…the Businesses refresh button carries the age of the business list too (once it is loaded)", await until(pop, () => /^Refresh businesses and spend · updated/.test(document.querySelector("#loadBms").title)), await pop.locator("#loadBms").getAttribute("title"));
+  ok("…the Businesses refresh button carries the age of the business list too (once it is loaded)", await until(pop, (s) => document.querySelector("#loadBms").title.startsWith(s), `${tr("bms.refresh")} · ${tr("acc.updated", { t: "" })}`), await pop.locator("#loadBms").getAttribute("title"));
 
   // a search: the count appears (only when filtered) and the total follows the rows
   await pop.click('[data-tab="accounts"]');
   await pop.fill("#accountFilter", "Alpha");
-  ok("a search shows the count on the right ('2 of 3 found') and the sum of those rows ('≈ $1,721')", await until(pop, () => /2 of 3 found/.test(document.querySelector("#accountsTotal .total-meta")?.textContent ?? "") && /^≈ \$1,721$/.test(document.querySelector("#accountsTotal .total-value").textContent.trim())), JSON.stringify(await totalOf(pop, "#accountsTotal")));
-  ok("…two currencies → the muted line lists both, no '+N'", (await totalOf(pop, "#accountsTotal")).sub === `$1,695.70 + €20.00 · rates ${shortEn} · ExchangeRate-API`, (await totalOf(pop, "#accountsTotal")).sub);
+  ok("a search shows the count on the right ('2 of 3 found') and the sum of those rows ('≈ $1,721')", await until(pop, (found) => (document.querySelector("#accountsTotal .total-meta")?.textContent ?? "").includes(found) && /^≈ \$1,721$/.test(document.querySelector("#accountsTotal .total-value").textContent.trim()), tr("acc.found", { n: 2, all: 3 })), JSON.stringify(await totalOf(pop, "#accountsTotal")));
+  ok("…two currencies → the muted line lists both, no '+N'", (await totalOf(pop, "#accountsTotal")).sub === `$1,695.70 + €20.00 · ${tr("money.rates", { d: shortEn })} · ExchangeRate-API`, (await totalOf(pop, "#accountsTotal")).sub);
   await pop.fill("#accountFilter", "Beta");
   ok("one currency (VND only) → 'VND 1.2M' (a million of an ISO-code currency is short), no '≈', no muted line; the exact amount is its tooltip", await until(pop, () => /^VND\s?1\.2M$/.test(document.querySelector("#accountsTotal .total-value").textContent.trim().replace(/\s/g, " ")) && !document.querySelector("#accountsTotal .total-sub"))
     && flat((await totalOf(pop, "#accountsTotal")).valueTitle) === "VND 1,234,567", JSON.stringify(await totalOf(pop, "#accountsTotal")));
@@ -79,8 +78,7 @@ async function ratesFlows() {
   ok("a table 25 h old is asked for again (one more request), the total stays '≈ $1,770'", (await hitsReach(b, pop3, 2)) && (await approx(pop3)), b.rateHits.join());
   const age = await pop3.evaluate(() => chrome.storage.local.get("fx").then(({ fx }) => Date.now() - fx.fetchedAt));
   ok("…and the saved table is new again", age < 60e3, String(age));
-  noErrs(b);
-  await b.ctx.close();
+  await done(b);
 }
 
 // ---------- the table arrives late ----------
@@ -93,7 +91,7 @@ async function lateFlow() {
   ok("the total is drawn at once as the per-currency sum…", await plain(pop), await text(pop, "#accountsTotal .total-value"));
   ok("…without the muted line", (await totalOf(pop, "#accountsTotal")).sub === null);
   ok("…and turns into '≈ $1,770' when the rates are there", await approx(pop), await text(pop, "#accountsTotal .total-value"));
-  await b.ctx.close();
+  await done(b);
 }
 
 // ---------- the primary fails: the fallback source ----------
@@ -106,10 +104,9 @@ async function fallbackFlows() {
     ok(`${name}: the total is '≈ $1,770' from the fallback`, await approx(pop), await text(pop, "#accountsTotal .total-value"));
     const t = await totalOf(pop, "#accountsTotal");
     ok(`${name}: the primary was tried first, then the fallback, once each`, b.rateHits.join() === [ER, CDN].join(), b.rateHits.join());
-    ok(`${name}: the line names the date but not ExchangeRate-API, the tooltip has no attribution`, t.sub === `$1,695.70 + VND 1.2M +1 more · rates ${shortEn}` && t.link === null && !has(t.valueTitle, "Exchange Rate API") && has(t.valueTitle, longEn), JSON.stringify(t));
+    ok(`${name}: the line names the date but not ExchangeRate-API, the tooltip has no attribution`, t.sub === `$1,695.70 + VND 1.2M ${tr("money.more", { n: 1 })} · ${tr("money.rates", { d: shortEn })}` && t.link === null && !has(t.valueTitle, "Exchange Rate API") && has(t.valueTitle, longEn), JSON.stringify(t));
     ok(`${name}: the saved table says where it came from`, (await pop.evaluate(() => chrome.storage.local.get("fx"))).fx?.source === "currency-api");
-    noErrs(b);
-    await b.ctx.close();
+    await done(b);
   }
 }
 
@@ -120,25 +117,23 @@ async function downFlows() {
     const b = await boot({ fb: adsFb(TOK), graph: graphFor(THREE), rates: answer });
     const pop = await open3(b);
     ok(`${name}: both sources were tried`, (await hitsReach(b, pop, 2)) && b.rateHits.join() === [ER, CDN].join(), b.rateHits.join());
-    await pop.waitForTimeout(400);
+    await until(pop, () => chrome.storage.local.get("fxFail").then((o) => typeof o.fxFail?.at === "number"));       // the failure was noted: the total has been drawn without rates
     const t = await totalOf(pop, "#accountsTotal");
     ok(`${name}: the total stays the per-currency sum (every currency, exact), no '≈', no muted line`, !t.value.includes("≈") && has(t.value, "$1,695.70") && has(t.value, "€20.00") && has(t.value, "VND 1.2M") && t.value.split(" + ").length === 3 && t.sub === null && flat(t.valueTitle) === "$1,695.70 + €20.00 + VND 1,234,567", JSON.stringify(t));
     const st = await pop.evaluate(() => chrome.storage.local.get(["fx", "fxFail"]));
     ok(`${name}: a failure mark is saved (no table)`, !st.fx && typeof st.fxFail?.at === "number", JSON.stringify(st));
-    noErrs(b);
     // another popup within 20 minutes: nothing is sent again
     const pop2 = await popup(b, "accounts");
-    ok(`${name}: a popup opened right after sends nothing (20-minute pause)`, (await rowsAre(pop2, ROW,3)) && (await pop2.waitForTimeout(500), b.rateHits.length === 2), b.rateHits.join());
+    ok(`${name}: a popup opened right after sends nothing (20-minute pause)`, (await rowsAre(pop2, ROW,3)) && (await ratesIdle(pop2), b.rateHits.length === 2), b.rateHits.join());
     ok(`${name}: …and the total is still the plain sum`, !(await text(pop2, "#accountsTotal .total-value")).includes("≈"));
     // twenty minutes later it tries again (a mark 11 minutes old is still inside the pause)
     await pop2.evaluate(() => chrome.storage.local.set({ fxFail: { at: Date.now() - 11 * 60e3 } }));
     const pop2b = await popup(b, "accounts");
-    ok(`${name}: a mark 11 minutes old still holds: nothing is sent`, (await rowsAre(pop2b, ROW,3)) && (await pop2b.waitForTimeout(500), b.rateHits.length === 2), b.rateHits.join());
+    ok(`${name}: a mark 11 minutes old still holds: nothing is sent`, (await rowsAre(pop2b, ROW,3)) && (await ratesIdle(pop2b), b.rateHits.length === 2), b.rateHits.join());
     await pop2b.evaluate(() => chrome.storage.local.set({ fxFail: { at: Date.now() - 21 * 60e3 } }));
     const pop3 = await popup(b, "accounts");
     ok(`${name}: with a mark older than 20 minutes both sources are tried again`, (await rowsAre(pop3, ROW,3)) && (await hitsReach(b, pop3, 4)), b.rateHits.join());
-    noErrs(b);
-    await b.ctx.close();
+    await done(b);
   }
 }
 
@@ -149,12 +144,11 @@ async function oneCurrencyFlow() {
   await adsPage(b);
   const pop = await popup(b, "accounts");
   ok("two USD accounts", await rowsAre(pop, ROW,2));
-  await pop.waitForTimeout(500);
+  await ratesIdle(pop);                                    // any lookup the page started has finished
   const t = await totalOf(pop, "#accountsTotal");
   ok("the total is the exact sum '$1,700' (1 695.70 + 4.30), no '≈', no muted line, no tooltip", t.value === "$1,700" && t.sub === null && !t.valueTitle, JSON.stringify(t));
   ok("no request to any rates source, nothing saved", b.rateHits.length === 0 && !(await pop.evaluate(() => chrome.storage.local.get(["fx", "fxFail"]).then((o) => o.fx || o.fxFail))), b.rateHits.join());
-  noErrs(b);
-  await b.ctx.close();
+  await done(b);
 }
 
 // ---------- Russian ----------
@@ -163,17 +157,16 @@ async function russianFlow() {
   const b = await boot({ fb: adsFb(TOK), graph: graphFor(THREE), rates: ratesOk });
   const pop = await open3(b);
   ok("en: ≈", await approx(pop));
-  await pop.click('[data-lang="ru"]');
+  await useLang(pop, "ru");
   const ru = `${day.slice(8, 10)}.${day.slice(5, 7)}`;
-  ok("ru: '≈ 1 770 $', muted line 'курс <dd.mm>' with the credit, tooltip in Russian", await until(pop, (d) => /^≈ 1\s770\s\$$/.test(document.querySelector("#accountsTotal .total-value").textContent.trim()) && new RegExp(`курс ${d}`).test(document.querySelector("#accountsTotal .total-sub")?.textContent ?? "") && /Примерно/.test(document.querySelector("#accountsTotal .total-value").title), ru), JSON.stringify(await totalOf(pop, "#accountsTotal")));
+  ok("ru: '≈ 1 770 $', muted line 'курс <dd.mm>' with the credit, tooltip in Russian", await until(pop, ([rates, approx]) => /^≈ 1\s770\s\$$/.test(document.querySelector("#accountsTotal .total-value").textContent.trim()) && (document.querySelector("#accountsTotal .total-sub")?.textContent ?? "").includes(rates) && new RegExp(approx).test(document.querySelector("#accountsTotal .total-value").title), [tr("money.rates", { d: ru }), trx("money.approx").source]), JSON.stringify(await totalOf(pop, "#accountsTotal")));
   const t = await totalOf(pop, "#accountsTotal");
-  ok("ru: label 'Спенд · <dd.mm>'", new RegExp(`^Спенд · ${ru}$`).test(t.label), t.label);
-  ok("ru: the muted line", flat(t.sub) === `1 695,70 $ + 1,2 млн VND ещё 1 · курс ${ru} · ExchangeRate-API`, t.sub);
-  ok("ru: the refresh button tooltip", /^Обновить · обновлено /.test(await pop.locator("#loadAccounts").getAttribute("title")), await pop.locator("#loadAccounts").getAttribute("title"));
-  await pop.click('[data-lang="en"]');
+  ok("ru: label 'Спенд · <dd.mm>'", new RegExp(`^${esc(tr("acc.spend"))} · ${ru}$`).test(t.label), t.label);
+  ok("ru: the muted line", flat(t.sub) === `1 695,70 $ + 1,2 млн VND ${tr("money.more", { n: 1 })} · ${tr("money.rates", { d: ru })} · ExchangeRate-API`, t.sub);
+  ok("ru: the refresh button tooltip", (await pop.locator("#loadAccounts").getAttribute("title")).startsWith(`${tr("refresh")} · ${tr("acc.updated", { t: "" })}`), await pop.locator("#loadAccounts").getAttribute("title"));
+  await useLang(pop, "en");
   ok("back to en", await approx(pop) && (await text(pop, "#accountsTotal .total-value")) === "≈ $1,770");
-  noErrs(b);
-  await b.ctx.close();
+  await done(b);
 }
 
 // ---------- rates are asked for only while the total is on screen ----------
@@ -187,14 +180,13 @@ async function hiddenFlow() {
   await pop.evaluate(() => { localStorage.setItem("tab", "token"); return chrome.storage.local.remove(["fx", "fxFail"]); });
   await pop.close();
   pop = await popup(b);
-  await pop.waitForTimeout(900);
+  await rowsAre(pop, ROW, 3); await ratesIdle(pop);        // the cached lists are drawn (hidden) and no lookup is under way
   ok("opened on the Token tab: the cached lists are drawn, nothing is requested", b.rateHits.length === 1 && (await pop.locator("#tab-token.active").count()) === 1, `${b.rateHits.length}`);
   await pop.click('[data-tab="bms"]');
   ok("showing the Businesses tab asks once (its total is on screen now)", await approx(pop, "#bmsTotal") && b.rateHits.length === 2, b.rateHits.join());
   await pop.click('[data-tab="accounts"]');
   ok("the Ad accounts tab uses the table that is there: no third request", (await approx(pop)) && b.rateHits.length === 2, b.rateHits.join());
-  noErrs(b);
-  await b.ctx.close();
+  await done(b);
 }
 
 export const flows = { moneyRates: ratesFlows, moneyLate: lateFlow, moneyFallback: fallbackFlows, moneyDown: downFlows, moneyOne: oneCurrencyFlow, moneyRu: russianFlow, moneyHidden: hiddenFlow };

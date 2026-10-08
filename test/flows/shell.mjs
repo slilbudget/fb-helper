@@ -1,5 +1,5 @@
 // The popup shell: tabs (restore, height, keyboard) and the RU / EN switch.
-import { TOK, ok, has, boot, adsPage, popup, text, until, rowsAre, adsFb, boxWait, accountsJson, ROW, captureClipboard } from "../harness.mjs";
+import { TOK, ok, has, boot, adsPage, popup, text, until, rowsAre, adsFb, boxWait, accountsJson, ROW, captureClipboard, done, tr, trx, useLang , golosLoaded } from "../harness.mjs";
 
 async function tabFlows() {
   console.log("\n# popup shell: tabs");
@@ -17,12 +17,12 @@ async function tabFlows() {
   const order = await pop.evaluate(() => ({ tabs: [...document.querySelectorAll(".tab")].map((n) => n.dataset.tab), panels: [...document.querySelectorAll("main > .panel")].map((n) => n.id),
     labels: [...document.querySelectorAll(".tab")].map((n) => n.textContent.trim()) }));
   ok("tab order: Token · Cookies · Businesses · Accounts · Pages (buttons and panels)", order.tabs.join() === "token,cookies,bms,accounts,pages" && order.panels.join() === "tab-token,tab-cookies,tab-bms,tab-accounts,tab-pages"
-    && order.labels.join() === "Token,Cookies,Businesses,Accounts,Pages", JSON.stringify(order));
+    && order.labels.join() === ["tab.token", "tab.cookies", "tab.bms", "tab.accounts", "tab.pages"].map((k) => tr(k)).join(), JSON.stringify(order));
 
   // structure: the brand is the page's h1, the strip is a labelled tablist with one tab stop
   const struct = await pop.evaluate(() => ({ name: chrome.runtime.getManifest().name, h1: document.querySelector("h1.brand")?.textContent.trim(), h1s: document.querySelectorAll("h1").length, list: document.querySelector('[role="tablist"]')?.getAttribute("aria-label"),
     panelsLabelled: [...document.querySelectorAll('[role="tabpanel"]')].every((p) => document.getElementById(p.getAttribute("aria-labelledby"))) }));
-  ok("structure: the product's name ('FB Helper', 'Ads Helper' in the store build) is the one h1; the tab strip is a tablist named 'Sections'; every panel is labelled by its tab", struct.h1 === struct.name && struct.h1s === 1 && struct.list === "Sections" && struct.panelsLabelled, JSON.stringify(struct));
+  ok("structure: the product's name ('FB Helper', 'Ads Helper' in the store build) is the one h1; the tab strip is a tablist named 'Sections'; every panel is labelled by its tab", struct.h1 === struct.name && struct.h1s === 1 && struct.list === tr("tabs.aria") && struct.panelsLabelled, JSON.stringify(struct));
   ok("exactly one tab stop in the strip (roving tabindex): the open tab", s.tabbable === "token", s.tabbable);
 
   // keyboard (WAI-ARIA tabs, MANUAL activation): arrows / Home / End only move focus (a tab that loads a list must not send requests as the arrow passes it);
@@ -64,8 +64,7 @@ async function tabFlows() {
   s = await look(pop);
   ok("a saved tab nobody knows falls back to Token", s.tab === "token" && s.h >= 600, JSON.stringify(s));
   ok("switching and reopening sent no further request", reads(b) === 1, String(reads(b)));
-  ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
-  await b.ctx.close();
+  await done(b);
 }
 
 // A screen reader announces a change of a live region, not a region that appears together with its text: both regions are in the page from the start.
@@ -81,22 +80,21 @@ async function liveFlows() {
   await captureClipboard(pop);
   await rowsAre(pop, ROW, 1);
   await pop.click(`${ROW} .lrow-head .lrow-id`);
-  ok("'ID copied' goes to the #live region that was already there (no new region is created, no toast)", await until(pop, () => document.getElementById("live").textContent === "ID copied") && (await pop.evaluate(() => document.querySelectorAll("[aria-live]").length)) === 2
+  ok("'ID copied' goes to the #live region that was already there (no new region is created, no toast)", await until(pop, (s) => document.getElementById("live").textContent === s, tr("acc.idCopied")) && (await pop.evaluate(() => document.querySelectorAll("[aria-live]").length)) === 2
     && !(await pop.evaluate(() => document.querySelector("#toast").classList.contains("show"))));
   // the toast stays longer for a long text: 60 ms a character, 2.6 s at least
-  const stay = await pop.evaluate(async () => {
+  const stay = await pop.evaluate(async (copied) => {
     const { toast } = await import(chrome.runtime.getURL("js/dom.js"));
     const el = document.querySelector("#toast"), out = {};
-    for (const [k, msg] of [["short", "Copied"], ["long", "x".repeat(100)]]) {
+    for (const [k, msg] of [["short", copied], ["long", "x".repeat(100)]]) {
       toast(msg); const t0 = performance.now();
       while (el.classList.contains("show") && performance.now() - t0 < 9000) await new Promise((r) => setTimeout(r, 50));
       out[k] = Math.round(performance.now() - t0);
     }
     return out;
-  });
+  }, tr("copied"));
   ok("a short toast stays ~2.6 s, a 100-character one ~6 s", stay.short >= 2500 && stay.short < 3300 && stay.long >= 5900 && stay.long < 7000, JSON.stringify(stay));
-  ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
-  await b.ctx.close();
+  await done(b);
 }
 
 async function langFlows() {
@@ -108,29 +106,54 @@ async function langFlows() {
   const b = await boot({ fb: adsFb(TOK), graph: () => ({ body: two }) });
   await adsPage(b);
   const pop = await popup(b);
-  ok("English: tab names and the token card", (await text(pop, '[data-tab="token"]')) === "Token" && has(await text(pop, "#kindCard"), "The main ads token"), await text(pop, "#kindCard"));
+  ok("English: tab names and the token card", (await text(pop, '[data-tab="token"]')) === tr("tab.token") && has(await text(pop, "#kindCard"), tr("kind.EAAB")), await text(pop, "#kindCard"));
   await pop.click('[data-tab="accounts"]');
-  ok("two accounts, two statuses, two chips", (await rowsAre(pop, ROW, 2)) && (await pop.locator(".chip").count()) === 2);
-  await pop.click('.chip:has-text("Disabled")');
+  ok("two accounts, two statuses, two chips", (await rowsAre(pop, ROW, 2)) && (await pop.locator("#statusChips .chip").count()) === 2);
+  await pop.click(`#statusChips .chip:has-text("${tr("status.2")}")`);
   ok("filtering by a status leaves one row", await rowsAre(pop, ROW, 1));
   await pop.evaluate(() => chrome.storage.session.set({ cooldownUntil: Date.now() + 5 * 60000 }));   // as another window would
-  ok("the throttle pause reaches the header pill from storage", await until(pop, () => /^Paused \d+ min$/.test(document.querySelector("#usage").textContent.trim())), await text(pop, "#usage"));
+  ok("the throttle pause reaches the header pill from storage", await until(pop, (src) => new RegExp(src).test(document.querySelector("#usage").textContent.trim()), trx("usage.pause", { n: /\d+/ }, { exact: true }).source), await text(pop, "#usage"));
 
-  await pop.click('[data-lang="ru"]');
-  ok("RU: the status filter stays (it holds a status, not a word), the chips are Russian", (await rowsAre(pop, ROW, 1)) && has(await text(pop, "#statusChips"), "Заблокирован"), await text(pop, "#statusChips"));
-  ok("RU: period buttons, total line, pause pill", (await text(pop, "#periodSeg .seg-btn.active")) === "Сегодня" && has(await text(pop, "#accountsTotal .total-label"), "Спенд") && /^Пауза \d+ мин$/.test(await text(pop, "#usage")),
+  await useLang(pop, "ru");
+  ok("RU: the status filter stays (it holds a status, not a word), the chips are Russian", (await rowsAre(pop, ROW, 1)) && has(await text(pop, "#statusChips"), tr("status.2")), await text(pop, "#statusChips"));
+  ok("RU: period buttons, total line, pause pill", (await text(pop, "#periodSeg .seg-btn.active")) === tr("period.today") && has(await text(pop, "#accountsTotal .total-label"), tr("acc.spend")) && trx("usage.pause", { n: /\d+/ }, { exact: true }).test(await text(pop, "#usage")),
     `${await text(pop, "#periodSeg .seg-btn.active")} | ${await text(pop, "#accountsTotal .total-label")} | ${await text(pop, "#usage")}`);
   ok("RU: tab names, token card, cookie status",
-    (await text(pop, '[data-tab="token"]')) === "Токен" && (await text(pop, '[data-tab="accounts"]')) === "Кабинеты" && (await text(pop, '[data-tab="bms"]')) === "Бизнесы" && has(await text(pop, "#kindCard"), "Основной для рекламы") && has(await text(pop, "#cookieStatus"), "Вход выполнен"),
+    (await text(pop, '[data-tab="token"]')) === tr("tab.token") && (await text(pop, '[data-tab="accounts"]')) === tr("tab.accounts") && (await text(pop, '[data-tab="bms"]')) === tr("tab.bms") && has(await text(pop, "#kindCard"), tr("kind.EAAB")) && has(await text(pop, "#cookieStatus"), tr("ck.loggedIn")),
     `${await text(pop, '[data-tab="token"]')} | ${await text(pop, "#kindCard")} | ${await text(pop, "#cookieStatus")}`);
   ok("RU: the token is read again from the FB tab (still there)", await boxWait(pop, /^EAAB/));
   ok("RU is remembered", (await pop.evaluate(() => chrome.storage.local.get("lang"))).lang === "ru");
 
-  await pop.click('[data-lang="en"]');
-  ok("back to English", await until(pop, () => document.querySelector('[data-tab="token"]').textContent.trim() === "Token" && /^Paused \d+ min$/.test(document.querySelector("#usage").textContent.trim())
-    && /Disabled/.test(document.querySelector("#statusChips").textContent)));
-  ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
-  await b.ctx.close();
+  await useLang(pop, "en");
+  ok("back to English", await until(pop, ([tab, src, chip]) => document.querySelector('[data-tab="token"]').textContent.trim() === tab && new RegExp(src).test(document.querySelector("#usage").textContent.trim())
+    && document.querySelector("#statusChips").textContent.includes(chip), [tr("tab.token"), trx("usage.pause", { n: /\d+/ }, { exact: true }).source, tr("status.2")]));
+  await done(b);
 }
 
-export const flows = { tabs: tabFlows, live: liveFlows, lang: langFlows };
+// Every width and height the layout checks measure is Golos Text's: the popup carries its own font (css/fonts.css, three woff2 files, no system font is asked for
+// by name). A browser that had not loaded it would measure a fallback and every layout check would be about something else, on a Linux runner as much as on a Mac.
+async function fontFlows() {
+  console.log("\n# popup shell: the bundled font");
+  const b = await boot({ fb: adsFb(TOK), graph: () => ({ body: accountsJson }) });
+  await adsPage(b);
+  const pop = await popup(b, "token");
+  const faces = () => pop.evaluate(async () => { await document.fonts.ready; return [...document.fonts].map((f) => ({ family: f.family.replace(/["']/g, ""), status: f.status, range: f.unicodeRange })); });
+  let list = await faces();
+  const golos = list.filter((f) => f.family === "Golos Text");
+  const range = { cyrillic: /U\+400/, latinExt: /U\+100-2BA/, latin: /U\+0-FF\b/ };
+  ok("three faces of Golos Text are declared: Cyrillic, Latin extended, Latin", golos.length === 3 && golos.some((f) => range.cyrillic.test(f.range)) && golos.some((f) => range.latinExt.test(f.range)) && golos.some((f) => range.latin.test(f.range)), JSON.stringify(golos));
+  ok("the Latin face is loaded for the English popup", golos.some((f) => range.latin.test(f.range) && f.status === "loaded"), JSON.stringify(golos));
+  ok("the text of the page is set in it first (a missing face would fall back to the system font and every pixel check would measure that)", await pop.evaluate(() => getComputedStyle(document.body).fontFamily.startsWith('"Golos Text"') && getComputedStyle(document.querySelector(".tab")).fontFamily.startsWith('"Golos Text"')));
+  ok("the faces come from the extension's own files, not from the network or a system font", await pop.evaluate(() => {
+    const rules = [...document.styleSheets].flatMap((sh) => [...sh.cssRules]).filter((r) => r instanceof CSSFontFaceRule);
+    return rules.length === 3 && rules.every((r) => /^url\("\.\.\/fonts\/golostext-[a-z-]+\.woff2"\) format\("woff2"\)$/.test(r.style.getPropertyValue("src")));
+  }));
+  ok("the browser answers 'yes' for the Latin text of the popup", await pop.evaluate(() => document.fonts.check('14px "Golos Text"', "Account 123")));
+  await useLang(pop, "ru");
+  list = await faces();
+  ok("switching to Russian loads the Cyrillic face, and the browser answers 'yes' for the Russian text", list.some((f) => f.family === "Golos Text" && range.cyrillic.test(f.range) && f.status === "loaded") && await pop.evaluate(() => document.fonts.check('14px "Golos Text"', "Кабинеты")), JSON.stringify(list.filter((f) => f.family === "Golos Text")));
+  ok("…and the helper of the harness agrees (golosLoaded)", await golosLoaded(pop));
+  await done(b);
+}
+
+export const flows = { tabs: tabFlows, live: liveFlows, lang: langFlows, fonts: fontFlows };
