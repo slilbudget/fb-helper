@@ -87,7 +87,8 @@ body.tall { min-height: 600px; }
 .lang-btn:hover, .lang-btn:focus-visible, .lang-btn.active { color: var(--color-text-primary); }
 .lang-btn.active { cursor: default; }
 .tabs {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--spacing-1);
+  /* One row, equal widths, however many tabs there are (5 at 2.5.0: ~100px each at 560px, enough for "Страницы"). */
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: var(--spacing-1);
   margin: 0 var(--spacing-4); padding: var(--spacing-1);   /* 4px grey rim around the active pill */
   background: var(--color-background-muted); border-radius: calc(var(--radius-inner) + var(--spacing-1));   /* concentric with the pill inside */
 }
@@ -95,6 +96,7 @@ body.tall { min-height: 600px; }
   appearance: none; border: 0; background: transparent; color: var(--color-text-secondary);
   height: 26px; border-radius: var(--radius-inner);   /* outer height stays 34px */
   font: var(--text-md) var(--font); cursor: pointer;
+  min-width: 0; padding: 0 var(--spacing-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;   /* a narrow window clips a label, never wraps the bar */
 }
 .tab:hover, .tab:focus-visible { color: var(--color-text-primary); }
 .tab.active { background: var(--color-background-surface); color: var(--color-text-primary); }

@@ -100,10 +100,35 @@ on("session", (ch) => {
 // and keep only the display string of the funding source.
 // _floor: what the insights already prove was spent (today + last 30 days), kept for the "All time" figure.
 const spendOfRow = (x) => Number(x?.data?.[0]?.spend);
-const slim = (a) => ({ ...a, _noInsights: state.skip.has("insights") || undefined,
-  _floor: state.skip.has("insights") ? undefined : spendFloor(spendOfRow(a.p_today), spendOfRow(a.p_month)),
-  _noPixels: state.skip.has("adspixels") || undefined,
+const slimWith = (skip) => (a) => ({ ...a, _noInsights: skip.has("insights") || undefined,
+  _floor: skip.has("insights") ? undefined : spendFloor(spendOfRow(a.p_today), spendOfRow(a.p_month)),
+  _noPixels: skip.has("adspixels") || undefined,
   funding_source_details: a.funding_source_details ? { display_string: a.funding_source_details.display_string } : undefined });
+const slim = (a) => slimWith(state.skip)(a);
+
+// me/adaccounts lists only the accounts assigned to the person. A BM admin also reads every account of the BM
+// (owned + client) without being assigned to it (live-checked 2026-10-08: 20 BM accounts, 7 of them assigned), so the
+// list adds those. Best effort: a BM or an edge this token can't read is skipped, the rest of the list stays.
+// Own skip set per edge read: a field refused on an unassigned account must not drop it for the assigned list too.
+const BM_EDGES = ["owned_ad_accounts", "client_ad_accounts"];
+async function readBmAccounts(have) {
+  let bms;
+  try { bms = await graph("me/businesses", { fields: "id,name", limit: "100" }); }
+  catch (e) { if (e instanceof Stale) throw e; return { rows: [], truncated: false }; }
+  const rows = [];
+  let truncated = false;
+  for (const bm of Array.isArray(bms?.data) ? bms.data.filter((b) => /^\d{1,25}$/.test(String(b?.id ?? ""))) : []) {
+    for (const edge of BM_EDGES) {
+      const skip = new Set(state.skip);
+      try {
+        const r = await readPaged(`${bm.id}/${edge}`, { base: BASE_FIELDS, optional: OPTIONAL_FIELDS, skip, map: slimWith(skip) });
+        for (const a of r.rows) if (a.account_id && !have.has(a.account_id)) { have.add(a.account_id); rows.push(a); }
+        truncated ||= r.truncated;
+      } catch (e) { if (e instanceof Stale) throw e; }
+    }
+  }
+  return { rows, truncated };
+}
 
 // auto: started by opening the Accounts tab, not by a click. Same limits as a click, but silent where a click
 // would only complain (no token, dead session, the one-minute slot): the empty list explains itself.
@@ -130,8 +155,11 @@ async function loadAccountsNow({ auto = false } = {}) {
   state.accLoading = true; renderAccounts();
   try {
     // skip as a function: a token change swaps state.skip while the pages are still coming in.
-    const { rows, truncated } = await readPaged("me/adaccounts", { base: BASE_FIELDS, optional: OPTIONAL_FIELDS, skip: () => state.skip, map: slim });
+    const mine = await readPaged("me/adaccounts", { base: BASE_FIELDS, optional: OPTIONAL_FIELDS, skip: () => state.skip, map: slim });
     if (gen !== state.gen) return;
+    const viaBm = await readBmAccounts(new Set(mine.rows.map((a) => a.account_id)));
+    if (gen !== state.gen) return;
+    const rows = [...mine.rows, ...viaBm.rows], truncated = mine.truncated || viaBm.truncated;
     const owner = await fbUser();
     if (gen !== state.gen) return;
     // Another user's list: their ads and open rows don't belong to this one.

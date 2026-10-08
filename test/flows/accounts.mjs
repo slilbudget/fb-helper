@@ -1,6 +1,9 @@
 // Ad accounts tab: API version, the account cache per FB user, dead sessions, ads, automatic load, all-time spend, layout.
 import { GRAPH, TOK, TOK2, ok, has, boot, adsPage, popup, text, until, rowsAre, resetLocks, clickToast, accountsJson, isAds, adsFb, boxWait, GONE, loadAccounts, openAds, stored } from "../harness.mjs";
 
+// Every account-list load also asks /me/businesses (BM accounts the person is not assigned to): counted apart.
+const accHits = (b) => b.hits.filter((h) => !h.startsWith("/me/businesses"));
+
 // ---------- API version ----------
 async function versionFlows() {
   console.log("\n# api version");
@@ -13,7 +16,7 @@ async function versionFlows() {
   const pop = await popup(b, "accounts");
   ok("no request on open", b.hits.length === 0, b.hits.join());
   ok("rows rendered", await loadAccounts(pop, 1));
-  ok("#2635 -> retried on v27.0", b.hits.length === 2, b.hits.join());
+  ok("#2635 -> retried on v27.0", accHits(b).length === 2, b.hits.join());
   const v = await until(pop, () => chrome.storage.local.get("apiVersion").then((o) => o.apiVersion === "v28.0")) && "v28.0";
   ok("header names v27.0 first and v28.0 second -> v28.0 is stored (newest, not first)", v === "v28.0", String(v));
   await b.ctx.close();
@@ -79,14 +82,14 @@ async function sessionFlows() {
   await pop.click('[data-tab="accounts"]');
   const box2 = await text(pop, "#tokenBox");
   const loaded2 = await loadAccounts(pop, 1);
-  ok("new token works again", loaded2 && b.hits.length === 2, `${b.hits.length} box=${box2.slice(0, 6)} toast=${await text(pop, "#toast")}`);
+  ok("new token works again", loaded2 && accHits(b).length === 2, `${accHits(b).length} box=${box2.slice(0, 6)} toast=${await text(pop, "#toast")}`);
   // back to the old dead token (A → B → A): its mark is still there, nothing is sent
   b.graph = () => dead(190, 463);
   tok = TOK; await fb.reload();
   await pop.click('[data-tab="token"]'); await pop.click("#grabToken"); await boxWait(pop, /^EAABx/);
   await pop.click('[data-tab="accounts"]'); await resetLocks(pop);
   const back = await clickToast(pop, "#loadAccounts");
-  ok("A → B → A: the first token is still known dead, no request", b.hits.length === 2 && has(back, "no longer valid"), `${b.hits.length} ${back}`);
+  ok("A → B → A: the first token is still known dead, no request", accHits(b).length === 2 && has(back, "no longer valid"), `${accHits(b).length} ${back}`);
   ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
   await b.ctx.close();
 
@@ -241,7 +244,7 @@ async function adsFlows() {
   b = await boot({ fb: adsFb(TOK), graph: (u) => !isAds(u) ? { body: accountsJson } : isStats(u) ? { body: { data: liveRows } } : { body: { data: liveAds } } });
   pop = await open(b);
   await until(pop, () => /metrics updated/.test(document.querySelector(".ads-sum")?.textContent || ""));
-  const accReads = () => b.hits.filter((h) => !h.includes("/ads?")).length;
+  const accReads = () => accHits(b).filter((h) => !h.includes("/ads?")).length;
   const [l0, s0, a0] = [listCalls(), statCalls(), accReads()];
   await resetLocks(pop); await pop.click("#loadAccounts");
   await pop.waitForTimeout(900);
@@ -574,4 +577,26 @@ async function slotFlows() {
   await b.ctx.close();
 }
 
-export const flows = { version: versionFlows, cache: cacheFlows, session: sessionFlows, ads: adsFlows, auto: autoFlows, alltime: allTimeFlows, layout: layoutFlows, stale: staleFlows, fields: fieldsFlows, paging: pagingFlows, slots: slotFlows };
+// ---------- accounts of the person's BMs that are not assigned to them ----------
+async function bmFlows() {
+  console.log("\n# accounts: BM accounts");
+  const acc = (id, bm) => ({ account_id: id, name: `Acc ${id}`, account_status: 1, currency: "USD", timezone_name: "UTC", amount_spent: "100", business: { id: bm, name: `BM ${bm}` } });
+  const b = await boot({ fb: adsFb(TOK), graph: (u) => {
+    const p = u.pathname.replace(/^\/v[\d.]+\//, "/");
+    if (p === "/me/adaccounts") return { body: { data: [acc("111", "900")] } };
+    if (p === "/me/businesses") return { body: { data: [{ id: "900", name: "BM 900" }, { id: "901", name: "BM 901" }] } };
+    if (p === "/900/owned_ad_accounts") return { body: { data: [acc("111", "900"), acc("222", "900")] } };   // 111 is assigned: listed once
+    if (p === "/900/client_ad_accounts") return { body: { data: [acc("333", "777")] } };
+    if (p === "/901/owned_ad_accounts") return { status: 400, body: { error: { code: 200, message: "(#200) Requires business_management permission" } } };
+    return { body: { data: [] } };
+  } });
+  await adsPage(b);
+  const pop = await popup(b, "accounts");
+  ok("assigned + owned + client accounts of the BMs, each once", await rowsAre(pop, ".acc", 3), await text(pop, "#accountsList"));
+  ok("…a BM edge the token can't read is skipped, the rest of the list stays", b.hits.some((h) => h.startsWith("/901/owned_ad_accounts")) && b.hits.some((h) => h.startsWith("/901/client_ad_accounts")), b.hits.join(" | "));
+  ok("…the BM accounts carry the same fields as the assigned ones", has(b.hits.find((h) => h.startsWith("/900/owned_ad_accounts")) || "", "adtrust_dsl"));
+  ok("no console errors", b.errs.length === 0, b.errs.join(" | "));
+  await b.ctx.close();
+}
+
+export const flows = { version: versionFlows, cache: cacheFlows, session: sessionFlows, ads: adsFlows, auto: autoFlows, alltime: allTimeFlows, layout: layoutFlows, stale: staleFlows, fields: fieldsFlows, paging: pagingFlows, slots: slotFlows, bm: bmFlows };
