@@ -20,9 +20,9 @@ async function tabFlows() {
     && order.labels.join() === "Token,Cookies,Businesses,Accounts,Pages", JSON.stringify(order));
 
   // structure: the brand is the page's h1, the strip is a labelled tablist with one tab stop
-  const struct = await pop.evaluate(() => ({ h1: document.querySelector("h1.brand")?.textContent.trim(), h1s: document.querySelectorAll("h1").length, list: document.querySelector('[role="tablist"]')?.getAttribute("aria-label"),
+  const struct = await pop.evaluate(() => ({ name: chrome.runtime.getManifest().name, h1: document.querySelector("h1.brand")?.textContent.trim(), h1s: document.querySelectorAll("h1").length, list: document.querySelector('[role="tablist"]')?.getAttribute("aria-label"),
     panelsLabelled: [...document.querySelectorAll('[role="tabpanel"]')].every((p) => document.getElementById(p.getAttribute("aria-labelledby"))) }));
-  ok("structure: 'FB Helper' is the one h1; the tab strip is a tablist named 'Sections'; every panel is labelled by its tab", struct.h1 === "FB Helper" && struct.h1s === 1 && struct.list === "Sections" && struct.panelsLabelled, JSON.stringify(struct));
+  ok("structure: the product's name ('FB Helper', 'Ads Helper' in the store build) is the one h1; the tab strip is a tablist named 'Sections'; every panel is labelled by its tab", struct.h1 === struct.name && struct.h1s === 1 && struct.list === "Sections" && struct.panelsLabelled, JSON.stringify(struct));
   ok("exactly one tab stop in the strip (roving tabindex): the open tab", s.tabbable === "token", s.tabbable);
 
   // keyboard (WAI-ARIA tabs, MANUAL activation): arrows / Home / End only move focus (a tab that loads a list must not send requests as the arrow passes it);
