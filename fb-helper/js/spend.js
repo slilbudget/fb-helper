@@ -4,6 +4,7 @@
 
 import { major, sameDay, shortDate, fmt } from "./format.js";
 import { lifetimeSpend, insightRow } from "./pure.js";
+import { usdEquivalent } from "./money-core.js";
 
 // Spend periods. Meta's last_7d / last_30d end yesterday (today excluded). "all" = Meta's amount_spent, raised to 30 days + today if that is more.
 // preset = Graph's date_preset; alias = the field alias its numbers come back under ("all" has neither).
@@ -70,3 +71,26 @@ export function mergeUp(parts) {
 }
 // "$12.40 + €5.00" ("" when every spend was zero).
 export const totalsText = (totals) => Object.entries(totals).map(([cur, v]) => fmt(v, cur)).join(" + ");
+
+// ---------- grouping and ordering (one way for every tab) ----------
+// Accounts by the business that owns them (a.business.id): [{ id, name, accounts }], in first-seen order. Accounts without a
+// business form the group with id null. The Ad accounts tab draws these as its group headers; the Businesses tab builds its
+// rows from them, so a business shows the same accounts and the same subtotal on both tabs.
+export function groupByBusiness(accounts) {
+  const groups = new Map();
+  for (const a of accounts || []) {
+    const raw = a?.business?.id;
+    const id = raw === undefined || raw === null || raw === "" ? null : String(raw);
+    let g = groups.get(id);
+    if (!g) groups.set(id, g = { id, name: id ? String(a.business.name ?? "") : "", accounts: [] });
+    else if (id && !g.name && a.business.name) g.name = String(a.business.name);
+    g.accounts.push(a);
+  }
+  return [...groups.values()];
+}
+// Order key of an addUp / mergeUp result across currencies: its USD value when every currency has a rate (r = rates() table),
+// else the plain sum (right whenever the compared amounts share a currency). -1 = nothing known, sorts last.
+export function sortKey(part, r) {
+  if (!part || part.sort < 0) return -1;
+  return usdEquivalent(part.totals, r) ?? part.sort;
+}

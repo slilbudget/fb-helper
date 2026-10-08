@@ -61,3 +61,15 @@ test("mergeUp: the total of several sums; totalsText joins currencies with ' + '
   assert.equal(totalsText(mergeUp([a, b, c]).totals), "$16.00 + €4.00");
   assert.equal(totalsText({}), "");
 });
+
+import { groupByBusiness, sortKey } from "../fb-helper/js/spend.js";
+test("groupByBusiness: by owner id, first-seen order, no-business group has id null", () => {
+  const g = groupByBusiness([{ account_id: "1", business: { id: 9, name: "B" } }, { account_id: "2" }, { account_id: "3", business: { id: "9", name: "" } }, { account_id: "4", business: { id: "", name: "x" } }]);
+  assert.deepEqual(g.map((x) => [x.id, x.name, x.accounts.map((a) => a.account_id)]), [["9", "B", ["1", "3"]], [null, "", ["2", "4"]]]);
+});
+test("sortKey: USD value with rates, plain sum without, -1 when unknown", () => {
+  const r = { rates: { EUR: 0.5, VND: 25000 } };
+  assert.equal(sortKey({ totals: { EUR: 10, VND: 250000 }, sort: 250010 }, r), 30);
+  assert.equal(sortKey({ totals: { EUR: 10 }, sort: 10 }, null), 10);
+  assert.equal(sortKey({ totals: {}, sort: -1 }, r), -1);
+});
