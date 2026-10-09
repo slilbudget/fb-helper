@@ -105,9 +105,8 @@ a.lrow-fix:focus-visible { outline-offset: -2px; border-radius: 4px; }          
 .lrow-fix.warn { --act-fg: var(--color-warning); }
 .lrow-more { position: relative; z-index: 1; margin-inline-start: 4px; color: var(--color-text-secondary); }
 
-/* line 2, first: the ID, muted. Its copy icon takes no room on the line: it sits in the indent under the chevron / picture, left of the digits,
-   and shows on hover / focus only (and as the ✓ after a copy), so the status follows the ID with the normal "·" gap. The whole button is the
-   24 px hit area. */
+/* line 2, first: the ID, muted, and its copy icon right after the digits: always there, in the same place (user decision 2026-10-10: it never
+   appears or disappears); a ✓ for a moment after a copy. The whole button is the 24 px hit area. */
 .lrow-id {
   appearance: none; border: 0; background: none; cursor: pointer; position: relative; z-index: 1;
   display: inline-flex; align-items: center; min-width: 0; padding: 5px 4px; margin: -5px -4px;
@@ -115,8 +114,8 @@ a.lrow-fix:focus-visible { outline-offset: -2px; border-radius: 4px; }          
 }
 .lrow-idit.cut { flex: 0 1 auto; }                           /* row.js fitSubs: the last to give way, only when the status and the context are gone and the fix still does not fit */
 .lrow-idtext { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.lrow-id .i { --size-icon: 14px; opacity: 0; position: absolute; inset-inline-end: calc(100% + 1px); }
-.lrow-head:hover .lrow-id .i, .lrow-id:focus-visible .i, .lrow-id .i-tick { opacity: 1; }
+.lrow-id .i { --size-icon: 13px; margin-inline-start: 4px; color: var(--color-icon); }
+.lrow-id:hover .i, .lrow-id:focus-visible .i { color: currentColor; }
 .lrow-id:hover, .lrow-id:focus-visible { color: var(--color-text-primary); }
 .lrow-id:focus-visible { outline-offset: -1px; border-radius: 3px; }
 

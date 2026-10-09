@@ -29,8 +29,8 @@ export const STRINGS = {
     "bms.accsPartial": "Список кабинетов загружен не полностью — их может быть больше",
     "bms.unread": "Не удалось прочитать кабинеты этого бизнеса — список может быть неполным",
     // the expanded row
-    "bms.kv.accounts": "Кабинеты", "bms.kv.verification": "Верификация", "bms.activeWord": ["активен", "активны", "активны"],
-    "bms.show": "Показать кабинеты →", "bms.showTitle": "Открыть вкладку «Кабинеты» с фильтром по этому бизнесу (список загрузится сам)",
+    "bms.activeWord": ["активен", "активны", "активны"],
+    "bms.show": "Кабинеты →", "bms.showTitle": "Открыть вкладку «Кабинеты» с фильтром по этому бизнесу (список загрузится сам)",
     "bms.ver.verified": "Пройдена", "bms.ver.not_verified": "Не пройдена", "bms.ver.pending": "На проверке", "bms.ver.pending_need_more_info": "Нужны данные",
     "bms.ver.pending_submission": "Не отправлена", "bms.ver.ineligible": "Недоступна", "bms.ver.failed": "Не удалась", "bms.ver.rejected": "Отклонена",
     "bms.ver.revoked": "Отозвана", "bms.ver.expired": "Истекла",
@@ -64,8 +64,8 @@ export const STRINGS = {
     "bms.accsPartial": "The ad account list is not complete — there may be more",
     "bms.unread": "Couldn't read the ad accounts of this business — the list may be incomplete",
     // the expanded row
-    "bms.kv.accounts": "Ad accounts", "bms.kv.verification": "Verification", "bms.activeWord": ["active", "active"],
-    "bms.show": "Show ad accounts →", "bms.showTitle": "Open the Accounts tab filtered by this business (the list loads by itself)",
+    "bms.activeWord": ["active", "active"],
+    "bms.show": "Ad accounts →", "bms.showTitle": "Open the Accounts tab filtered by this business (the list loads by itself)",
     "bms.ver.verified": "Verified", "bms.ver.not_verified": "Not verified", "bms.ver.pending": "In review", "bms.ver.pending_need_more_info": "More info needed",
     "bms.ver.pending_submission": "Not submitted", "bms.ver.ineligible": "Not eligible", "bms.ver.failed": "Failed", "bms.ver.rejected": "Rejected",
     "bms.ver.revoked": "Revoked", "bms.ver.expired": "Expired",

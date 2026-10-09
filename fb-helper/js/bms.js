@@ -156,10 +156,16 @@ const verLabel = (s) => (has(`bms.ver.${s}`) ? t(`bms.ver.${s}`) : String(s).rep
 // ellipsis (bms.css gives it the room the problem word and its fix must keep). Nothing before the Ad accounts list is read, nothing for a
 // business that has none (its status says so). "3+" when that list stopped at its page limit.
 function contextOf(r) {
-  const c = r.counts;
+  // "1 active · 2 disabled": the split says the total too, so the total is not written (user decision 2026-10-10). Zeros are left out; a business
+  // whose accounts are neither (closed, unsettled) says how many it has. "+" = the list was cut, there may be more.
+  const c = r.counts, plus = r.partial ? "+" : "";
   if (!state.fetchedAt || !c.total) return [];
-  return [el("span", { class: "lrow-ctx", title: r.partial ? t("bms.accsPartial") : null }, `${c.total}${r.partial ? "+" : ""} ${tnPlus(c.total, "bms.accCount", r.partial)}`,
-    c.disabled ? [el("span", { class: "lbm-sep" }, " · "), el("span", { class: "lbm-dis" }, `${c.disabled} ${tn(c.disabled, "bms.disabledWord")}`)] : null)];
+  const title = r.partial ? t("bms.accsPartial") : null;
+  if (!c.active && !c.disabled) return [el("span", { class: "lrow-ctx", title }, `${c.total}${plus} ${tnPlus(c.total, "bms.accCount", r.partial)}`)];
+  return [el("span", { class: "lrow-ctx", title },
+    c.active ? `${c.active}${plus} ${tn(c.active, "bms.activeWord")}` : null,
+    c.active && c.disabled ? el("span", { class: "lbm-sep" }, " · ") : null,
+    c.disabled ? el("span", { class: "lbm-dis" }, `${c.disabled}${c.active ? "" : plus} ${tn(c.disabled, "bms.disabledWord")}`) : null)];
 }
 // The right-hand amount: exact for one or two currencies, "≈ $" from three (the breakdown is its tooltip and the expanded row); a dash
 // (muted) when there is nothing to add up, with the reason as its tooltip.
@@ -189,32 +195,27 @@ function renderRow(r, rt) {
     body: () => bodyOf(r, name, sp),
   });
 }
-// The expanded row: the ad accounts (counts + the jump to the Ad accounts tab, filtered), the exact verification, the spend of three or more
-// currencies in full; then what to do (the help + every fix); then the one link out, Business settings.
+// The expanded row says only what line 2 does not: the spend of three or more currencies in full, a business whose accounts could not be read,
+// what to do (the help + every fix); then one line of links: its ad accounts (the Accounts tab, filtered) and Business settings.
 function bodyOf(r, name, sp) {
   const c = r.counts, loaded = !!state.fetchedAt;
   const go = () => { emit("filter-bm", { id: r.id, name }); emit("show-tab", "accounts"); };
-  const counts = loaded && c.total
-    ? [`${c.total}${r.partial ? "+" : ""}`, c.active ? `${c.active} ${tn(c.active, "bms.activeWord")}` : "", c.disabled ? `${c.disabled} ${tn(c.disabled, "bms.disabledWord")}` : ""].filter(Boolean).join(" · ")
-    : "";
   // A business with no ad accounts at all has nothing to show on that tab; before the list is read the Ad accounts tab loads it by itself.
-  const accounts = loaded && !c.total && !r.partial ? null : [t("bms.kv.accounts"),
-    el("span", { class: "lbm-accs" }, counts ? el("span", { title: r.partial ? t("bms.accsPartial") : null }, counts) : null,
-      el("button", { type: "button", class: "act-inline lbm-go", "data-focus": `bm-go:${r.id}`, title: t("bms.showTitle"), onclick: go }, el("span", { class: "act-label" }, t("bms.show")))),
-    { wide: true }];
+  const goBtn = loaded && !c.total && !r.partial ? null
+    : el("button", { type: "button", class: "act-inline lbm-go", "data-focus": `bm-go:${r.id}`, title: t("bms.showTitle"), onclick: go }, el("span", { class: "act-label" }, t("bms.show")));
   const todo = r.issues.length ? whatToDo({
     help: r.issues.map((i) => t(i.help)).join(" "),
     actions: r.issues.filter((i) => i.fix).map((i, n) => ({ id: i.id, label: i.fix.label, url: i.fix.url, tip: t(i.fix.tip), primary: n === 0 })),
     tone: r.issues[0].tone, owner: name, focus: `bm-todo:${r.id}`,
   }) : null;
+  let links = r.known ? linksRow([{ id: "settings", label: "bms.settings", url: LINKS.bmSettings(r.id), tip: t("bms.openSettings") }], { owner: name, focus: `bm-link:${r.id}` }) : null;
+  if (goBtn) links = links ? (links.prepend(goBtn, el("span", { class: "lrow-sep", "aria-hidden": "true" }, "·")), links) : el("div", { class: "lrow-links" }, goBtn);
   return [
-    kv([accounts,
-      r.verificationState ? [t("bms.kv.verification"), verLabel(r.verificationState)] : null,
-      sp.kind === "approx" ? [t("acc.spend"), sp.full, { wide: true, title: sp.title }] : null]),
-    // This business's accounts could not be read: no verdict above, and the reason, muted. Only this business says it.
+    sp.kind === "approx" ? kv([[t("acc.spend"), sp.full, { wide: true, title: sp.title }]]) : null,
+    // This business's accounts could not be read: no verdict on line 2, and the reason, muted. Only this business says it.
     r.unread ? el("p", { class: "lrow-note" }, t("bms.unread")) : null,
     todo,
-    r.known ? linksRow([{ id: "settings", label: "bms.settings", url: LINKS.bmSettings(r.id), tip: t("bms.openSettings") }], { owner: name, focus: `bm-link:${r.id}` }) : null,
+    links,
   ];
 }
 

@@ -6,7 +6,6 @@
 .lbm-dis { color: var(--color-error); }
 .lbm-sep { padding: 0 3px; }
 
-/* Expanded row, Ad accounts: "3 · 2 active · 1 disabled   Show ad accounts →". The button is the same underlined accent link as a fix
-   (actions.css .act-inline), reset to look like text. */
-.lbm-accs { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--spacing-4); min-width: 0; }
-.lbm-go { appearance: none; border: 0; background: none; font: inherit; padding: 4px 0; cursor: pointer; --act-fg: var(--color-accent); }
+/* Expanded row, the links line: "Ad accounts → · Business settings ↗". The first is in-app navigation (the Accounts tab, filtered): the
+   underlined accent link (actions.css .act-inline), reset to look like text. */
+.lbm-go { appearance: none; border: 0; background: none; font: inherit; padding: 0; cursor: pointer; --act-fg: var(--color-accent); }

@@ -140,7 +140,7 @@ function idButton(id, { focus, tabbable = true }) {
       clearTimeout(btn.timer);
       btn.timer = setTimeout(() => icon.classList.replace("i-tick", "i-copy"), 1500);
     } },
-  icon, el("span", { class: "lrow-idtext" }, id.value));
+  el("span", { class: "lrow-idtext" }, id.value), icon);
   return btn;
 }
 

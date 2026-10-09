@@ -349,7 +349,7 @@ test("every key the tab can draw exists in both languages (the dynamic ones: pro
   const { STRINGS } = await import("../fb-helper/js/strings/bms.js");
   const keys = new Set([
     "bms.st.active", "bms.verTitle", "bms.noSpend", "bms.openSettings", "bms.settings", "bms.accCount", "bms.disabledWord", "bms.activeWord", "bms.search.aria", "bms.refresh",
-    "bms.kv.accounts", "bms.kv.verification", "bms.show", "bms.showTitle", "bms.accsPartial",
+    "bms.show", "bms.showTitle", "bms.accsPartial",
     ...VERIFY_KNOWN.map((s) => `bms.ver.${s}`),
   ]);
   for (const p of PROBLEMS) { keys.add(p.label); keys.add(p.tip); keys.add(p.help); keys.add(p.fix.label); keys.add(p.fix.tip); }
