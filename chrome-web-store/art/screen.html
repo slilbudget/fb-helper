@@ -27,8 +27,10 @@
 <script>
   const q = new URLSearchParams(location.hash.slice(1));
   document.documentElement.lang = q.get("lang") || "en";
-  document.getElementById("t").textContent = q.get("t") || "";
-  document.getElementById("s").textContent = q.get("s") || "";
+  // "User-Agent" is never broken at its hyphen
+  const put = (id, text) => { const n = document.getElementById(id); n.textContent = ""; text.split(/(User-Agent)/).forEach((part) => {
+    if (part === "User-Agent") n.append(Object.assign(document.createElement("span"), { textContent: part, style: "white-space: nowrap" })); else n.append(part); }); };
+  put("t", q.get("t") || ""); put("s", q.get("s") || "");
   document.getElementById("img").src = q.get("img") || "";
 </script>
 </html>

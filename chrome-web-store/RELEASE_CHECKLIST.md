@@ -55,7 +55,7 @@ The repo and GitHub stay **FB Helper** (`fb-helper/`). Only the store build is *
 |---|---|---|---|
 | Store icon | 128×128 PNG | yes | **Done:** `chrome-web-store/icons/icon_128.png` — 96×96 artwork inside 16 px transparent padding per side |
 | Extension icons in the package | 16, 32, 48, 128 PNG | yes | **Done** (built into the ZIP from `chrome-web-store/icons/`) |
-| Screenshots | 1280×800, JPEG or 24-bit PNG without alpha (as the Dashboard form states), 1 to 5 | at least 1 | **Four sets exist** (regenerated 2026-10-08 against the current UI, commit 426b6e2): English `chrome-web-store/art/out/screenshots/en/01-accounts … 04-cookies.png` (accounts, ads, token, cookies), Russian `…/screenshots/ru/…`, plus the overview `chrome-web-store/art/out/store-screenshot-1280x800.png` as an optional 5th (`cover.png` is 2100×1182 and is rejected by the form). **To do for 2.5.0:** there is no Businesses and no Pages screenshot yet: `shots.mjs` has no capture for them and its mock answers `me/accounts` and the business edges with empty lists |
+| Screenshots | 1280×800, JPEG or 24-bit PNG without alpha (as the Dashboard form states), 1 to 5 per language | at least 1 | **Done for 2.5.0** (regenerated 2026-10-10, fictional data, generated pictures): two sets of five, one popup view per tab: English `chrome-web-store/art/out/screenshots/en/01-businesses, 02-accounts, 03-pages, 04-token, 05-cookies.png`, Russian `…/screenshots/ru/…` (same names). The Dashboard takes five, so the Ads view of an opened account is not in the sets and the overview `chrome-web-store/art/out/store-screenshot-1280x800.png` (token, cookies, accounts side by side) is not a sixth: swap it in for one of the five if you want it (`cover.png` is 2100×1182 and is rejected by the form) |
 | Small promo tile | 440×280, JPEG or 24-bit PNG without alpha | yes | **Done:** `chrome-web-store/art/out/promo-tile-440x280.png` |
 | Marquee promo tile | 1400×560 | optional | Not made; needed only to be featured |
 | Global promo video | YouTube URL | optional in the Dashboard form | Skip |
@@ -92,6 +92,6 @@ Live checks (a real account, nothing here is covered by the mocks)
 - [ ] Tab order is Token · Cookies · Businesses · Accounts · Pages, and "BM" appears nowhere in the UI (EN "Businesses", RU "Бизнесы"; the copied block keeps its `BM:` line)
 
 Store
-- [ ] Regenerate the store art with the build of this version: `chrome-web-store/build.sh && node chrome-web-store/art/shots.mjs` (fictional data, no Facebook logo, no "FB Helper" name, no real pictures). Add the Businesses and Pages captures to `shots.mjs` first (see section 7); Russian and English
+- [x] Regenerate the store art with the build of this version: `chrome-web-store/build.sh && node chrome-web-store/art/shots.mjs` (fictional data, no Facebook logo, no "FB Helper" name, no real pictures); Russian and English. Done 2026-10-10 against 2.5.0: Businesses and Pages captures added to `shots.mjs`, `ART_DEV=1` run for `docs/cover.png`
 - [ ] Privacy policy URL in the form points to `PRIVACY_POLICY.md` on `main` (push to `main` first); the page carries the date 2026-10-08
 - [ ] Listing text (`STORE_LISTING.md`, English and Russian), single purpose, the four justifications, the CSP quote in "Remote code" and the data-usage answers pasted into the Dashboard; the summary equals the manifest's `description`
