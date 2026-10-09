@@ -1,4 +1,4 @@
-# FB Helper 2.4.1
+# FB Helper 2.5.0
 
 [![CI](https://github.com/slilbudget/fb-helper/actions/workflows/ci.yml/badge.svg)](https://github.com/slilbudget/fb-helper/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/slilbudget/fb-helper)](https://github.com/slilbudget/fb-helper/releases/latest) [![License: MIT](https://img.shields.io/github/license/slilbudget/fb-helper)](LICENSE)
 
@@ -8,7 +8,7 @@ Chrome extension (MV3): Facebook access token, session cookies, and the spend an
 
 ## Install
 
-1. Download `fb-helper-2.4.1.zip` from [Releases](https://github.com/slilbudget/fb-helper/releases/latest) and unpack (or `git clone` and use the `fb-helper/` folder)
+1. Download `fb-helper-2.5.0.zip` from [Releases](https://github.com/slilbudget/fb-helper/releases/latest) and unpack (or `git clone` and use the `fb-helper/` folder)
 2. `chrome://extensions` → enable **Developer mode**
 3. **Load unpacked** → pick the unpacked folder (from a clone: `fb-helper/`; keep the folder after installing)
 
@@ -31,7 +31,7 @@ Five tabs, in this order: **Token · Cookies · Businesses · Accounts · Pages*
 
 ### Where it connects
 
-The exact origins are the `connect-src` and `img-src` of `fb-helper/manifest.json`; `DOCS_STRICT=1 node --test test/docs.test.mjs` fails when the privacy policy (English or Russian) misses one of them or the store listing's CSP quote differs from the manifest's. Nothing else is contacted: no developer server, no analytics, no telemetry.
+The exact origins are the `connect-src` and `img-src` of `fb-helper/manifest.json`; `node --test test/docs.test.mjs` fails when the privacy policy (English or Russian) misses one of them or the store listing's CSP quote differs from the manifest's. Nothing else is contacted: no developer server, no analytics, no telemetry.
 
 | Destination | What goes there | When |
 |---|---|---|
@@ -67,7 +67,7 @@ The links in the popup open Facebook pages in a new tab and send nothing.
 ## Build the archive
 
 ```
-git archive --format=zip -o fb-helper-2.4.1.zip HEAD:fb-helper && zip -qj fb-helper-2.4.1.zip LICENSE
+git archive --format=zip -o fb-helper-2.5.0.zip HEAD:fb-helper && zip -qj fb-helper-2.5.0.zip LICENSE
 ```
 
 Only committed files go in: anything else lying in the local `fb-helper/` folder stays out.
@@ -78,7 +78,7 @@ The Chrome Web Store package (`chrome-web-store/release/ads-helper-<version>.zip
 
 ```
 node --test test/*.test.mjs   # unit tests, no browser, no install
-DOCS_STRICT=1 node --test test/docs.test.mjs   # release check: the docs name every origin the manifest's CSP allows and quote that CSP
+node --test test/docs.test.mjs   # release check: the docs name every origin the manifest's CSP allows and quote that CSP
 npm ci && npx playwright-core install chromium    # once: the dev tooling (playwright-core, pinned); nothing of it ships
 node test/e2e.mjs             # real Chromium + the unpacked extension, Facebook and Graph mocked
 node test/e2e.mjs --jobs 3    # the same, three flows at a time; --shard 2/4 runs one balanced slice (CI uses 4 shards)

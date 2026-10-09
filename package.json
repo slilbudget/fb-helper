@@ -12,7 +12,7 @@
     "e2e": "node test/e2e.mjs",
     "e2e:store": "EXT_DIR=chrome-web-store/release/unpacked node test/e2e.mjs",
     "build:store": "bash chrome-web-store/build.sh",
-    "docs:strict": "DOCS_STRICT=1 node --test test/docs.test.mjs"
+    "docs": "node --test test/docs.test.mjs"
   },
   "devDependencies": {
     "playwright-core": "1.64.0"

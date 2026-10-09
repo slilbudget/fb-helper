@@ -1,10 +1,7 @@
 // What the documents promise, checked against what the extension is: the privacy policy names every origin the CSP allows, the store listing quotes
 // the manifest's CSP, no text says requests go ONLY to the Graph host (the extension also fetches exchange rates and pictures), the manifest's version
 // is in every place a release has to write it, the permissions are explained. Plain Node: `node --test test/*.test.mjs`
-//
-// KNOWN FAILING until the docs pass of the 2.5.0 release (.notes/index.md, "DOCS STILL SAY ..."): those tests run on every `node --test` and are reported as TODO
-// (visible, not failing). DOCS_STRICT=1 makes them count: that is the release checklist's step (chrome-web-store/RELEASE_CHECKLIST.md, section 1).
-// Left in the default run on purpose: a doc check that only exists in a checklist is the one that rots. Remove `pending` below when the docs pass is done.
+
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -20,8 +17,6 @@ const hostOf = (src) => new URL(src.replace("*.", "")).hostname;
 const GRAPH = hostOf(directive("connect-src")[0]);                                   // the Graph host: the first origin of connect-src (test/harness.mjs reads it from there too)
 const OTHER_CONNECT = directive("connect-src").slice(1).map(hostOf);                 // the exchange-rate sources
 const PICTURE_HOSTS = directive("img-src").filter((s) => s.startsWith("https:")).map(hostOf).filter((h) => h !== GRAPH);   // the Graph origin is in img-src too (the picture redirect of a page); it is GRAPH already
-const strict = process.env.DOCS_STRICT === "1";
-const pending = (name, fn) => test(name, { todo: strict ? false : "docs pass of the 2.5.0 release is pending (DOCS_STRICT=1 makes it count)" }, fn);
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const DOCS = ["README.md", "PRIVACY_POLICY.md", "SECURITY.md", "chrome-web-store/STORE_LISTING.md", "chrome-web-store/RELEASE_CHECKLIST.md"];
@@ -34,7 +29,7 @@ test("the origins are what the tests below assume (a Graph host, two rate source
   assert.ok(directive("connect-src").every((s) => !s.includes("*")));
 });
 
-pending("PRIVACY_POLICY.md names every origin the CSP lets the popup talk to or load pictures from — the Graph host, the rate sources, the picture hosts — in English and in Russian", () => {
+test("PRIVACY_POLICY.md names every origin the CSP lets the popup talk to or load pictures from — the Graph host, the rate sources, the picture hosts — in English and in Russian", () => {
   const policy = read("PRIVACY_POLICY.md");
   const cut = policy.search(/^# Политика конфиденциальности/m);
   assert.ok(cut > 0, "the Russian half starts at its own heading");
@@ -44,14 +39,14 @@ pending("PRIVACY_POLICY.md names every origin the CSP lets the popup talk to or 
   }
 });
 
-pending("the store listing's quote of the manifest CSP is the manifest's CSP, word for word", () => {
+test("the store listing's quote of the manifest CSP is the manifest's CSP, word for word", () => {
   const listing = read("chrome-web-store/STORE_LISTING.md");
   const quoted = /manifest CSP is `([^`]+)`/.exec(listing);
   assert.ok(quoted, "the listing quotes the CSP");
   assert.equal(quoted[1], csp);
 });
 
-pending("no text says the extension's requests go ONLY to the Graph host: a sentence that names it with 'only' / 'только' must name the rate sources too (the manifest's own description, the policy, the listing, the README, SECURITY, the checklist)", () => {
+test("no text says the extension's requests go ONLY to the Graph host: a sentence that names it with 'only' / 'только' must name the rate sources too (the manifest's own description, the policy, the listing, the README, SECURITY, the checklist)", () => {
   const texts = [["fb-helper/manifest.json (description)", manifest.description], ...DOCS.map((f) => [f, read(f)])];
   const claims = [];
   for (const [file, text] of texts) {
@@ -89,9 +84,9 @@ test("every permission of the manifest and its host pattern is explained in the 
   }
 });
 
-test("the release checklist runs the tests that guard a release: the unit tests, the store build's end-to-end run, and (strict) this file", () => {
+test("the release checklist runs the tests that guard a release: the unit tests, the store build's end-to-end run, and this file", () => {
   const checklist = read("chrome-web-store/RELEASE_CHECKLIST.md");
   assert.match(checklist, /node --test test\/\*\.test\.mjs/);
   assert.match(checklist, /EXT_DIR=chrome-web-store\/release\/unpacked node test\/e2e\.mjs/);
-  assert.match(checklist, /DOCS_STRICT=1 node --test test\/docs\.test\.mjs/);
+  assert.match(checklist, /node --test test\/docs\.test\.mjs/);
 });

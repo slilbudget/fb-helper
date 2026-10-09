@@ -36,7 +36,7 @@ jobs:
         run: |
           node -e "const m=require('./fb-helper/manifest.json'); if(m.manifest_version!==3) process.exit(1); console.log(m.name, m.version)"
           find fb-helper/js -name '*.js' | while read -r f; do node --input-type=module --check < "$f" || exit 1; done
-      - name: unit tests (docs checks that are known to fail are reported as TODO, not failures)
+      - name: unit tests
         shell: bash
         run: node --test test/*.test.mjs 2>&1 | tee unit.log
       - name: logs
