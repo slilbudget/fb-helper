@@ -1,5 +1,5 @@
 // Ad accounts tab: API version, the account cache per FB user, dead sessions, ads, automatic load, all-time spend, layout.
-import { GRAPH, TOK, TOK2, ok, has, boot, adsPage, popup, text, until, rowsAre, resetLocks, clickToast, accountsJson, isAds, adsFb, boxWait, GONE, loadAccounts, openAds, stored, ROW, ratesOk, captureClipboard, clip, done, ACC, tr, PERIOD, adsLoadingRe, agoRe, idle, settle, trVar, trn, trx, untilText, useLang, waitFor, near, lineTwo } from "../harness.mjs";
+import { GRAPH, TOK, TOK2, ok, has, boot, adsPage, popup, text, until, rowsAre, resetLocks, clickToast, accountsJson, isAds, adsFb, boxWait, GONE, loadAccounts, openAds, stored, ROW, ratesOk, captureClipboard, clip, done, ACC, tr, PERIOD, adsLoadingRe, agoRe, idle, settle, trVar, trn, trx, untilText, useLang, waitFor, near, lineTwo, bmsContext } from "../harness.mjs";
 import { LINKS } from "../../fb-helper/js/links.js";
 import path from "node:path";
 
@@ -973,15 +973,15 @@ async function membersFlow() {
   const bmRow = (name) => pop.locator("#bmsList .lrow").filter({ has: pop.locator(".lrow-name", { hasText: name }) });
   await until(pop, () => document.querySelectorAll("#bmsList .lrow").length >= 3);
   const alpha = (await bmRow("Alpha Media").locator(".lrow-sub").textContent()).replace(/\s+/g, " ").trim();
-  ok("Alpha Media counts its own and the two shared accounts: '3 ad accounts · 1 disabled', not 'No ad accounts'", has(alpha, `3 ${trn(3, "bms.accCount")}`) && has(alpha, `1 ${trn(1, "bms.disabledWord")}`) && !has(alpha, tr("bms.st.none")), alpha);
+  ok("Alpha Media counts its own and the two shared accounts: '2 active · 1 disabled' (no total), not 'No ad accounts'", has(alpha, bmsContext({ total: 3, active: 2, disabled: 1 })) && has(alpha, `2 ${trn(2, "bms.activeWord")} · 1 ${trn(1, "bms.disabledWord")}`) && !has(alpha, trn(3, "bms.accCount")) && !has(alpha, tr("bms.st.none")), alpha);
   const value = async (n) => (await bmRow(n).locator(".lrow-value").textContent()).replace(/\s+/g, " ").trim();
   ok("…spend stays with the owner: Alpha $40 (its own account), Partner Agency $10 (the two shared ones), the sum is the list's $55 once", (await value("Alpha Media")) === "$40.00" && (await value("Partner Agency")) === "$10.00" && (await value("Other Co")) === "$5.00", `${await value("Alpha Media")} ${await value("Partner Agency")} ${await value("Other Co")}`);
   const partner = (await bmRow("Partner Agency").locator(".lrow-sub").textContent()).replace(/\s+/g, " ").trim();
-  ok("Partner Agency (owner, not one of the profile's businesses) counts the same two", has(partner, `2 ${trn(2, "bms.accCount")}`), partner);
+  ok("Partner Agency (owner, not one of the profile's businesses) counts the same two: '1 active · 1 disabled'", has(partner, bmsContext({ total: 2, active: 1, disabled: 1 })) && has(partner, `1 ${trn(1, "bms.activeWord")} · 1 ${trn(1, "bms.disabledWord")}`) && !has(partner, tr("bms.st.none")), partner);
   // the jump lists exactly the accounts the count counted, and the chips count under the filter
   await bmRow("Alpha Media").locator(".lrow-title").click();
   await bmRow("Alpha Media").locator(".lbm-go").click();
-  ok("'Show ad accounts' lists Alpha's three (own + shared), not Other Co's", await rowsAre(pop, ROW, 3) && (await pop.$$eval(`${ROW} .lrow-name`, (n) => n.map((x) => x.textContent).sort().join())) === "Alpha own,Shared active,Shared disabled");
+  ok("'Ad accounts →' lists Alpha's three (own + shared), not Other Co's", await rowsAre(pop, ROW, 3) && (await pop.$$eval(`${ROW} .lrow-name`, (n) => n.map((x) => x.textContent).sort().join())) === "Alpha own,Shared active,Shared disabled");
   const chips = () => pop.$$eval("#statusChips .chip", (n) => n.map((x) => x.textContent.replace(/\s+/g, " ").trim()));
   const c = await chips();
   ok("the chips count the rows under the filter (Active 1 of the three, not 2 of the whole list), plus the filter chip", c.includes(`${tr("status.1")} 1`) && c.includes(`${tr("status.2")} 1`) && c.includes(`${tr("acc.noAccess")} 1`) && !c.includes(`${tr("status.1")} 2`), JSON.stringify(c));

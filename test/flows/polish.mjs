@@ -1,5 +1,5 @@
 // Review round 1, "Fix B": the polish of the shared row and of the top zone, measured in the real popup. Row lab (a few rows built by row.js in the
-// popup page): the ID first on line 2 under the name, the copy icon on hover / focus only, equal heights, a context that cannot keep ~6 characters is dropped,
+// popup page): the ID first on line 2 under the name, the copy icon right after the digits (always there), equal heights, a context that cannot keep ~6 characters is dropped,
 // an open row's name wraps, the link colour rule, weight 500 amounts, the fade-in of a body that was just opened, reduced motion, the contrast
 // tokens, focus rings, the logical properties. Real tabs (Graph is a mock): chips on one scrollable line, five periods in one row at 380 px, the
 // total on one line with its breakdown under it, a group header with the business's own picture.
@@ -37,20 +37,30 @@ async function rowLabFlow() {
   await buildLab(pop);
   await until(pop, () => !!document.querySelector('#lab .lrow[data-row="pic"] .lav.ok'));
 
-  // ---- the ID starts under the name; the copy icon is for hover / focus ----
+  // ---- the ID starts under the name; the copy icon follows the digits, always there ----
   const al = await q(pop, () => ["plain", "pic", "problem"].map((k) => { const n = document.querySelector(`#lab .lrow[data-row="${k}"] .lrow-name`).getBoundingClientRect(), t = document.querySelector(`#lab .lrow[data-row="${k}"] .lrow-head .lrow-idtext`).getBoundingClientRect(); return Math.round(t.left) - Math.round(n.left); }));
-  ok("the ID digits start exactly where the name's text starts, under it (with or without a picture); the copy icon is in the indent left of them, not on the line", al.every((d) => d === 0), JSON.stringify(al));
+  ok("the ID digits start exactly where the name's text starts, under it (with or without a picture); the copy icon is after them, on the line", al.every((d) => d === 0), JSON.stringify(al));
   const order = await q(pop, () => [...document.querySelector('#lab .lrow[data-row="plain"] .lrow-head .lrow-id').children].map((c) => c.className.split(" ")[0]));
-  ok("…DOM order: icon first, digits second", order.join() === "i,lrow-idtext", order.join());
-  const opIs = (k, want) => until(pop, ([sel, v]) => Number(getComputedStyle(document.querySelector(`${sel} .lrow-head .lrow-id .i`)).opacity) === v, [R(k), want]);       // the fade of the copy icon has ended
-  const op = (k) => q(pop, (sel) => Number(getComputedStyle(document.querySelector(`${sel} .lrow-head .lrow-id .i`)).opacity), R(k));
+  ok("…DOM order: digits first, icon second", order.join() === "lrow-idtext,i", order.join());
+  const ico = (k) => q(pop, (sel) => { const i = document.querySelector(`${sel} .lrow-head .lrow-id .i`), cs = getComputedStyle(i); return { opacity: Number(cs.opacity), visibility: cs.visibility, color: cs.color, pos: cs.position }; }, R(k));
+  const iconColor = await q(pop, () => { const p = document.createElement("span"); p.style.color = "var(--color-icon)"; document.body.append(p); const c = getComputedStyle(p).color; p.remove(); return c; });   // --color-icon, as the engine resolves it
+  const textColor = (k) => q(pop, (sel) => getComputedStyle(document.querySelector(`${sel} .lrow-head .lrow-id`)).color, R(k));
   await pop.mouse.move(0, 0);
-  ok("the copy icon is invisible at rest", (await op("plain")) === 0, String(await op("plain")));
-  await pop.hover(`${R("plain")} .lrow-head`); await opIs("plain", 1);
-  ok("…visible while the row is hovered", (await op("plain")) === 1, String(await op("plain")));
-  await pop.mouse.move(0, 0); await opIs("plain", 0);
-  await pop.keyboard.press("Shift"); await pop.focus(`${R("plain")} .lrow-head .lrow-id`); await opIs("plain", 1);          // a key press first: from now on focus is :focus-visible
-  ok("…and while the button has keyboard focus", (await op("plain")) === 1);
+  const rest = await ico("plain");
+  ok("the copy icon is visible at rest: opaque, not hidden, in the iconColor icon colour", rest.opacity === 1 && rest.visibility === "visible" && rest.pos === "static" && rest.color === iconColor, JSON.stringify({ rest, iconColor }));
+  await pop.hover(`${R("plain")} .lrow-head`);
+  const rowHover = await ico("plain");
+  ok("…hovering the row changes nothing (it neither appears nor moves: it is there already)", rowHover.opacity === 1 && rowHover.visibility === "visible" && rowHover.color === iconColor, JSON.stringify(rowHover));
+  await pop.hover(`${R("plain")} .lrow-head .lrow-id`);
+  await until(pop, ([sel, c]) => getComputedStyle(document.querySelector(`${sel} .lrow-head .lrow-id .i`)).color !== c, [R("plain"), iconColor]);
+  const btnHover = await ico("plain");
+  ok("…hovering the button itself darkens the icon to the text colour of the ID (currentColor)", btnHover.opacity === 1 && btnHover.color === (await textColor("plain")) && btnHover.color !== iconColor, JSON.stringify({ btnHover, text: await textColor("plain") }));
+  await pop.mouse.move(0, 0);
+  await until(pop, ([sel, c]) => getComputedStyle(document.querySelector(`${sel} .lrow-head .lrow-id .i`)).color === c, [R("plain"), iconColor]);
+  await pop.keyboard.press("Shift"); await pop.focus(`${R("plain")} .lrow-head .lrow-id`);          // a key press first: from now on focus is :focus-visible
+  await until(pop, ([sel, c]) => getComputedStyle(document.querySelector(`${sel} .lrow-head .lrow-id .i`)).color !== c, [R("plain"), iconColor]);
+  const focused = await ico("plain");
+  ok("…the same while the button has keyboard focus (visible, the text colour)", focused.opacity === 1 && focused.visibility === "visible" && focused.color === (await textColor("plain")) && focused.color !== iconColor, JSON.stringify(focused));
   await pop.evaluate(() => document.activeElement.blur()); await pop.mouse.move(0, 0);
 
   // ---- equal heights, the amount's weight ----

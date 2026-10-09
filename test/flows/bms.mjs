@@ -5,7 +5,7 @@
 // session / API pause / no token, paging, RU / EN, layout. Graph is a mock (fictional data); every /me/businesses request is checked to
 // be a GET that never asks for a token field.
 import path from "node:path";
-import { GRAPH, TOK, TOK2, ok, has, boot, adsPage, popup, text, until, rowsAre, resetLocks, clickToast, captureClipboard, clip, accountsJson, adsFb, stored, boxWait, ratesOk, done, PERIOD, esc, idle, settle, tr, trVar, trn, trx, untilText, waitFor, autoDone, useLang, lineTwo } from "../harness.mjs";
+import { GRAPH, TOK, TOK2, ok, has, boot, adsPage, popup, text, until, rowsAre, resetLocks, clickToast, captureClipboard, clip, accountsJson, adsFb, stored, boxWait, ratesOk, done, PERIOD, esc, idle, settle, tr, trVar, trn, trx, untilText, waitFor, autoDone, useLang, lineTwo, bmsContext } from "../harness.mjs";
 import { LINKS } from "../../fb-helper/js/links.js";
 
 const SHOT = process.env.BMS_SHOT_DIR || "";               // when set, screenshots of the tab go there
@@ -55,11 +55,12 @@ const watch = (b) => { const seen = []; b.ctx.on("request", (r) => { if (r.url()
 const readOnly = (seen) => { const mine = seen.filter((r) => r.path.endsWith("/me/businesses")); return mine.length > 0 && mine.every((r) => r.method === "GET" && !/access_token/.test(r.fields)); };
 const toastOf = (p) => p.evaluate(() => document.querySelector("#toast").textContent.trim());
 const ROW = "#bmsList .lrow";
-// "3 · 2 active · 1 disabled": the counts of the Ad accounts line of an open row (a part that is zero is left out).
-const counts = (n, active, dis) => [n, active ? `${active} ${trn(active, "bms.activeWord")}` : null, dis ? `${dis} ${trn(dis, "bms.disabledWord")}` : null].filter(Boolean).join(" · ");
-const accLine = (c) => `${tr("bms.kv.accounts")}: ${c} ${tr("bms.show")}`;
-// "3 ad accounts · 1 disabled" as a row writes it (plus = "+" for "at least": "10+ ad accounts · 9 disabled").
-const ctxText = (n, dis = 0, plus = "") => `${n}${plus} ${trn(plus ? 5 : n, "bms.accCount")}${dis ? ` · ${dis} ${trn(dis, "bms.disabledWord")}` : ""}`;
+// Line 2 context as a row writes it: "2 active · 1 disabled" (no total; a part that is zero is left out; "10+ active · 9 disabled" when the list was cut).
+// The six businesses of the fixture (ACCOUNTS below): Alpha 2 active + 1 disabled, Beta 1 disabled, Delta 3 active, Epsilon 1 disabled + 1 closed, Partner 1 active.
+const CTX = { alpha: () => bmsContext({ total: 3, active: 2, disabled: 1 }), beta: () => bmsContext({ total: 1, disabled: 1 }), delta: () => bmsContext({ total: 3, active: 3 }),
+  eps: () => bmsContext({ total: 2, disabled: 1 }), partner: () => bmsContext({ total: 1, active: 1 }) };
+// The links line of an open row, as text: "Ad accounts → · Business settings".
+const linksOf = (...kinds) => [kinds.includes("go") ? tr("bms.show") : null, kinds.includes("go") && kinds.includes("settings") ? "·" : null, kinds.includes("settings") ? tr("bms.settings") : null].filter(Boolean).join(" ");
 const names = (p) => p.$$eval(`${ROW} .lrow-name`, (n) => n.map((x) => x.textContent));
 const clean = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
 // A row as the screen shows it: the status, the context, the fix, the amount, the ID.
@@ -82,21 +83,24 @@ const rowOf = (p, name) => p.evaluate(([sel, n]) => {
     pills: r.querySelectorAll(".pill").length, boxed: r.querySelectorAll(".btn").length,
   };
 }, [ROW, name]);
-// The expanded body of a row (it must be open): kv pairs, what to do, links.
+// The expanded body of a row (it must be open): kv pairs, the unread note, what to do, the links line (the in-app button, then Business settings).
 const bodyOf = (p, name) => p.evaluate(([sel, n]) => {
   const r = [...document.querySelectorAll(sel)].find((x) => x.querySelector(".lrow-name").textContent === n);
   const bd = r?.querySelector(".lrow-body");
   if (!bd) return null;
   const clean = (s) => s.replace(/\s+/g, " ").trim();
   const link = (a) => ({ text: a.textContent.trim(), href: a.href, target: a.target, rel: a.rel, aria: a.getAttribute("aria-label"), icon: !!a.querySelector(".i") });
-  const txt = (n) => (n.nodeType === 3 ? n.textContent : [...n.childNodes].map(txt).join(n.classList?.contains("lbm-accs") ? " " : ""));   // the counts and the button are two things: a space between
-  const todo = bd.querySelector(".lrow-todo"), go = bd.querySelector(".lbm-go");
+  const todo = bd.querySelector(".lrow-todo"), go = bd.querySelector(".lbm-go"), lk = bd.querySelector(".lrow-links");
+  const flat = (n) => (n.nodeType === 3 ? n.textContent : [...n.childNodes].map(flat).join(" "));      // the text of a node with a space between its elements (as the eye reads it)
   return {
-    kv: [...bd.querySelectorAll(".lrow-pair")].map((x) => [clean(x.querySelector("dt").textContent), clean(txt(x.querySelector("dd")))]),
+    kv: [...bd.querySelectorAll(".lrow-pair")].map((x) => [clean(x.querySelector("dt").textContent), clean(x.querySelector("dd").textContent)]),
     kvTitles: Object.fromEntries([...bd.querySelectorAll(".lrow-pair")].map((x) => [clean(x.querySelector("dt").textContent), x.querySelector("dd").title])),
     todo: todo && { title: todo.querySelector(".lrow-todo-title").textContent, help: clean(todo.querySelector(".lrow-todo-help")?.textContent ?? ""), links: [...todo.querySelectorAll("a")].map(link), tone: ["bad", "warn"].find((c) => todo.classList.contains(c)) || "", bg: getComputedStyle(todo).backgroundColor },
     links: [...bd.querySelectorAll(".lrow-links a")].map(link),
-    go: go && { text: go.textContent.trim(), tag: go.tagName, focus: go.dataset.focus, title: go.title }, idIn: !!bd.querySelector(".lrow-idline, .lrow-id"), first: bd.firstElementChild?.className,
+    go: go && { text: go.textContent.trim(), tag: go.tagName, focus: go.dataset.focus, title: go.title, inLinks: go.parentElement === lk, color: getComputedStyle(go).color, deco: getComputedStyle(go.querySelector(".act-label")).textDecorationLine },
+    // the one links line: its parts in order ("go" = the button, "sep" = the dot, "settings" = Business settings), its text, and that it is the last thing in the body
+    text: clean(flat(bd)), linesCount: bd.querySelectorAll(".lrow-links").length, line: lk && clean(flat(lk)), kinds: lk && [...lk.children].map((c) => (c.tagName === "BUTTON" ? "go" : c.classList.contains("lrow-sep") ? "sep" : "settings")), last: bd.lastElementChild?.className,
+    idIn: !!bd.querySelector(".lrow-idline, .lrow-id"), first: bd.firstElementChild?.className,
   };
 }, [ROW, name]);
 const row = (p, name) => p.locator(ROW).filter({ has: p.locator(".lrow-name", { hasText: name }) });
@@ -137,30 +141,32 @@ async function bmsFlow() {
 
   // a healthy row is silent
   const alpha = await rowOf(pop, "Alpha Media");
-  ok("Alpha (3 ad accounts, one disabled): line 2 is the ID, then the context; the state word is there for screen readers only", alpha.status === null && alpha.sr === tr("bms.st.active") && alpha.fixes === 0 && alpha.more === null && alpha.id === "1001" && alpha.sub === `1001${tr("bms.st.active")}${ctxText(3, 1)}`, JSON.stringify(alpha));
-  ok("…the ID comes first, starts under the name, and has its '·' (the context follows it); the button's description is the amount + the state word + the context, without the ID", alpha.idFirst && alpha.idNameX === 0 && alpha.sep === '"·"' && alpha.desc === `${tr("bms.st.active")}${ctxText(3, 1)}`, JSON.stringify(alpha));
-  ok("…'3 ad accounts · 1 disabled': the disabled count in red, the rest muted", alpha.ctx.join("|") === ctxText(3, 1) && alpha.disabled.length === 1 && alpha.disabled[0].text === `1 ${trn(1, "bms.disabledWord")}` && alpha.disabled[0].color === "rgb(207, 33, 39)", JSON.stringify([alpha.ctx, alpha.disabled]));
+  ok("Alpha (2 active ad accounts, one disabled): line 2 is the ID, then the context; the state word is there for screen readers only", alpha.status === null && alpha.sr === tr("bms.st.active") && alpha.fixes === 0 && alpha.more === null && alpha.id === "1001" && alpha.sub === `1001${tr("bms.st.active")}${CTX.alpha()}`, JSON.stringify(alpha));
+  ok("…the ID comes first, starts under the name, and has its '·' (the context follows it); the button's description is the amount + the state word + the context, without the ID", alpha.idFirst && alpha.idNameX === 0 && alpha.sep === '"·"' && alpha.desc === `${tr("bms.st.active")}${CTX.alpha()}`, JSON.stringify(alpha));
+  ok("…'2 active · 1 disabled' (the total is not written): the disabled part in red, the rest muted", alpha.ctx.join("|") === `2 ${trn(2, "bms.activeWord")} · 1 ${trn(1, "bms.disabledWord")}`
+    && !has(alpha.ctx.join("|"), trn(3, "bms.accCount")) && alpha.disabled.length === 1 && alpha.disabled[0].text === `1 ${trn(1, "bms.disabledWord")}` && alpha.disabled[0].color === "rgb(207, 33, 39)", JSON.stringify([alpha.ctx, alpha.disabled]));
   ok("…the amount of today on the right (exact, two currencies), the ID under it, no pill", alpha.value === TODAY.Alpha && !alpha.valueMuted && alpha.id === "1001" && alpha.pills === 0, JSON.stringify(alpha));
   // problems: one word, one fix
   const beta = await rowOf(pop, "Beta Ads");
   ok("Beta (failed verification, its one account disabled): 'Unverified' in red, ONE underlined fix 'Verify' to the Security page, '+1 more' for the other problem", beta.status?.text === tr("bms.st.unverified") && beta.status.tone === "bad" && beta.fixes === 1 && beta.fix.text === tr("bms.fix.verify")
     && beta.fix.href === LINKS.bmSecurity("1002") && beta.fix.target === "_blank" && beta.fix.rel === "noopener noreferrer" && !beta.fix.icon && beta.more === tr("row.more", { n: 1 }), JSON.stringify(beta));
-  ok("…its tooltip names the exact state; the context says '1 ad account · 1 disabled'; the fix has the owner in its accessible name", beta.status.title === `${tr("bms.verTitle")}: ${tr("bms.ver.failed")}` && beta.ctx.join("|") === ctxText(1, 1) && beta.fix.aria === `${tr("bms.fix.verify")} · Beta Ads`, JSON.stringify(beta));
+  ok("…its tooltip names the exact state; the context says '1 disabled'; the fix has the owner in its accessible name", beta.status.title === `${tr("bms.verTitle")}: ${tr("bms.ver.failed")}` && beta.ctx.join("|") === CTX.beta() && beta.fix.aria === `${tr("bms.fix.verify")} · Beta Ads`, JSON.stringify(beta));
   ok("…the amount is exact ($10.00)", beta.value === TODAY.Beta, beta.value);
   const gamma = await rowOf(pop, "Gamma Group");
   ok("Gamma (no ad accounts): 'No ad accounts' (amber) → 'Create account' to its Ad accounts page in Business Settings; no context; a muted dash", gamma.status?.text === tr("bms.st.none") && gamma.status.tone === "warn" && gamma.fix?.text === tr("bms.fix.create")
     && gamma.fix.href === LINKS.bmAdAccounts("1003") && gamma.fix.title === tr("bms.fix.createTitle") && gamma.ctx.length === 0 && gamma.value === "—" && gamma.valueMuted && gamma.more === null, JSON.stringify(gamma));
   ok("a not verified (not failed) business has no verification problem; neither has a pending one", gamma.status.text !== tr("bms.st.unverified") && (await rowOf(pop, "Epsilon Digital")).status.text !== tr("bms.st.unverified"));
   const eps = await rowOf(pop, "Epsilon Digital");
-  ok("Epsilon (a disabled and a closed account): 'None active' (red), no fix on the line, '2 ad accounts · 1 disabled', '$0' muted (zero spend, not a dash)", eps.status?.text === tr("bms.st.noActive") && eps.status.tone === "bad" && eps.fixes === 0 && eps.more === null
-    && eps.ctx.join("|") === ctxText(2, 1) && eps.value === "$0" && eps.valueMuted, JSON.stringify(eps));
+  ok("Epsilon (a disabled and a closed account): 'None active' (red), no fix on the line, '1 disabled' (the closed one is neither part), '$0' muted (zero spend, not a dash)", eps.status?.text === tr("bms.st.noActive") && eps.status.tone === "bad" && eps.fixes === 0 && eps.more === null
+    && eps.ctx.join("|") === CTX.eps() && eps.value === "$0" && eps.valueMuted, JSON.stringify(eps));
   const drawn = {}; for (const r of [alpha, beta, gamma, eps]) drawn[r.key] = await lineTwo(pop, `${ROW}[data-row="${r.key}"]`);
   ok("line 2 as it is drawn: 'ID · context' (healthy), 'ID · word · context · fix+N', 'ID · word · fix' (no context), 'ID · word · context' (no fix): one '·' between visible parts, none dangling",
-    drawn[alpha.key] === `1001 · ${ctxText(3, 1)}` && drawn[beta.key] === `1002 · ${tr("bms.st.unverified")} · ${ctxText(1, 1)} · ${tr("bms.fix.verify")}${tr("row.more", { n: 1 })}`
-    && drawn[gamma.key] === `1003 · ${tr("bms.st.none")} · ${tr("bms.fix.create")}` && drawn[eps.key] === `1005 · ${tr("bms.st.noActive")} · ${ctxText(2, 1)}`, JSON.stringify(drawn));
+    drawn[alpha.key] === `1001 · ${CTX.alpha()}` && drawn[beta.key] === `1002 · ${tr("bms.st.unverified")} · ${CTX.beta()} · ${tr("bms.fix.verify")}${tr("row.more", { n: 1 })}`
+    && drawn[gamma.key] === `1003 · ${tr("bms.st.none")} · ${tr("bms.fix.create")}` && drawn[eps.key] === `1005 · ${tr("bms.st.noActive")} · ${CTX.eps()}`, JSON.stringify(drawn));
   const partner = await rowOf(pop, "Partner Agency");
-  ok("Partner (named by a client account, not a business of the profile): silent, exact spend, its one account", partner.status === null && partner.sr === tr("bms.st.active") && partner.value === TODAY.Partner && partner.ctx.join("|") === ctxText(1), JSON.stringify(partner));
+  ok("Partner (named by a client account, not a business of the profile): silent, exact spend, '1 active' (its one account)", partner.status === null && partner.sr === tr("bms.st.active") && partner.value === TODAY.Partner && partner.ctx.join("|") === CTX.partner() && !partner.disabled.length, JSON.stringify(partner));
   const delta = await rowOf(pop, "Delta Co");
+  ok("Delta (three active accounts): '3 active' alone: no red part, no dangling '·'", delta.ctx.join("|") === `3 ${trn(3, "bms.activeWord")}` && delta.ctx.join("|") === CTX.delta() && delta.disabled.length === 0, JSON.stringify([delta.ctx, delta.disabled]));
   ok("Delta (USD + EUR + VND): '≈ $47.50' on the row, every currency in the tooltip", delta.value === TODAY.Delta && has(clean(delta.valueTitle), "$25.00 + €10.00 + VND 250,000") && trx("money.approx").test(delta.valueTitle), JSON.stringify(delta));
   ok("no role, created date, page, 2FA, verification pill, chips, links row or Copy IDs anywhere on the collapsed rows", await pop.evaluate((words) => !new RegExp(words).test(document.querySelector("#bmsList").textContent)
     && !document.querySelector("#bmsList .lrow-links") && !document.querySelector("#tab-bms .chip"), ["Admin", "Employee", "Created", "2FA", "Page:", "Copy IDs", tr("bms.ver.verified"), tr("bms.ver.not_verified"), tr("bms.ver.pending")].join("|")));
@@ -296,17 +302,55 @@ async function bmsSpendFlow() {
 async function bmsTruncatedFlow() {
   console.log("\n# bms: incomplete Ad accounts list");
   let pages = 0;
-  const b = await boot({ fb: adsFb(TOK), rates: ratesOk, graph: graphFor({ rows: [bm("1001", "Alpha Media"), bm("1003", "Gamma Group")], onAccs: () => {
+  // Each page brings one account of four businesses and the list never ends (10 pages, then "not all"): Alpha 1 active + 9 disabled, Beta 10 active,
+  // Delta 10 disabled, Epsilon 10 closed (neither). Gamma has none.
+  const b = await boot({ fb: adsFb(TOK), rates: ratesOk, graph: graphFor({ rows: [bm("1001", "Alpha Media"), bm("1002", "Beta Ads"), bm("1004", "Delta Co"), bm("1005", "Epsilon Digital"), bm("1003", "Gamma Group")], onAccs: () => {
     pages++;
-    return { body: { data: [acc(String(100 + pages), `A ${pages}`, pages === 1 ? 1 : 2, ALPHA, "USD", [pages, 0, 0, 0], 0)], paging: { next: `${GRAPH}/next`, cursors: { after: `c${pages}` } } } };   // never ends: 10 pages, then "not all"
+    const one = (k, name, status, biz) => acc(String(k * 100 + pages), `${name} ${pages}`, status, biz, "USD", [k === 1 ? pages : 0, 0, 0, 0], 0);
+    return { body: { data: [one(1, "A", pages === 1 ? 1 : 2, ALPHA), one(2, "B", 1, BETA), one(4, "D", 2, DELTA), one(5, "E", 101, EPS)], paging: { next: `${GRAPH}/next`, cursors: { after: `c${pages}` } } } };
   } }) });
   await adsPage(b);
   const pop = await popup(b, "bms");
-  ok("two businesses", await rowsAre(pop, ROW, 2));
+  ok("five businesses", await rowsAre(pop, ROW, 5));
   await untilText(pop, "#bmsTotal", new RegExp(esc(tr("bms.notAll").trim())));
-  const alpha = await rowOf(pop, "Alpha Media"), gamma = await rowOf(pop, "Gamma Group");
-  ok("the list is incomplete: the total says '(not all)'; a business with accounts read shows its count as 'at least' ('10+')", has((await totalOfTab(pop)).meta, tr("bms.notAll").trim()) && alpha.ctx[0] === ctxText(10, 9, "+"), JSON.stringify([await totalOfTab(pop), alpha.ctx]));
+  const alpha = await rowOf(pop, "Alpha Media"), beta = await rowOf(pop, "Beta Ads"), delta = await rowOf(pop, "Delta Co"), eps = await rowOf(pop, "Epsilon Digital"), gamma = await rowOf(pop, "Gamma Group");
+  ok("the list is incomplete: the total says '(not all)'; a business with accounts read shows its counts as 'at least': the '+' after the first number ('1+ active · 9 disabled')",
+    has((await totalOfTab(pop)).meta, tr("bms.notAll").trim()) && alpha.ctx[0] === bmsContext({ total: 10, active: 1, disabled: 9, plus: "+" }) && alpha.ctx[0] === `1+ ${trn(1, "bms.activeWord")} · 9 ${trn(9, "bms.disabledWord")}`, JSON.stringify([await totalOfTab(pop), alpha.ctx]));
+  ok("…'10+ active' (only active), '10+ disabled' (no active: the '+' moves to the disabled count), '10+ ad accounts' (neither: the total, 'at least')",
+    beta.ctx[0] === bmsContext({ total: 10, active: 10, plus: "+" }) && beta.ctx[0] === `10+ ${trn(10, "bms.activeWord")}` && delta.ctx[0] === bmsContext({ total: 10, disabled: 10, plus: "+" }) && delta.ctx[0] === `10+ ${trn(10, "bms.disabledWord")}`
+    && eps.ctx[0] === bmsContext({ total: 10, plus: "+" }) && eps.ctx[0] === `10+ ${trn(5, "bms.accCount")}`, JSON.stringify([beta.ctx, delta.ctx, eps.ctx]));
+  ok("…the disabled part is still red, a part that is zero is not written (Beta has no red part), and the tooltip of the context says the list is not complete",
+    alpha.disabled.length === 1 && alpha.disabled[0].text === `9 ${trn(9, "bms.disabledWord")}` && delta.disabled.length === 1 && delta.disabled[0].color === "rgb(207, 33, 39)" && beta.disabled.length === 0 && eps.disabled.length === 0
+    && (await pop.$$eval(`${ROW} .lrow-ctx`, (n) => n.every((x) => x.title))) === true && (await pop.locator(`${ROW} .lrow-ctx`).first().getAttribute("title")) === tr("bms.accsPartial"), JSON.stringify([alpha.disabled, delta.disabled]));
   ok("…and never claims what the unread part may contradict: Gamma has no 'No ad accounts', no fix, a dash", gamma.status === null && gamma.fix === null && gamma.value === "—" && gamma.ctx.length === 0, JSON.stringify(gamma));
+  await toggle(pop, "Gamma Group");
+  const gb = await bodyOf(pop, "Gamma Group");
+  ok("…and its body keeps the way in: the 'Ad accounts →' button before Business settings (the list was cut, accounts may be there)", gb.kinds?.join() === "go,sep,settings" && gb.go?.tag === "BUTTON", JSON.stringify(gb));
+  await done(b);
+}
+
+// ---------- the counts on line 2: 'N active · M disabled' ----------
+// The split says the total too, so the total is not written: 'T ad accounts' only for a business whose accounts are neither active nor disabled.
+async function bmsContextFlow() {
+  console.log("\n# bms: line 2 counts (active · disabled; the total only when neither)");
+  const [ZETA, ETA, THETA, IOTA] = [["2001", "Zeta Co"], ["2002", "Eta Co"], ["2003", "Theta Co"], ["2004", "Iota Co"]];
+  const A = (id, status, biz) => acc(id, `Acc ${id}`, status, biz, "USD", [0, 0, 0, 0], 0);
+  const accounts = { data: [A("1", 101, ZETA), A("2", 7, ZETA), A("3", 1, ETA), A("4", 101, ETA), A("5", 2, THETA), A("6", 2, THETA), A("7", 1, IOTA), A("8", 2, IOTA), A("9", 1, IOTA)] };
+  const b = await boot({ fb: adsFb(TOK), graph: graphFor({ rows: [bm("2001", "Zeta Co"), bm("2002", "Eta Co"), bm("2003", "Theta Co"), bm("2004", "Iota Co")], accounts }) });
+  await adsPage(b);
+  const pop = await popup(b, "bms");
+  ok("four businesses", await rowsAre(pop, ROW, 4));
+  await until(pop, () => document.querySelectorAll("#bmsList .lrow-status, #bmsList .lrow-sub .sr-only").length >= 4);
+  const ctxs = async () => { const out = {}; for (const n of ["Zeta Co", "Eta Co", "Theta Co", "Iota Co"]) out[n] = (await rowOf(pop, n)).ctx.join("|"); return out; };
+  const en = await ctxs();
+  ok("EN: closed + in review → '2 ad accounts' (neither active nor disabled: the total); active + closed → '1 active'; two disabled → '2 disabled'; '2 active · 1 disabled'",
+    JSON.stringify(en) === JSON.stringify({ "Zeta Co": "2 ad accounts", "Eta Co": "1 active", "Theta Co": "2 disabled", "Iota Co": "2 active · 1 disabled" }), JSON.stringify(en));
+  const parts = await pop.evaluate((names) => names.map((n) => { const r = [...document.querySelectorAll("#bmsList .lrow")].find((x) => x.querySelector(".lrow-name").textContent === n); return { red: [...r.querySelectorAll(".lrow-ctx .lbm-dis")].map((x) => getComputedStyle(x).color), sep: r.querySelectorAll(".lrow-ctx .lbm-sep").length }; }), ["Zeta Co", "Eta Co", "Theta Co", "Iota Co"]);
+  ok("…only the disabled part is red (Theta's whole line, Iota's second part); a separator only between two parts", JSON.stringify(parts) === JSON.stringify([{ red: [], sep: 0 }, { red: [], sep: 0 }, { red: ["rgb(207, 33, 39)"], sep: 0 }, { red: ["rgb(207, 33, 39)"], sep: 1 }]), JSON.stringify(parts));
+  await useLang(pop, "ru");
+  const ru = await ctxs();
+  ok("RU: '2 кабинета' · '1 активен' · '2 заблокированы' · '2 активны · 1 заблокирован'",
+    JSON.stringify(ru) === JSON.stringify({ "Zeta Co": "2 кабинета", "Eta Co": "1 активен", "Theta Co": "2 заблокированы", "Iota Co": "2 активны · 1 заблокирован" }), JSON.stringify(ru));
   await done(b);
 }
 
@@ -330,7 +374,8 @@ async function bmsFieldsFlow() {
   const beta = await rowOf(pop, "Beta Ads");
   ok("an unread verification is no verdict: no 'Unverified' (Beta's was failed), only what the accounts say ('None active')", beta.status?.text === tr("bms.st.noActive") && beta.fixes === 0 && beta.more === null, JSON.stringify(beta));
   await toggle(pop, "Beta Ads");
-  ok("…and the expanded row has no Verification line", !(await bodyOf(pop, "Beta Ads")).kv.some(([k]) => k === tr("bms.kv.verification")), JSON.stringify(await bodyOf(pop, "Beta Ads")));
+  const bf = await bodyOf(pop, "Beta Ads");
+  ok("…and the expanded row says nothing of the verification either (it never has a pair for it): no 'Failed', no verification help in What to do, only what the accounts say", bf.kv.length === 0 && !has(bf.text, tr("bms.ver.failed")) && !has(bf.todo.help, tr("bms.help.verification")) && has(bf.todo.help, tr("bms.help.noActive")), JSON.stringify(bf));
   ok("…the logos fall back to the placeholder", (await pop.locator(`${ROW} img`).count()) === 0 && (await pop.locator(`${ROW} .lav .i-building`).count()) === 6);
   const saved = await stored(pop, "bms");
   ok("the cache keeps only whitelisted keys and the markers", saved.every((r) => Object.keys(r).every((k) => ["id", "name", "_noVerificationStatus", "_noProfilePictureUri"].includes(k)))
@@ -402,35 +447,36 @@ async function bmsAccountsFlow() {
   await settled(pop);
   ok("collapsed rows have no body at all (built when a row opens)", (await pop.locator("#bmsList .lrow-body").count()) === 0);
 
-  // Alpha: counts, the button, verification, Business settings only
+  // Alpha: the body is the links line alone (the counts are on line 2, the verification is not repeated)
   await toggle(pop, "Alpha Media");
   const a = await bodyOf(pop, "Alpha Media");
-  ok("Alpha: 'Ad accounts: 3 · 2 active · 1 disabled' + the 'Show ad accounts →' button (a real <button>), 'Verification: Verified'", a.kv.map((x) => x.join(": ")).join("|") === `${accLine(counts(3, 2, 1))}|${tr("bms.kv.verification")}: ${tr("bms.ver.verified")}` && a.go?.tag === "BUTTON" && a.go.text === tr("bms.show") && a.go.focus === "bm-go:1001", JSON.stringify(a));
-  ok("…no 'What to do' on a healthy row; the links row has Business settings only (↗, new tab, owner in its name); no ID line in the body (the ID is on line 2)", a.todo === null && a.links.length === 1 && a.links[0].text === tr("bms.settings") && a.links[0].href === LINKS.bmSettings("1001") && a.links[0].icon && a.links[0].target === "_blank" && a.links[0].rel === "noopener noreferrer" && a.links[0].aria === `${tr("bms.settings")}: Alpha Media` && !a.idIn && a.first === "lrow-kv", JSON.stringify(a));
+  ok("Alpha: the body is ONE links line, 'Ad accounts →' (a real <button> in the line, the underlined accent link) then '·' then Business settings: no 'Ad accounts' pair, no counts, no 'Verification' pair", a.kv.length === 0 && a.linesCount === 1 && a.kinds.join() === "go,sep,settings" && a.line === linksOf("go", "settings") && a.text === a.line
+    && a.go.tag === "BUTTON" && a.go.inLinks && a.go.text === tr("bms.show") && a.go.focus === "bm-go:1001" && a.go.deco === "underline", JSON.stringify(a));
+  ok("…no 'What to do' on a healthy row; the settings link is ↗, new tab, owner in its name; the links line is the whole body; no ID line in the body (the ID is on line 2)", a.todo === null && a.links.length === 1 && a.links[0].text === tr("bms.settings") && a.links[0].href === LINKS.bmSettings("1001") && a.links[0].icon && a.links[0].target === "_blank" && a.links[0].rel === "noopener noreferrer" && a.links[0].aria === `${tr("bms.settings")}: Alpha Media` && !a.idIn && a.first === "lrow-links" && a.last === "lrow-links", JSON.stringify(a));
   ok("…the open state is kept across a redraw (period switch) and the body is rebuilt", await (async () => { await pop.click(PERIOD("yesterday", "#bmsPeriod")); return (await rowOf(pop, "Alpha Media")).open && !!(await bodyOf(pop, "Alpha Media")) && (await rowOf(pop, "Alpha Media")).value === "$80.00 + €40.00"; })());
   await pop.click(PERIOD("today", "#bmsPeriod"));
-  // Beta: both problems in the body, the fix on line 2 is not repeated
+  // Beta: both problems in the body, the fix on line 2 is not repeated; What to do comes before the links line
   await toggle(pop, "Beta Ads");
   const be = await bodyOf(pop, "Beta Ads");
-  ok("Beta: 'Verification: Failed' in the body; What to do = both helps and EVERY action, the Verify fix of line 2 first, then Manage ad accounts, tone bad (title and links), no tinted box", be.kv.some((k) => k.join(": ") === `${tr("bms.kv.verification")}: ${tr("bms.ver.failed")}`) && be.todo?.title === tr("next.title") && has(be.todo.help, tr("bms.help.verification")) && has(be.todo.help, tr("bms.help.noActive"))
+  ok("Beta: What to do = both helps and EVERY action, the Verify fix of line 2 first, then Manage ad accounts, tone bad (title and links), no tinted box", be.todo?.title === tr("next.title") && has(be.todo.help, tr("bms.help.verification")) && has(be.todo.help, tr("bms.help.noActive"))
     && be.todo.links.map((l) => `${l.text}>${l.href}`).join() === `${tr("bms.fix.verify")}>${LINKS.bmSecurity("1002")},${tr("bms.fix.accounts")}>${LINKS.bmAdAccounts("1002")}` && be.todo.tone === "bad" && be.todo.bg === "rgba(0, 0, 0, 0)", JSON.stringify(be.todo));
-  ok("…Beta's counts: '1 · 1 disabled' (no zero part)", be.kv[0].join(": ") === accLine(counts(1, 0, 1)), JSON.stringify(be.kv));
+  ok("…no pairs (neither the counts nor 'Verification: Failed'): What to do, then the one links line (the button, then Business settings) as the last thing", be.kv.length === 0 && !has(be.text, tr("bms.ver.failed")) && String(be.first).startsWith("lrow-todo") && be.last === "lrow-links" && be.linesCount === 1 && be.kinds.join() === "go,sep,settings", JSON.stringify(be));
   // Gamma: nothing to show on the Ad accounts tab
   await toggle(pop, "Gamma Group");
   const ga = await bodyOf(pop, "Gamma Group");
-  ok("Gamma: no ad accounts → no counts and no jump button (nothing to show there); What to do has the help and the fix of line 2 (Create account); Business settings", ga.kv.length === 1 && ga.kv[0][0] === tr("bms.kv.verification") && ga.go === null && ga.todo.help === tr("bms.help.none") && ga.todo.links.map((l) => l.text).join() === tr("bms.fix.create") && ga.links.length === 1, JSON.stringify(ga));
+  ok("Gamma: no ad accounts → no jump button (nothing to show there): the links line is Business settings alone; What to do has the help and the fix of line 2 (Create account)", ga.kv.length === 0 && ga.go === null && ga.kinds.join() === "settings" && ga.line === linksOf("settings") && ga.todo.help === tr("bms.help.none") && ga.todo.links.map((l) => l.text).join() === tr("bms.fix.create") && ga.links.length === 1, JSON.stringify(ga));
   // Epsilon: no fix on the line, so the action is in the body
   await toggle(pop, "Epsilon Digital");
   const ep = await bodyOf(pop, "Epsilon Digital");
-  ok("Epsilon: 'None active' has no fix on line 2, so its Business Settings link is in What to do", ep.todo.links.map((l) => `${l.text}>${l.href}`).join() === `${tr("bms.fix.accounts")}>${LINKS.bmAdAccounts("1005")}` && ep.kv[0].join(": ") === accLine(counts(2, 0, 1)) && ep.kv.some((k) => k.join(": ") === `${tr("bms.kv.verification")}: ${tr("bms.ver.pending")}`), JSON.stringify(ep));
+  ok("Epsilon: 'None active' has no fix on line 2, so its Business Settings link is in What to do (and no pair: not the counts, not 'Verification: In review')", ep.todo.links.map((l) => `${l.text}>${l.href}`).join() === `${tr("bms.fix.accounts")}>${LINKS.bmAdAccounts("1005")}` && ep.kv.length === 0 && !has(ep.text, tr("bms.ver.pending")) && ep.kinds.join() === "go,sep,settings", JSON.stringify(ep));
   // Delta: three currencies → the full breakdown
   await toggle(pop, "Delta Co");
   const de = await bodyOf(pop, "Delta Co");
-  ok("Delta (three currencies): the body has 'Spend' with every currency exact, the tooltip says approximate", de.kv.some(([k, v]) => k === tr("acc.spend") && v === "$25.00 + €10.00 + VND 250,000") && trx("money.approx").test(de.kvTitles[tr("acc.spend")]) && de.kv.length === 3, JSON.stringify(de));
+  ok("Delta (three currencies): the body has 'Spend' with every currency exact, the tooltip says approximate; that is its only pair, the links line follows", de.kv.some(([k, v]) => k === tr("acc.spend") && v === "$25.00 + €10.00 + VND 250,000") && trx("money.approx").test(de.kvTitles[tr("acc.spend")]) && de.kv.length === 1 && de.first === "lrow-kv" && de.last === "lrow-links", JSON.stringify(de));
   // Partner: not a business of the profile → no settings link
   await toggle(pop, "Partner Agency");
   const pa = await bodyOf(pop, "Partner Agency");
-  ok("Partner (only named by a client account): counts and the jump, no Verification, no Business settings link, no What to do", pa.kv.length === 1 && pa.kv[0][0] === tr("bms.kv.accounts") && pa.links.length === 0 && pa.todo === null, JSON.stringify(pa));
+  ok("Partner (only named by a client account): the links line is the 'Ad accounts →' button alone (no Business settings: not a business of the profile), no pairs, no What to do", pa.kv.length === 0 && pa.kinds.join() === "go" && pa.line === linksOf("go") && pa.go.inLinks && pa.links.length === 0 && pa.todo === null, JSON.stringify(pa));
   // All the rows were opened: close them again
   for (const n of ["Alpha Media", "Beta Ads", "Gamma Group", "Epsilon Digital", "Delta Co", "Partner Agency"]) await toggle(pop, n);
   ok("a click on the name closes a row and throws its body away", (await pop.locator("#bmsList .lrow-body").count()) === 0);
@@ -438,7 +484,7 @@ async function bmsAccountsFlow() {
   // the jump
   await toggle(pop, "Alpha Media");
   await row(pop, "Alpha Media").locator(".lbm-go").click();
-  ok("'Show ad accounts →' opens the Ad accounts tab", await until(pop, () => document.querySelector(".tab.active")?.dataset.tab === "accounts" && document.querySelector("#tab-accounts").classList.contains("active")));
+  ok("'Ad accounts →' opens the Ad accounts tab", await until(pop, () => document.querySelector(".tab.active")?.dataset.tab === "accounts" && document.querySelector("#tab-accounts").classList.contains("active")));
   const listText = async () => clean(await text(pop, "#accountsList"));
   ok("…showing only that business's ad accounts (A one, A two, A three), no new request", (await until(pop, () => /A one/.test(document.querySelector("#accountsList").textContent))) && accHits(b).length === 1
     && /A two/.test(await listText()) && /A three/.test(await listText()) && !/B one|D one|Solo|P one/.test(await listText()), await listText());
@@ -463,7 +509,7 @@ async function bmsAccountsFlow() {
     (await p2.locator("#bmsList .lrow-ctx").count()) === 0 && (await p2.locator("#bmsList .lrow-value.muted").count()) === 5 && (await p2.locator("#bmsList .lrow-status").allInnerTexts()).join() === tr("bms.st.unverified") && !has(await text(p2, "#bmsList"), tr("bms.st.none")));
   await toggle(p2, "Alpha Media");
   const e2 = await bodyOf(p2, "Alpha Media");
-  ok("…but the way in stays: the body has the 'Show ad accounts →' button (the Ad accounts tab loads by itself)", e2.go?.text === tr("bms.show") && e2.kv[0].join(": ") === `${tr("bms.kv.accounts")}: ${tr("bms.show")}`, JSON.stringify(e2));
+  ok("…but the way in stays: the links line has the 'Ad accounts →' button (the Ad accounts tab loads by itself), then Business settings; there are no counts to show", e2.go?.text === tr("bms.show") && e2.kv.length === 0 && e2.line === linksOf("go", "settings"), JSON.stringify(e2));
   await row(p2, "Alpha Media").locator(".lbm-go").click();
   ok("the click opens the Ad accounts tab filtered to that business", (await until(p2, () => document.querySelector(".tab.active")?.dataset.tab === "accounts")) && has(await text(p2, "#tab-accounts"), "Alpha Media"));
   await done(b2);
@@ -606,11 +652,11 @@ async function bmsLangFlow() {
   const t = await totalOfTab(pop);
   ok("RU: total line (Спенд · date, no count, the age is the refresh tooltip) and the converted total", new RegExp(`^${esc(tr("acc.spend"))} · \\d{2}\\.\\d{2}$`).test(t.label) && !t.meta && (await pop.getAttribute("#loadBms", "title")).startsWith(`${tr("bms.refresh")} · ${tr("acc.updated", { t: "" })}`) && /^≈ 227,00\s\$$/.test(t.value), JSON.stringify(t));
   const alpha = await rowOf(pop, "Alpha Media"), beta = await rowOf(pop, "Beta Ads"), gamma = await rowOf(pop, "Gamma Group"), eps = await rowOf(pop, "Epsilon Digital"), delta = await rowOf(pop, "Delta Co");
-  ok("RU: context '3 кабинета · 1 заблокирован', the amounts in Russian format (2 currencies exact, 3 ≈)", alpha.ctx.join("|") === ctxText(3, 1) && /^100,00\s\$ \+ 50,00\s€$/.test(alpha.value) && /^≈ 47,50\s\$$/.test(delta.value) && alpha.sr === tr("bms.st.active"), JSON.stringify([alpha.ctx, alpha.value, delta.value]));
-  ok("RU: the problem words and fixes — Не верифицирован → Верификация (ещё 1), Нет кабинетов → Создать кабинет, Нет активных", beta.status.text === tr("bms.st.unverified") && beta.fix.text === tr("bms.fix.verify") && beta.more === tr("row.more", { n: 1 }) && gamma.status.text === tr("bms.st.none") && gamma.fix.text === tr("bms.fix.create") && eps.status.text === tr("bms.st.noActive") && eps.ctx.join("|") === ctxText(2, 1), JSON.stringify([beta, gamma, eps].map((r) => [r.status?.text, r.fix?.text, r.ctx])));
+  ok("RU: context '2 активны · 1 заблокирован' (no total), '3 активны', the amounts in Russian format (2 currencies exact, 3 ≈)", alpha.ctx.join("|") === "2 активны · 1 заблокирован" && alpha.ctx.join("|") === CTX.alpha() && delta.ctx.join("|") === "3 активны" && delta.ctx.join("|") === CTX.delta() && /^100,00\s\$ \+ 50,00\s€$/.test(alpha.value) && /^≈ 47,50\s\$$/.test(delta.value) && alpha.sr === tr("bms.st.active"), JSON.stringify([alpha.ctx, delta.ctx, alpha.value, delta.value]));
+  ok("RU: the problem words and fixes — Не верифицирован → Верификация (ещё 1), Нет кабинетов → Создать кабинет, Нет активных; their context '1 заблокирован'", beta.status.text === tr("bms.st.unverified") && beta.fix.text === tr("bms.fix.verify") && beta.more === tr("row.more", { n: 1 }) && gamma.status.text === tr("bms.st.none") && gamma.fix.text === tr("bms.fix.create") && eps.status.text === tr("bms.st.noActive") && eps.ctx.join("|") === "1 заблокирован" && eps.ctx.join("|") === CTX.eps() && beta.ctx.join("|") === "1 заблокирован" && beta.ctx.join("|") === CTX.beta(), JSON.stringify([beta, gamma, eps].map((r) => [r.status?.text, r.fix?.text, r.ctx])));
   await toggle(pop, "Beta Ads");
   const bb = await bodyOf(pop, "Beta Ads");
-  ok("RU: the expanded row (Кабинеты, Верификация: Не удалась, Что делать, Настройки бизнеса, the button)", bb.kv[0].join(": ") === accLine(counts(1, 0, 1)) && bb.kv[1].join(": ") === `${tr("bms.kv.verification")}: ${tr("bms.ver.failed")}` && bb.todo.title === tr("next.title") && has(bb.todo.help, tr("bms.help.verification")) && bb.links[0].text === tr("bms.settings"), JSON.stringify(bb));
+  ok("RU: the expanded row (Что делать, then one links line: «Кабинеты →» · Настройки бизнеса); no 'Кабинеты' / 'Верификация' pairs", bb.kv.length === 0 && bb.line === "Кабинеты → · Настройки бизнеса" && bb.line === linksOf("go", "settings") && !has(bb.text, tr("bms.ver.failed")) && bb.todo.title === tr("next.title") && has(bb.todo.help, tr("bms.help.verification")) && bb.links[0].text === tr("bms.settings"), JSON.stringify(bb));
   ok("RU: no 'BM' / 'БМ' anywhere in the tab", await pop.evaluate(() => !/(^|[^\p{L}])(BM|БМ)(?![\p{L}])/u.test(document.querySelector("#tab-bms").innerText + [...document.querySelectorAll("#tab-bms [title], #tab-bms [aria-label]")].map((n) => n.title + n.getAttribute("aria-label")).join())));
   await toggle(pop, "Beta Ads");
   await pop.fill("#bmFilter", "zzz");
@@ -686,7 +732,7 @@ async function bmsRowsFlow() {
   await pop.click(PERIOD("today", "#bmsPeriod"));
   await pop.focus('[data-focus="row:bm-1001"]'); await pop.keyboard.press("Enter");
   await pop.focus('[data-focus="bm-go:1001"]'); await pop.keyboard.press("Enter");
-  ok("…'Show ad accounts →' works from the keyboard too (opens the Ad accounts tab, filtered); focus lands on the tab's button", await until(pop, () => document.querySelector(".tab.active")?.dataset.tab === "accounts" && /Alpha Media/.test(document.querySelector("#tab-accounts").textContent)
+  ok("…'Ad accounts →' works from the keyboard too (opens the Ad accounts tab, filtered); focus lands on the tab's button", await until(pop, () => document.querySelector(".tab.active")?.dataset.tab === "accounts" && /Alpha Media/.test(document.querySelector("#tab-accounts").textContent)
     && document.activeElement?.id === "tabbtn-accounts"));
   await pop.click('[data-tab="bms"]');
 
@@ -793,6 +839,8 @@ async function bmsUnreadFlow() {
   const gb = await pop.evaluate(() => { const r = [...document.querySelectorAll("#bmsList .lrow")].find((x) => x.querySelector(".lrow-name").textContent === "Gamma Group"); const n = r.querySelector(".lrow-note");
     return { note: n?.textContent.trim() ?? null, color: n && getComputedStyle(n).color, size: n && getComputedStyle(n).fontSize, todo: !!r.querySelector(".lrow-todo") }; });
   ok("Gamma's body says, muted, that its ad accounts could not be read (12 px, secondary grey); no 'What to do' for a problem nobody can state", gb.note === tr("bms.unread") && gb.color === "rgb(96, 103, 112)" && gb.size === "12px" && !gb.todo, JSON.stringify(gb));
+  const gu = await bodyOf(pop, "Gamma Group");
+  ok("…its body keeps the way in: the note, then the links line 'Ad accounts →' · Business settings (a business that could not be read may well have ad accounts)", gu.go?.tag === "BUTTON" && gu.kinds.join() === "go,sep,settings" && gu.text === `${tr("bms.unread")} ${linksOf("go", "settings")}` && gu.last === "lrow-links", JSON.stringify(gu));
   await toggle(pop, "Alpha Media");
   ok("…and only Gamma's: Alpha's body has no such line", await pop.evaluate(() => { const r = [...document.querySelectorAll("#bmsList .lrow")].find((x) => x.querySelector(".lrow-name").textContent === "Alpha Media"); return !!r.querySelector(".lrow-body") && !r.querySelector(".lrow-note"); }));
   await pop.click('[data-tab="accounts"]');
@@ -827,4 +875,4 @@ async function bmsRestrictedFlow() {
   await done(b);
 }
 
-export const flows = { bms: bmsFlow, bmsUnread: bmsUnreadFlow, bmsSpend: bmsSpendFlow, bmsTruncated: bmsTruncatedFlow, bmsFields: bmsFieldsFlow, bmsPerm: bmsPermFlow, bmsAccounts: bmsAccountsFlow, bmsCache: bmsCacheFlow, bmsLimits: bmsLimitsFlow, bmsPaging: bmsPagingFlow, bmsLang: bmsLangFlow, bmsRows: bmsRowsFlow, bmsLayout: bmsLayoutFlow, bmsRestricted: bmsRestrictedFlow };
+export const flows = { bms: bmsFlow, bmsUnread: bmsUnreadFlow, bmsSpend: bmsSpendFlow, bmsTruncated: bmsTruncatedFlow, bmsContext: bmsContextFlow, bmsFields: bmsFieldsFlow, bmsPerm: bmsPermFlow, bmsAccounts: bmsAccountsFlow, bmsCache: bmsCacheFlow, bmsLimits: bmsLimitsFlow, bmsPaging: bmsPagingFlow, bmsLang: bmsLangFlow, bmsRows: bmsRowsFlow, bmsLayout: bmsLayoutFlow, bmsRestricted: bmsRestrictedFlow };

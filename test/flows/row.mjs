@@ -1,7 +1,7 @@
 // The shared list row (js/row.js + css/rows.css), rendered in a lab inside the real popup page (no tab uses it yet): structure and
 // ARIA of the stretched-button pattern (the description is the amount + line 2 WITHOUT the ID), keyboard, the lazy body, silent healthy
 // rows, problem rows (status word + fix link + "+N"), line 2 = ID · status · context · fix +N (the ID first, under the name, at every width;
-// the copy icon in the indent; no ID line in the body; a healthy row is the ID alone), copy button (no toggle, ✓, live region, no toast),
+// the copy icon right after the digits, always visible; no ID line in the body; a healthy row is the ID alone), copy button (no toggle, ✓, live region, no toast),
 // selection, avatars (24 px, fallbacks, never a bad URL), hit areas, layout at 560 and 380 px, group header, kv / whatToDo / linksRow.
 // Fictional data; nothing leaves the machine.
 import path from "node:path";
@@ -185,12 +185,20 @@ async function rowFlow() {
     [await lineTwo(pop, "healthy"), await lineTwo(pop, "problem"), await lineTwo(pop, "evil"), await lineTwo(pop, "quiet")].join(" // "));
   const cp = await q(pop, () => { const b = document.querySelector('#lab .lrow[data-row="healthy"] .lrow-head .lrow-id'); const r = b.getBoundingClientRect(); return { tab: b.getAttribute("tabindex"), h: Math.round(r.height), w: Math.round(r.width), aria: b.getAttribute("aria-label"), title: b.title, focus: b.dataset.focus }; });
   ok("the copy button on a collapsed row is for the mouse (tabindex -1), ≥ 24 px high, named 'Copy ID <id>' (the tooltip says the same: the digits may end in an ellipsis on the tightest line)", cp.tab === "-1" && cp.h >= 24 && cp.aria === `${tr("acc.copyId")} 1864109161555839` && cp.title === cp.aria && cp.focus === "rowid:healthy", JSON.stringify(cp));
-  // the copy icon: in the indent, left of the digits, on hover; it takes no room on the line (the digits do not move)
-  const before = await q(pop, () => Math.round(document.querySelector('#lab .lrow[data-row="problem"] .lrow-idtext').getBoundingClientRect().left));
-  await pop.hover(`#lab .lrow[data-row="problem"] .lrow-head .lrow-value`);
-  const ic = await q(pop, () => { const r = document.querySelector('#lab .lrow[data-row="problem"]'), i = r.querySelector(".lrow-id .i"), t = r.querySelector(".lrow-idtext").getBoundingClientRect(), hd = r.querySelector(".lrow-head").getBoundingClientRect(), ib = i.getBoundingClientRect();
-    return { opacity: getComputedStyle(i).opacity, pos: getComputedStyle(i).position, left: Math.round(ib.left - hd.left), right: Math.round(t.left - ib.right), centre: Math.round(Math.abs((ib.top + ib.bottom) / 2 - (t.top + t.bottom) / 2)), size: Math.round(ib.width), idLeft: Math.round(t.left) }; });
-  ok("hovering the row shows the copy icon in the indent: left of the digits (a few px away), inside the row's 16 px gutter, level with them, absolutely positioned: the digits do not move", ic.opacity === "1" && ic.pos === "absolute" && ic.left >= 16 && ic.right >= 0 && ic.right <= 8 && ic.centre <= 2 && ic.idLeft === before, JSON.stringify({ ...ic, before }));
+  // the copy icon: right after the digits, in the flow of the line, always visible (user decision 2026-10-10: it never appears or disappears); the digits do not move
+  const iconOf = () => q(pop, () => { const r = document.querySelector('#lab .lrow[data-row="problem"]'), btn = r.querySelector(".lrow-id"), i = btn.querySelector(".i"), t = r.querySelector(".lrow-idtext").getBoundingClientRect(), sub = r.querySelector(".lrow-sub").getBoundingClientRect(), ib = i.getBoundingClientRect(), cs = getComputedStyle(i);
+    return { order: [...btn.children].map((c) => c.className.split(" ")[0]).join(), opacity: cs.opacity, visibility: cs.visibility, display: cs.display, pos: cs.position, size: Math.round(ib.width), gap: Math.round(ib.left - t.right), margin: cs.marginInlineStart,
+      centre: Math.round(Math.abs((ib.top + ib.bottom) / 2 - (t.top + t.bottom) / 2)), inLine: ib.left >= t.right && ib.right <= sub.right + 0.5 && ib.top >= sub.top - 0.5 && ib.bottom <= sub.bottom + 0.5, idLeft: Math.round(t.left), color: cs.color, btnColor: getComputedStyle(btn).color }; });
+  const iconColor = await q(pop, () => { const p = document.createElement("span"); p.style.color = "var(--color-icon)"; document.body.append(p); const c = getComputedStyle(p).color; p.remove(); return c; });     // --color-icon as the engine resolves it
+  await pop.mouse.move(0, 0);
+  const rest = await iconOf();
+  ok("the copy icon is right of the digits (4 px away, 13 px wide), in the flow of the line (not positioned), visible at rest, level with the digits, inside line 2",
+    rest.order === "lrow-idtext,i" && rest.pos === "static" && rest.opacity === "1" && rest.visibility === "visible" && rest.display !== "none" && rest.size === 13 && rest.margin === "4px" && rest.gap >= 3 && rest.gap <= 5 && rest.centre <= 2 && rest.inLine, JSON.stringify(rest));
+  ok("…at rest it is the quiet icon colour, not the text colour of the ID", rest.color === iconColor && rest.color !== rest.btnColor, JSON.stringify({ iconColor, color: rest.color, text: rest.btnColor }));
+  await pop.hover(`#lab .lrow[data-row="problem"] .lrow-head .lrow-id`);
+  await until(pop, (c) => getComputedStyle(document.querySelector('#lab .lrow[data-row="problem"] .lrow-id .i')).color !== c, iconColor);
+  const hov1 = await iconOf();
+  ok("hovering the ID: the icon takes the text colour of the ID (currentColor), and nothing moves or changes size (the digits stay, the icon stays where it was)", hov1.color === hov1.btnColor && hov1.color !== iconColor && hov1.opacity === "1" && hov1.idLeft === rest.idLeft && hov1.gap === rest.gap && hov1.size === rest.size && hov1.inLine, JSON.stringify({ hov1, rest }));
   if (SHOT) { await pop.locator(rowSel("healthy")).screenshot({ path: path.join(SHOT, "rows-lab-hover-healthy.png") }); await pop.locator(rowSel("problem")).screenshot({ path: path.join(SHOT, "rows-lab-hover-problem.png") }); }
   await pop.mouse.move(0, 0);
   const hov = await q(pop, () => { const r = document.querySelector("#lab .lrow"); return { clickable: getComputedStyle(r.querySelector(".lrow-head")).cursor, pos: getComputedStyle(r.querySelector(".lrow-title"), "::after").position, content: getComputedStyle(r.querySelector(".lrow-title"), "::after").content }; });
@@ -314,7 +322,8 @@ async function rowFlow() {
       out.rows[k] = { h: Math.round(hd.height), subH: Math.round(sub.getBoundingClientRect().height), cut: name.scrollWidth > name.clientWidth, idShown: t.getBoundingClientRect().width > 0,
         idX: Math.round(t.getBoundingClientRect().left - name.getBoundingClientRect().left), idCut: t.scrollWidth > t.clientWidth,
         fixInside: !fix || (fix.scrollWidth <= fix.clientWidth && fix.getBoundingClientRect().right <= end), moreInside: !more || more.getBoundingClientRect().right <= end,
-        status: !!r.querySelector(".lrow-it.sts:not([hidden])") };
+        status: !!r.querySelector(".lrow-it.sts:not([hidden])"),
+        icon: (() => { const ib = r.querySelector(".lrow-id .i").getBoundingClientRect(), tb = t.getBoundingClientRect(); return { w: Math.round(ib.width), after: ib.left >= tb.right - 0.5, inside: ib.right <= end, opacity: getComputedStyle(r.querySelector(".lrow-id .i")).opacity }; })() };
     }
     const bd = document.querySelector('#lab .lrow[data-row="problem"] .lrow-body');
     out.kvCols = getComputedStyle(bd.querySelector(".lrow-kv")).gridTemplateColumns.split(" ").length;
@@ -325,6 +334,7 @@ async function rowFlow() {
   ok("at 380 px the ID is still on every collapsed row (first on line 2, under the name, whole): no hidden ID at any width, and none in the body", Object.values(narrow.rows).every((x) => x.idShown && x.idX === 0 && !x.idCut) && narrow.noIdLine, JSON.stringify(narrow));
   ok("…rows stay two lines (68 px, line 2 does not wrap), long names are cut, the body is one column", ["long", "quiet", "worst"].every((k) => near(narrow.rows[k].h, 68)) && narrow.rows.problem.subH <= 24 && narrow.rows.long.subH <= 24 && narrow.rows.worst.subH <= 24 && narrow.rows.long.cut && narrow.kvCols === 1 && narrow.bodyScroll, JSON.stringify(narrow));
   ok("…the fix link and '+3' are never cut, even where the ID, a picture and a long status phrase compete for the line (the status word and the context give way, with an ellipsis)", Object.values(narrow.rows).every((x) => x.fixInside && x.moreInside), JSON.stringify(narrow.rows));
+  ok("…the copy icon is on every collapsed row too, 13 px, after the digits and inside line 2, opaque (also on the tightest line)", Object.values(narrow.rows).every((x) => x.icon.w === 13 && x.icon.after && x.icon.inside && x.icon.opacity === "1"), JSON.stringify(Object.fromEntries(Object.entries(narrow.rows).map(([k, x]) => [k, x.icon]))));
   const w2 = await lineTwo(pop, "worst");
   ok("…the tightest line (a 16-digit ID, a picture, 'Set “Use Facebook Page”'): the status word is dropped whole and takes its '·' with it, so line 2 reads 'ID · fix' (no dangling separator)", !narrow.rows.worst.status && w2 === `1000000000000042 · ${LONG_FIX}`, w2);
   ok("…a status word that has room stays: 'ID · Ads policy · Appeal+2 more' on the problem row", narrow.rows.problem.status && (await lineTwo(pop, "problem")) === `111222333444555 · Ads policy · ${tr("next.review")}${tr("row.more", { n: 2 })}`, await lineTwo(pop, "problem"));

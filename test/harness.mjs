@@ -70,6 +70,13 @@ export function tr(key, vars) {
 }
 // The count word of n ("click" / "clicks", one / few / many in Russian) from a plural entry such as "ads.clk".
 export const trn = (n, key) => i18n.tn(n, key);
+// Line 2 context of a Businesses row as bms.js writes it: "2 active · 1 disabled" (a part that is zero is left out; the total is not written);
+// a business whose accounts are neither (closed, unsettled): "3 ad accounts". plus = "+" when the list was cut: it goes after the first number
+// ("10+ active · 9 disabled", "10+ disabled").
+export function bmsContext({ total, active = 0, disabled = 0, plus = "" }) {
+  if (!active && !disabled) return `${total}${plus} ${trn(plus ? 5 : total, "bms.accCount")}`;
+  return [active ? `${active}${plus} ${trn(active, "bms.activeWord")}` : null, disabled ? `${disabled}${active ? "" : plus} ${trn(disabled, "bms.disabledWord")}` : null].filter(Boolean).join(" · ");
+}
 // A RegExp of a string, for a text that has a number in it that the test cannot know: trx("err.cooldown", { n: /9|10/ }). A variable given as a
 // RegExp is put in as its pattern, any other value is matched literally, a variable left out matches anything.
 // { exact: true } anchors it to the whole text.

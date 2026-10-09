@@ -364,16 +364,18 @@ test("every key the tab can draw exists in both languages (the dynamic ones: pro
   assert.deepEqual([STRINGS.ru["bms.st.noActive"], STRINGS.ru["bms.st.none"], STRINGS.ru["bms.st.unverified"], STRINGS.ru["bms.fix.create"], STRINGS.ru["bms.fix.verify"]], ["Нет активных", "Нет кабинетов", "Не верифицирован", "Создать кабинет", "Верификация"]);
 });
 
-test("the plural words: 3 кабинета · 1 заблокирован / 3 ad accounts · 1 disabled", async () => {
+test("the plural words: 2 активны · 1 заблокирован / 2 active · 1 disabled; the total (3 кабинета / 3 ad accounts) only when neither", async () => {
   const { tn, setLang: set } = await import("../fb-helper/js/i18n.js");
   await import("../fb-helper/js/strings/bms.js");
   try {
     await set("ru");
     assert.deepEqual([1, 2, 3, 5, 11, 21].map((n) => `${n} ${tn(n, "bms.accCount")}`), ["1 кабинет", "2 кабинета", "3 кабинета", "5 кабинетов", "11 кабинетов", "21 кабинет"]);
     assert.deepEqual([1, 2, 5, 21].map((n) => tn(n, "bms.disabledWord")), ["заблокирован", "заблокированы", "заблокированы", "заблокирован"]);
+    assert.deepEqual([1, 2, 5, 21].map((n) => tn(n, "bms.activeWord")), ["активен", "активны", "активны", "активен"]);
     await set("en");
     assert.deepEqual([1, 3].map((n) => `${n} ${tn(n, "bms.accCount")}`), ["1 ad account", "3 ad accounts"]);
     assert.deepEqual([1, 3].map((n) => tn(n, "bms.disabledWord")), ["disabled", "disabled"]);
+    assert.deepEqual([1, 3].map((n) => tn(n, "bms.activeWord")), ["active", "active"]);
   } finally { await set("en"); }
 });
 

@@ -203,15 +203,20 @@ async function bmsWords() {
   golden("Businesses tab: the controls, the periods, the total line", {
     controls: [await pop.getAttribute("#bmFilter", "placeholder"), ages(await pop.getAttribute("#loadBms", "title"))], periods: await seen(pop, "#bmsPeriod .seg-btn"), total: dates(await one(pop, "#bmsTotal")),
   }, { controls: ["Search", "Refresh businesses and spend · updated <age>"], periods: ["Today", "Yesterday", "7 days", "30 days", "All time"], total: "Spend · <date> ≈ $227.00 $142.00 + €60.00 +1 more · rates <date>" });
-  golden("Businesses tab: every row as it reads (name, the amount, then line 2: the ID first, the one problem word and its fix, '+N more', the counts)", { rows: await seen(pop, "#bmsList .lrow-head") }, {
-    rows: ["Alpha Media $100.00 + €50.00 1001 Active 3 ad accounts · 1 disabled", "Delta Co ≈ $47.50 1004 Active 3 ad accounts", "Beta Ads $10.00 1002 Unverified 1 ad account · 1 disabled Verify +1 more", "Partner Agency $7.00 9999 Active 1 ad account",
-      "Epsilon Digital $0 1005 None active 2 ad accounts · 1 disabled", "Gamma Group — 1003 No ad accounts Create account"],
+  golden("Businesses tab: every row as it reads (name, the amount, then line 2: the ID first, the one problem word and its fix, '+N more', the counts: active · disabled, no total)", { rows: await seen(pop, "#bmsList .lrow-head") }, {
+    rows: ["Alpha Media $100.00 + €50.00 1001 Active 2 active · 1 disabled", "Delta Co ≈ $47.50 1004 Active 3 active", "Beta Ads $10.00 1002 Unverified 1 disabled Verify +1 more", "Partner Agency $7.00 9999 Active 1 active",
+      "Epsilon Digital $0 1005 None active 1 disabled", "Gamma Group — 1003 No ad accounts Create account"],
   });
   await pop.click('#bmsList .lrow:has(.lrow-name:text-is("Beta Ads")) .lrow-title');
-  golden("Businesses tab: an opened row (the counts, the jump button, verification, What to do with both helps and every step, the places)", { body: await one(pop, "#bmsList .lrow.open .lrow-body") }, {
-    body: "Ad accounts 1 · 1 disabled Show ad accounts → Verification Failed What to do The reason is in Business Settings → Security. Verify the business again. Check why the ad accounts are not active, or add a new one. Verify Manage ad accounts Business settings",
+  golden("Businesses tab: an opened row (What to do with both helps and every step, then the one links line: the Ad accounts button · Business settings; no counts, no verification)", { body: await one(pop, "#bmsList .lrow.open .lrow-body") }, {
+    body: "What to do The reason is in Business Settings → Security. Verify the business again. Check why the ad accounts are not active, or add a new one. Verify Manage ad accounts Ad accounts → · Business settings",
   });
   await pop.click("#bmsList .lrow.open .lrow-title");
+  for (const n of ["Alpha Media", "Gamma Group", "Partner Agency"]) await pop.click(`#bmsList .lrow:has(.lrow-name:text-is("${n}")) .lrow-title`);
+  golden("Businesses tab: an opened healthy row (the links line alone), a business without ad accounts (no Ad accounts button), a business only a client account names (the button alone)", {
+    healthy: await one(pop, '#bmsList .lrow:has(.lrow-name:text-is("Alpha Media")) .lrow-body'), none: await one(pop, '#bmsList .lrow:has(.lrow-name:text-is("Gamma Group")) .lrow-body'), partner: await one(pop, '#bmsList .lrow:has(.lrow-name:text-is("Partner Agency")) .lrow-body'),
+  }, { healthy: "Ad accounts → · Business settings", none: "What to do Create an ad account, or ask a business admin to give you access to an existing one. Create account Business settings", partner: "Ad accounts →" });
+  for (const n of ["Alpha Media", "Gamma Group", "Partner Agency"]) await pop.click(`#bmsList .lrow:has(.lrow-name:text-is("${n}")) .lrow-title`);
   await resetLocks(pop);
   const said = { refresh: await clickToast(pop, "#loadBms") };
   await pop.fill("#bmFilter", "zzz"); said.search = await one(pop, "#bmsList"); said.count = await one(pop, "#bmsTotal .total-meta"); said.value = await one(pop, "#bmsTotal .total-value");
