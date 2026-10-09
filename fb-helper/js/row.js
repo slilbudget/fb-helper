@@ -3,7 +3,7 @@
 //
 //   collapsed row = two lines, two columns:
 //     line 1   › [24 px picture] Name (ellipsis)                                       value (amount, right-aligned, tabular digits)
-//     line 2    ⧉ 1864109161555839 · ● Problem · Fix verb  +N         (ID first, muted, at every width; ⧉ sits in the indent, on hover / focus only)
+//     line 2    1864109161555839 ⧉ · ● Problem · Fix verb  +N         (ID first, muted, at every width; ⧉ right after it, always there)
 //   A healthy row is silent: a status with tone "ok" prints nothing (a screen-reader-only word instead), so line 2 is just the ID (and the
 //   context, if any) and the list shows only what needs a look. A problem row says the problem ONCE (the status word is the problem) and
 //   puts its fix, an underlined link without an icon, right after it; "+2 more" / "ещё 2" = further problems (all of them are in the
@@ -125,8 +125,8 @@ export function whatToDo({ help, actions = [], skip = [], tone = "", owner, focu
 }
 
 // ---------- ID + copy ----------
-// id = { value, copiedMsg? }. Click copies and never toggles a row (the button sits above the row's covering ::after). The icon (in the indent
-// left of the digits, css; shown on hover / focus only) turns into a ✓ for 1.5 s and the message goes to a live region instead of a toast.
+// id = { value, copiedMsg? }. Click copies and never toggles a row (the button sits above the row's covering ::after). The icon (right after the
+// digits, always visible) turns into a ✓ for 1.5 s and the message goes to a live region instead of a toast.
 // tabbable = false on the collapsed row (mouse only; row() makes it tabbable while the row is open). The button's name is "Copy ID <id>".
 function idButton(id, { focus, tabbable = true }) {
   const icon = el("i", { class: "i i-copy", "aria-hidden": "true" });

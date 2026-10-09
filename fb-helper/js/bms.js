@@ -163,9 +163,9 @@ function contextOf(r) {
   const title = r.partial ? t("bms.accsPartial") : null;
   if (!c.active && !c.disabled) return [el("span", { class: "lrow-ctx", title }, `${c.total}${plus} ${tnPlus(c.total, "bms.accCount", r.partial)}`)];
   return [el("span", { class: "lrow-ctx", title },
-    c.active ? `${c.active}${plus} ${tn(c.active, "bms.activeWord")}` : null,
+    c.active ? `${c.active}${plus} ${tnPlus(c.active, "bms.activeWord", r.partial)}` : null,
     c.active && c.disabled ? el("span", { class: "lbm-sep" }, " · ") : null,
-    c.disabled ? el("span", { class: "lbm-dis" }, `${c.disabled}${c.active ? "" : plus} ${tn(c.disabled, "bms.disabledWord")}`) : null)];
+    c.disabled ? el("span", { class: "lbm-dis" }, `${c.disabled}${c.active ? "" : plus} ${tnPlus(c.disabled, "bms.disabledWord", r.partial && !c.active)}`) : null)];
 }
 // The right-hand amount: exact for one or two currencies, "≈ $" from three (the breakdown is its tooltip and the expanded row); a dash
 // (muted) when there is nothing to add up, with the reason as its tooltip.

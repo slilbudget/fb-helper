@@ -76,7 +76,7 @@ export function mergeUp(parts) {
 //   member   the owner OR the business the account was read through (a._bmId: an account the person only sees as a client of one of their own
 //            businesses; business-edge reads set it, accounts.js readBmAccounts). COUNTS, STATUS and the "ad accounts of this business" filter
 //            use it (inBusiness / membersByBusiness), so a business that has only shared (client) accounts never says "No ad accounts"
-//            and the jump "Show ad accounts" from the Businesses tab lists the same accounts its count did.
+//            and the jump "Ad accounts →" from the Businesses tab lists the same accounts its count did.
 // A client account therefore shows in two places: counted in its user's business, spent in its owner's group.
 const bizId = (v) => (v === undefined || v === null || v === "" ? null : String(v));
 export const inBusiness = (a, id) => id !== null && id !== undefined && (bizId(a?.business?.id) === String(id) || bizId(a?._bmId) === String(id));

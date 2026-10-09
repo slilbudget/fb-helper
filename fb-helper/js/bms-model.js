@@ -130,7 +130,7 @@ export function buildRows({ bms = [], accounts = [], loaded = false, truncated =
 // Data, so a test can walk every one. label / tip / help = i18n keys; fix = where it is fixed: label / tip (i18n keys) and url(row) →
 // https URL or null (a null drops the link). One fix per problem, always a page that links.js built; the extension changes nothing
 // by opening it. Order = severity. line = the fix goes on line 2 of the collapsed row (only when it is the worst problem);
-// "None active" has no fix there: the way in is the "Show ad accounts" button, the Business Settings link waits in the body.
+// "None active" has no fix there: the way in is the "Ad accounts →" button, the Business Settings link waits in the body.
 export const PROBLEMS = [
   { id: "restricted", tone: "bad", has: (r) => !!r.restricted, label: "bms.st.restricted", tip: "bms.st.restricted.title", help: "bms.help.restricted", line: true,
     fix: { label: "bms.fix.review", tip: "bms.fix.reviewTitle", url: () => LINKS.accountQuality() } },
