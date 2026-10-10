@@ -145,7 +145,7 @@ export async function boot({ user = "1001", fb, graph, rates, pics, picture } = 
   // brings rates (ratesOk below). b.rateHits lists every request: origin + path.
   page$.rateHits = [];
   page$.rates = rates || (() => ({ status: 503, body: {} }));
-  for (const origin of ["https://open.er-api.com", "https://cdn.jsdelivr.net"]) {
+  for (const origin of ["https://cdn.jsdelivr.net", "https://latest.currency-api.pages.dev"]) {
     await ctx.route(`${origin}/**`, async (r) => {
       const u = new URL(r.request().url());
       page$.rateHits.push(u.origin + u.pathname);
@@ -303,9 +303,9 @@ export const stored = (p, key) => p.evaluate((k) => chrome.storage.session.get(k
 // ---------- mock exchange rates (units per 1 USD) ----------
 export const FX = { USD: 1, EUR: 0.8, GBP: 0.75, VND: 25000, UAH: 40, RUB: 90, PLN: 4 };
 const dayOf = (d) => new Date(d).toISOString().slice(0, 10);
-// Both providers' payload shapes, dated `when` (default: now, so a test never meets a stale table by accident).
-export const fxEr = (r = FX, when = Date.now()) => { const d = new Date(when); return { result: "success", provider: "https://www.exchangerate-api.com", base_code: "USD",
-  time_last_update_unix: Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 2, 31) / 1000), time_last_update_utc: `${dayOf(when)} 00:02:31`, rates: r }; };
-export const fxCdn = (r = FX, when = Date.now()) => ({ date: dayOf(when), usd: Object.fromEntries(Object.entries(r).map(([k, v]) => [k.toLowerCase(), v])) });
-// A rates handler for boot({ rates }): the primary source answers with fxEr, the fallback with fxCdn.
-export const ratesOk = (u) => ({ body: u.hostname === "open.er-api.com" ? fxEr() : fxCdn() });
+// The payload of both sources (one dataset, two mirrors), dated `when` (default: now, so a test never meets a stale table by accident).
+export const fxBody = (r = FX, when = Date.now()) => ({ date: dayOf(when), usd: Object.fromEntries(Object.entries(r).map(([k, v]) => [k.toLowerCase(), v])) });
+// The two sources' URLs, in the order the extension asks for them, and the rates handler for boot({ rates }): both answer with the table.
+export const FX_PRIMARY = "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json";
+export const FX_FALLBACK = "https://latest.currency-api.pages.dev/v1/currencies/usd.json";
+export const ratesOk = () => ({ body: fxBody() });

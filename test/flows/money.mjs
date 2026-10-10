@@ -2,7 +2,7 @@
 // origins (never the network): "≈ $…" + the muted breakdown + the tooltip with the date; the fallback source;
 // both sources down (the per-currency sum, no "≈", no console error, no retry for 20 minutes); the 24 h cache across popups;
 // one currency (no request at all); Russian. Graph is a mock (fictional data).
-import { TOK, ok, has, boot, adsPage, popup, text, until, rowsAre, adsFb, ratesOk, fxEr, fxCdn, FX, ROW, done, agoRe, esc, ratesIdle, tr, trx, useLang, waitFor } from "../harness.mjs";
+import { TOK, ok, has, boot, adsPage, popup, text, until, rowsAre, adsFb, ratesOk, fxBody, FX, FX_PRIMARY, FX_FALLBACK, ROW, done, agoRe, esc, ratesIdle, tr, trx, useLang, waitFor } from "../harness.mjs";
 
 const day = new Date().toISOString().slice(0, 10);
 const ins = (spend) => ({ data: [{ spend: String(spend), impressions: "100", inline_link_clicks: "10", date_start: day, date_stop: day }] });
@@ -14,8 +14,6 @@ const THREE = { data: [acc("11", "Alpha US", "USD", 1695.7, ALPHA), acc("12", "A
 const ONE = { data: [acc("11", "Alpha US", "USD", 1695.7, ALPHA), acc("14", "Alpha US 2", "USD", 4.3, ALPHA)] };
 const BMS = { data: [{ id: ALPHA[0], name: ALPHA[1] }, { id: BETA[0], name: BETA[1] }] };
 const graphFor = (accounts) => (u) => ({ body: u.pathname.endsWith("/me/adaccounts") ? accounts : u.pathname.endsWith("/me/businesses") ? BMS : { data: [] } });
-const ER = "https://open.er-api.com/v6/latest/USD";
-const CDN = "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json";
 
 const flat = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
 const shortEn = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${day}T00:00:00Z`));
@@ -43,11 +41,11 @@ async function ratesFlows() {
   ok("…label 'Spend · <date>' (no period word), no count while nothing is filtered", new RegExp(`^${esc(tr("acc.spend"))} · ${shortEn}$`).test(t.label) && t.meta === null, JSON.stringify(t));
   ok("…value '≈ $1,770' (no decimals from 1 000 up)", t.value === "≈ $1,770", t.value);
   ok("…muted line: two biggest currencies (one string, one fraction rule: cents everywhere; a million of VND is short), '+1 more' and the date of the rates; no provider name, no link", t.sub === `$1,695.70 + VND 1.2M ${tr("money.more", { n: 1 })} · ${tr("money.rates", { d: shortEn })}` && t.link === null, t.sub);
-  ok("…tooltip: every currency, 'Approximate', the date (no provider credit)", has(flat(t.valueTitle), "$1,695.70 + VND 1,234,567 + €20.00") && has(t.valueTitle, tr("money.approx", { d: longEn })) && has(t.valueTitle, longEn) && !has(t.valueTitle, "Exchange Rate API") && t.valueTitle === t.subTitle, t.valueTitle);
+  ok("…tooltip: every currency, 'Approximate', the date (no provider credit)", has(flat(t.valueTitle), "$1,695.70 + VND 1,234,567 + €20.00") && has(t.valueTitle, tr("money.approx", { d: longEn })) && has(t.valueTitle, longEn) && !/https?:|jsdelivr|currency-api/i.test(t.valueTitle) && t.valueTitle === t.subTitle, t.valueTitle);
   ok("…the refresh button says how old the list is (not the screen)", new RegExp(`^${esc(tr("refresh"))} · ${trx("acc.updated", { t: agoRe() }).source}$`).test(await pop.locator("#loadAccounts").getAttribute("title")), await pop.locator("#loadAccounts").getAttribute("title"));
-  ok("…exactly one request to the primary source, none to the fallback", b.rateHits.length === 1 && b.rateHits[0] === ER, b.rateHits.join());
+  ok("…exactly one request to the primary source, none to the fallback", b.rateHits.length === 1 && b.rateHits[0] === FX_PRIMARY, b.rateHits.join());
   const fx = await pop.evaluate(() => chrome.storage.local.get(["fx", "fxFail"]));
-  ok("…the table is kept in chrome.storage.local (USD base, source, date, numbers) and there is no failure mark", fx.fx?.base === "USD" && fx.fx.source === "exchangerate-api" && fx.fx.date === day && fx.fx.rates.VND === FX.VND && typeof fx.fx.fetchedAt === "number" && !fx.fxFail, JSON.stringify(fx).slice(0, 200));
+  ok("…the table is kept in chrome.storage.local (USD base, source, date, numbers) and there is no failure mark", fx.fx?.base === "USD" && fx.fx.source === "currency-api" && fx.fx.date === day && fx.fx.rates.VND === FX.VND && typeof fx.fx.fetchedAt === "number" && !fx.fxFail, JSON.stringify(fx).slice(0, 200));
   ok("…the rows keep their own exact amounts (no '≈' on a row)", (await pop.$$eval(`${ROW} .lrow-value`, (n) => n.map((x) => x.textContent.replace(/\s+/g, " ").trim()))).every((x) => !x.includes("≈")), "rows");
 
   // the Businesses tab adds the same three currencies: same rates, no second request
@@ -77,13 +75,18 @@ async function ratesFlows() {
   ok("a table 25 h old is asked for again (one more request), the total stays '≈ $1,770'", (await hitsReach(b, pop3, 2)) && (await approx(pop3)), b.rateHits.join());
   const age = await pop3.evaluate(() => chrome.storage.local.get("fx").then(({ fx }) => Date.now() - fx.fetchedAt));
   ok("…and the saved table is new again", age < 60e3, String(age));
+  // a table saved by an older version (another source id, however fresh) is not read: a new one is fetched from the primary source
+  await pop3.evaluate(() => chrome.storage.local.get("fx").then(({ fx }) => chrome.storage.local.set({ fx: { ...fx, source: "older-version", fetchedAt: Date.now() - 3600e3 } })));
+  const pop4 = await popup(b, "accounts");
+  ok("a table saved by an older version is asked for again (one more request to the primary), the total is '≈ $1,770'", (await hitsReach(b, pop4, 3)) && (await approx(pop4)) && b.rateHits[2] === FX_PRIMARY, b.rateHits.join());
+  ok("…and the saved table carries the current source id", (await pop4.evaluate(() => chrome.storage.local.get("fx"))).fx?.source === "currency-api");
   await done(b);
 }
 
 // ---------- the table arrives late ----------
 async function lateFlow() {
   console.log("\n# money: the total never waits for the rates");
-  const b = await boot({ fb: adsFb(TOK), graph: graphFor(THREE), rates: (u) => ({ ...ratesOk(u), delay: 900 }) });
+  const b = await boot({ fb: adsFb(TOK), graph: graphFor(THREE), rates: () => ({ ...ratesOk(), delay: 900 }) });
   await adsPage(b);
   const pop = await popup(b, "accounts");
   ok("rows", await rowsAre(pop, ROW,3));
@@ -97,13 +100,13 @@ async function lateFlow() {
 async function fallbackFlows() {
   console.log("\n# money: primary source down → fallback source");
   for (const [name, primary] of [["HTTP 500", { status: 500, body: { result: "error" } }], ["network error", { abort: true }],
-    ["a table with no usable numbers", { body: fxEr({ EUR: -1, VND: 0, GBP: "x", UAH: null, RUB: 0 }) }]]) {
-    const b = await boot({ fb: adsFb(TOK), graph: graphFor(THREE), rates: (u) => (u.hostname === "open.er-api.com" ? primary : { body: fxCdn() }) });
+    ["a table with no usable numbers", { body: fxBody({ EUR: -1, VND: 0, GBP: "x", UAH: null, RUB: 0 }) }]]) {
+    const b = await boot({ fb: adsFb(TOK), graph: graphFor(THREE), rates: (u) => (u.hostname === "cdn.jsdelivr.net" ? primary : { body: fxBody() }) });
     const pop = await open3(b);
     ok(`${name}: the total is '≈ $1,770' from the fallback`, await approx(pop), await text(pop, "#accountsTotal .total-value"));
     const t = await totalOf(pop, "#accountsTotal");
-    ok(`${name}: the primary was tried first, then the fallback, once each`, b.rateHits.join() === [ER, CDN].join(), b.rateHits.join());
-    ok(`${name}: the line names the date, the same as with the primary`, t.sub === `$1,695.70 + VND 1.2M ${tr("money.more", { n: 1 })} · ${tr("money.rates", { d: shortEn })}` && t.link === null && !has(t.valueTitle, "Exchange Rate API") && has(t.valueTitle, longEn), JSON.stringify(t));
+    ok(`${name}: the primary was tried first, then the fallback, once each`, b.rateHits.join() === [FX_PRIMARY, FX_FALLBACK].join(), b.rateHits.join());
+    ok(`${name}: the line names the date, the same as with the primary`, t.sub === `$1,695.70 + VND 1.2M ${tr("money.more", { n: 1 })} · ${tr("money.rates", { d: shortEn })}` && t.link === null && !/https?:|jsdelivr|currency-api/i.test(t.valueTitle) && has(t.valueTitle, longEn), JSON.stringify(t));
     ok(`${name}: the saved table says where it came from`, (await pop.evaluate(() => chrome.storage.local.get("fx"))).fx?.source === "currency-api");
     await done(b);
   }
@@ -115,7 +118,7 @@ async function downFlows() {
   for (const [name, answer] of [["HTTP 503", () => ({ status: 503, body: {} })], ["offline", () => ({ abort: true })], ["not JSON", () => ({ body: "<html>maintenance</html>" })]]) {
     const b = await boot({ fb: adsFb(TOK), graph: graphFor(THREE), rates: answer });
     const pop = await open3(b);
-    ok(`${name}: both sources were tried`, (await hitsReach(b, pop, 2)) && b.rateHits.join() === [ER, CDN].join(), b.rateHits.join());
+    ok(`${name}: both sources were tried`, (await hitsReach(b, pop, 2)) && b.rateHits.join() === [FX_PRIMARY, FX_FALLBACK].join(), b.rateHits.join());
     await until(pop, () => chrome.storage.local.get("fxFail").then((o) => typeof o.fxFail?.at === "number"));       // the failure was noted: the total has been drawn without rates
     const t = await totalOf(pop, "#accountsTotal");
     ok(`${name}: the total stays the per-currency sum (every currency, exact), no '≈', no muted line`, !t.value.includes("≈") && has(t.value, "$1,695.70") && has(t.value, "€20.00") && has(t.value, "VND 1.2M") && t.value.split(" + ").length === 3 && t.sub === null && flat(t.valueTitle) === "$1,695.70 + €20.00 + VND 1,234,567", JSON.stringify(t));

@@ -195,7 +195,7 @@ test("totalOf: the sum of the rows shown (businesses only: the accounts of no bu
 });
 
 // ---------- the amount of a row ----------
-const RATES = { rates: { USD: 1, EUR: 0.8, VND: 25000 }, date: "2026-10-08", source: "exchangerate-api" };
+const RATES = { rates: { USD: 1, EUR: 0.8, VND: 25000 }, date: "2026-10-08", source: "currency-api" };
 const rowWith = (items) => buildRows({ bms: [slimBm({ id: "1", name: "X" })], accounts: items.map(([cur, spend], i) => A(String(i + 1), "1", 1, cur)), loaded: true, stats: (a) => ({ spend: items[Number(a.account_id) - 1][1] }) })[0];
 
 test("spendOf: one currency exact, two 'a + b' exact, three or more '≈ USD' (rates) with the breakdown in the tooltip; '≈' never on fewer than three", () => {
@@ -211,7 +211,7 @@ test("spendOf: one currency exact, two 'a + b' exact, three or more '≈ USD' (r
 });
 
 test("spendOf: three currencies without rates stay exact and short (the first two + '+N more'), never a '≈' and never a line as wide as three amounts", () => {
-  for (const rates of [null, { rates: { USD: 1, EUR: 0.8 }, date: "2026-10-08", source: "exchangerate-api" }]) {   // no table at all, or no rate for VND
+  for (const rates of [null, { rates: { USD: 1, EUR: 0.8 }, date: "2026-10-08", source: "currency-api" }]) {   // no table at all, or no rate for VND
     const s = spendOf(rowWith([["USD", 25], ["EUR", 10], ["VND", 250000]]), { loaded: true, rates });
     assert.equal(s.kind, "exact");
     assert.equal(flat(s.text), "$25.00 + €10.00 +1 more");

@@ -1,21 +1,22 @@
 // Money for the screen: amounts (fmtMoney), conversion (toUsd, usdEquivalent), the lines of totals and rows (totalLine, rowAmount),
 // and the exchange rates they need (rates). The pure half is money-core.js (plain Node, tested); this file only fetches and caches.
 //
-// The ONLY other network use of the extension besides the Graph reads (the manifest CSP lists both origins in connect-src):
-//   primary    GET https://open.er-api.com/v6/latest/USD                  (ExchangeRate-API)
-//   fallback   GET https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json
+// The ONLY other network use of the extension besides the Graph reads (the manifest CSP lists both URLs in connect-src). One public
+// dataset (fawazahmed0/exchange-api, CC0: no key, no attribution), two mirrors of the same file:
+//   primary    GET https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json
+//   fallback   GET https://latest.currency-api.pages.dev/v1/currencies/usd.json
 // No parameters, no cookies, no referrer, nothing about the user or the accounts goes out: it is the same public file for everyone.
 // Asked only when a caller asks (period.js and the tabs, when a total or an order with two or more currencies is on a tab that is
 // on screen) and the cache is older than 24 h; after a failed attempt nothing is sent for 20 minutes. A new table that disagrees
 // wildly with the one we hold (money-core.js plausibleRates) counts as a failed attempt: the held table stays. The table lives in chrome.storage.local ("fx"), a failed attempt in
 // "fxFail". A Web Lock keeps two open popups from both asking. rates() never throws: no table is `null`.
 
-import { SRC_ER, SRC_CDN, FX_FAIL_BACKOFF_MS, normalizeRates, readCache, isFresh, isUsable, publicRates, plausibleRates } from "./money-core.js";
+import { FX_FAIL_BACKOFF_MS, normalizeRates, readCache, isFresh, isUsable, publicRates, plausibleRates } from "./money-core.js";
 export { fmtMoney, toUsd, totalLine, rowAmount } from "./money-core.js";
 
 const SOURCES = [
-  { id: SRC_ER, url: "https://open.er-api.com/v6/latest/USD" },
-  { id: SRC_CDN, url: "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json" },
+  { url: "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json" },
+  { url: "https://latest.currency-api.pages.dev/v1/currencies/usd.json" },
 ];
 const KEY = "fx", FAIL_KEY = "fxFail", LOCK = "fbh-fx";
 const TIMEOUT_MS = 8000, MAX_BYTES = 1e6;
@@ -78,14 +79,14 @@ async function refresh() {
   return cachedRates();                                // an older table (up to a week) still beats no conversion
 }
 
-async function fetchOne({ id, url }) {
+async function fetchOne({ url }) {
   const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
   try {
     const res = await fetch(url, { signal: ctl.signal, credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer" });
     if (!res.ok || Number(res.headers?.get?.("content-length")) > MAX_BYTES) return null;
     const text = await res.text();
     if (text.length > MAX_BYTES) return null;
-    return normalizeRates(JSON.parse(text), id, Date.now());
+    return normalizeRates(JSON.parse(text), Date.now());
   } catch { return null; }                             // offline, blocked, timed out, not JSON
   finally { clearTimeout(timer); }
 }

@@ -46,7 +46,7 @@ registerInit(() => { loadCachedRates(); });                                    /
 // sum = { totals, unknown } (spend.js addUp / mergeUp), or null when nothing is known yet (shown as "—").
 // zeroCur = the currency to print a zero in when every spend was 0 (none known: "—").
 // One currency: that amount. Two or more: "≈ 1 727 $" (USD, at the daily rate: money.js) with a muted line under it ("1 696 $ + 20 € ·
-// rates 08.10 · ExchangeRate-API") and the whole breakdown as the tooltip. Rates are asked for only for such a total AND only while its tab is
+// rates 08.10") and the whole breakdown as the tooltip. Rates are asked for only for such a total AND only while its tab is
 // on screen (a hidden tab redrawing from a bus event must not send a request nobody looks at; showing the tab draws it again), and a
 // total never waits for them: it is drawn at once as "$1,696 + €20.00" and turns into "≈ …" when the rates are there. No rates at all
 // (offline, both sources down): it stays the per-currency sum.

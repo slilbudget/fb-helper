@@ -59,7 +59,8 @@ export function fmtMoney(amount, cur, { digits: want, compact = false } = {}) {
 
 // ---------- rate tables ----------
 // A table = { rates: { EUR: 0.86, VND: 26300, … }, date: "2026-10-08", source } where rates[X] = units of X per 1 USD.
-export const SRC_ER = "exchangerate-api", SRC_CDN = "currency-api";
+// One public dataset (fawazahmed0/exchange-api, CC0), two mirrors of it (money.js SOURCES), one payload shape, one source id.
+export const SRC_FX = "currency-api";
 export const FX_FRESH_MS = 24 * 3600e3;                // rates are asked for again after a day
 export const FX_STALE_OK_MS = 7 * 24 * 3600e3;         // …but a table up to a week old still beats no conversion when the refresh fails
 export const FX_FAIL_BACKOFF_MS = 20 * 60e3;           // after a failed (or rejected) attempt: nothing for 20 minutes
@@ -82,7 +83,7 @@ export function cleanRates(obj) {
 }
 // A table that arrives while another one is held must roughly agree with it: a day does not move the world's currencies by half. When more than
 // a quarter of the codes both tables name (USD aside) moved by more than 50 % the newcomer is not believed (an inverted table, another unit,
-// a broken mirror) and the held one stays. Not "any code": one real devaluation or a crypto ticker among the ~200 codes of the fallback source
+// a broken mirror) and the held one stays. Not "any code": one real devaluation or a crypto ticker among the hundreds of codes of the dataset
 // must not freeze the rates. With fewer than MIN_CODES shared codes there is nothing to compare, so it passes.
 const FX_MAX_MOVE = 0.5, FX_MAX_WILD_SHARE = 0.25;
 export function plausibleRates(next, prev) {
@@ -94,30 +95,19 @@ export function plausibleRates(next, prev) {
 }
 const isoDay = (ms) => new Date(ms).toISOString().slice(0, 10);
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
-// The two payload shapes → { rates, date, source } | null. `now` = the day to use when the payload carries no usable date.
-export function normalizeRates(payload, source, now = Date.now()) {
+// The payload ({ date: "2026-10-08", usd: { eur: 0.86, vnd: 26300, … } }, lower-case codes) → { rates, date, source } | null.
+// `now` = the day to use when the payload carries no usable date.
+export function normalizeRates(payload, now = Date.now()) {
   if (!payload || typeof payload !== "object") return null;
-  let rates, date = null;
-  if (source === SRC_ER) {
-    // { result: "success", base_code: "USD", time_last_update_unix: 1790000000, rates: { USD: 1, EUR: 0.86 } }
-    if (payload.result !== undefined && payload.result !== "success") return null;
-    if (payload.base_code !== undefined && String(payload.base_code).toUpperCase() !== "USD") return null;
-    rates = cleanRates(payload.rates);
-    const u = payload.time_last_update_unix;
-    if (typeof u === "number" && Number.isFinite(u) && u > 1e9 && u < 1e11) date = isoDay(u * 1000);
-    else if (typeof payload.time_last_update_utc === "string" && Number.isFinite(Date.parse(payload.time_last_update_utc))) date = isoDay(Date.parse(payload.time_last_update_utc));
-  } else if (source === SRC_CDN) {
-    // { date: "2026-10-08", usd: { eur: 0.86, vnd: 26300, … } } (lower-case codes)
-    if (!payload.usd || typeof payload.usd !== "object" || Array.isArray(payload.usd)) return null;
-    rates = cleanRates(Object.fromEntries(Object.entries(payload.usd).map(([k, v]) => [k.toUpperCase(), v])));
-    if (typeof payload.date === "string" && DAY.test(payload.date)) date = payload.date;
-  } else return null;
+  if (!payload.usd || typeof payload.usd !== "object" || Array.isArray(payload.usd)) return null;
+  const rates = cleanRates(Object.fromEntries(Object.entries(payload.usd).map(([k, v]) => [k.toUpperCase(), v])));
   if (!rates) return null;
-  return { rates, date: date || isoDay(now), source };
+  return { rates, date: typeof payload.date === "string" && DAY.test(payload.date) ? payload.date : isoDay(now), source: SRC_FX };
 }
-// What chrome.storage.local holds ({ fetchedAt, date, base, rates, source }) → a checked table + fetchedAt, or null.
+// What chrome.storage.local holds ({ fetchedAt, date, base, rates, source }) → a checked table + fetchedAt, or null. A table saved by an
+// older version carries another source id: it is not read (stale), the next lookup fetches a new one.
 export function readCache(raw) {
-  if (!raw || typeof raw !== "object" || raw.base !== "USD" || ![SRC_ER, SRC_CDN].includes(raw.source)) return null;
+  if (!raw || typeof raw !== "object" || raw.base !== "USD" || raw.source !== SRC_FX) return null;
   if (typeof raw.fetchedAt !== "number" || !Number.isFinite(raw.fetchedAt) || typeof raw.date !== "string" || !DAY.test(raw.date)) return null;
   const rates = cleanRates(raw.rates);
   return rates ? { rates, date: raw.date, source: raw.source, fetchedAt: raw.fetchedAt } : null;

@@ -27,7 +27,8 @@ test("CSP connect-src: the Graph origin FIRST (test/harness.mjs reads it from th
   assert.ok(new URL(graph).hostname.startsWith("graph."));
   const urls = [...read("js/money.js").matchAll(/url: "(https:\/\/[^"]+)"/g)].map((m) => m[1]);
   assert.equal(urls.length, 2, "money.js lists exactly two sources");
-  assert.deepEqual([...fx].sort(), [...urls].sort(), "the CSP names the very URLs money.js fetches, with their paths");
+  assert.deepEqual([...fx], [...urls], "the CSP names the very URLs money.js fetches, with their paths, in the order money.js asks (primary, fallback)");
+  assert.deepEqual(fx.map((u) => new URL(u).host), ["cdn.jsdelivr.net", "latest.currency-api.pages.dev"], "the two mirrors of the one public dataset (fawazahmed0/exchange-api)");
   for (const u of fx) assert.ok(new URL(u).pathname.length > 1, `${u} is pinned to its path`);
   assert.ok(!csp["connect-src"].some((s) => s.includes("*")), "no wildcard");
 });

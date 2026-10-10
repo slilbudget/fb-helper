@@ -6,14 +6,15 @@ import assert from "node:assert/strict";
 import { setLang } from "../fb-helper/js/i18n.js";
 import {
   fmtMoney, cleanRates, normalizeRates, readCache, isFresh, isUsable, toUsd, usdEquivalent, totalLine, rowAmount,
-  SRC_ER, SRC_CDN, FX_FRESH_MS, FX_STALE_OK_MS, FX_FAIL_BACKOFF_MS, SYMBOL_CURRENCIES, ZERO_DECIMAL, plausibleRates,
+  SRC_FX, FX_FRESH_MS, FX_STALE_OK_MS, FX_FAIL_BACKOFF_MS, SYMBOL_CURRENCIES, ZERO_DECIMAL, plausibleRates,
 } from "../fb-helper/js/money-core.js";
 
 await setLang("en");
 const flat = (s) => String(s).replace(/\s/g, " ");                 // Intl uses no-break and narrow spaces
 const NOW = Date.UTC(2026, 9, 8, 12, 0, 0);
 const RATES = { USD: 1, EUR: 0.8, GBP: 0.75, VND: 25000, UAH: 40, RUB: 90, PLN: 4 };
-const TABLE = { rates: RATES, date: "2026-10-08", source: SRC_ER };
+const NO_CREDIT = /https?:|jsdelivr|currency-api/i;                // no provider name or link on screen (user decision 2026-10-08)
+const TABLE = { rates: RATES, date: "2026-10-08", source: SRC_FX };
 
 // ---------- writing an amount ----------
 test("fmtMoney: whatever prints as zero is plain zero — never '-0.00' (C17)", () => {
@@ -105,33 +106,22 @@ test("cleanRates: only 3-letter codes with a finite number in range survive; USD
   assert.equal(proto.EUR, 0.8); assert.equal(Object.getPrototypeOf(proto), Object.prototype); assert.equal({}.EUR, undefined);
 });
 
-test("normalizeRates: the primary payload (ExchangeRate-API shape)", () => {
-  const unix = Date.UTC(2026, 9, 8, 0, 2, 31) / 1000;
-  const ok = normalizeRates({ result: "success", base_code: "USD", time_last_update_unix: unix, rates: goodRates() }, SRC_ER, NOW);
-  assert.deepEqual(ok, { rates: { ...goodRates() }, date: "2026-10-08", source: SRC_ER });
-  assert.equal(normalizeRates({ result: "success", time_last_update_utc: "Thu, 08 Oct 2026 00:02:31 +0000", rates: goodRates() }, SRC_ER, NOW).date, "2026-10-08", "the text date also reads");
-  assert.equal(normalizeRates({ rates: goodRates() }, SRC_ER, NOW).date, "2026-10-08", "no date at all: the day of the fetch");
-  assert.equal(normalizeRates({ result: "success", rates: goodRates(), time_last_update_unix: "soon" }, SRC_ER, NOW).date, "2026-10-08");
-  assert.equal(normalizeRates({ result: "error", "error-type": "quota-reached" }, SRC_ER, NOW), null);
-  assert.equal(normalizeRates({ result: "success", base_code: "EUR", rates: goodRates() }, SRC_ER, NOW), null, "base must be USD");
-  assert.equal(normalizeRates({ result: "success", rates: { ...goodRates(), EUR: -1 } }, SRC_ER, NOW).rates.EUR, undefined, "a bad entry is dropped, the rest stays");
-  for (const bad of [null, undefined, "x", 5, [], {}, { rates: null }, { rates: [] }, { result: "success", rates: { EUR: "no" } }]) assert.equal(normalizeRates(bad, SRC_ER, NOW), null, JSON.stringify(bad));
-  assert.equal(normalizeRates({ rates: goodRates() }, "somewhere-else", NOW), null, "an unknown source is refused");
-});
-
-test("normalizeRates: the fallback payload (lower-case codes under usd)", () => {
+test("normalizeRates: the payload of the dataset (lower-case codes under usd, a date)", () => {
   const low = Object.fromEntries(Object.entries(goodRates()).map(([k, v]) => [k.toLowerCase(), v]));
-  const ok = normalizeRates({ date: "2026-10-07", usd: low }, SRC_CDN, NOW);
-  assert.deepEqual(ok, { rates: goodRates(), date: "2026-10-07", source: SRC_CDN });
-  assert.equal(normalizeRates({ date: "yesterday", usd: low }, SRC_CDN, NOW).date, "2026-10-08", "a date that is not a date: the day of the fetch");
-  assert.equal(normalizeRates({ date: "2026-10-07", usd: { ...low, eur: { v: 1 }, gbp: "0.7", xxx: 0 } }, SRC_CDN, NOW).rates.EUR, undefined);
-  for (const bad of [{ date: "2026-10-07" }, { usd: [] }, { usd: null }, { usd: { eur: 0.8 } }, { date: "2026-10-07", usd: "no" }]) assert.equal(normalizeRates(bad, SRC_CDN, NOW), null, JSON.stringify(bad));
+  const ok = normalizeRates({ date: "2026-10-07", usd: low }, NOW);
+  assert.deepEqual(ok, { rates: goodRates(), date: "2026-10-07", source: SRC_FX });
+  assert.equal(normalizeRates({ date: "yesterday", usd: low }, NOW).date, "2026-10-08", "a date that is not a date: the day of the fetch");
+  assert.equal(normalizeRates({ usd: low }, NOW).date, "2026-10-08", "no date at all: the day of the fetch");
+  assert.equal(normalizeRates({ date: "2026-10-07", usd: { ...low, eur: { v: 1 }, gbp: "0.7", xxx: 0 } }, NOW).rates.EUR, undefined, "a bad entry is dropped, the rest stays");
+  assert.equal(normalizeRates({ date: "2026-10-07", usd: { ...low, eur: -1 } }, NOW).rates.USD, 1);
+  for (const bad of [null, undefined, "x", 5, [], {}, { date: "2026-10-07" }, { usd: [] }, { usd: null }, { usd: { eur: 0.8 } }, { date: "2026-10-07", usd: "no" }, { date: "2026-10-07", usd: { eur: "no" } },
+    { result: "success", base_code: "USD", rates: goodRates() }]) assert.equal(normalizeRates(bad, NOW), null, JSON.stringify(bad));
 });
 
 test("readCache / isFresh / isUsable: what storage holds is checked again; a table from the future or a week old is not trusted", () => {
-  const raw = { fetchedAt: NOW - 1000, date: "2026-10-08", base: "USD", rates: goodRates(), source: SRC_ER };
-  assert.deepEqual(readCache(raw), { rates: goodRates(), date: "2026-10-08", source: SRC_ER, fetchedAt: NOW - 1000 });
-  for (const bad of [null, {}, { ...raw, base: "EUR" }, { ...raw, source: "evil" }, { ...raw, fetchedAt: "now" }, { ...raw, date: "x" }, { ...raw, rates: { EUR: 1 } }, "str"]) assert.equal(readCache(bad), null, JSON.stringify(bad));
+  const raw = { fetchedAt: NOW - 1000, date: "2026-10-08", base: "USD", rates: goodRates(), source: SRC_FX };
+  assert.deepEqual(readCache(raw), { rates: goodRates(), date: "2026-10-08", source: SRC_FX, fetchedAt: NOW - 1000 });
+  for (const bad of [null, {}, { ...raw, base: "EUR" }, { ...raw, source: "evil" }, { ...raw, source: "older-version" }, { ...raw, source: undefined }, { ...raw, fetchedAt: "now" }, { ...raw, date: "x" }, { ...raw, rates: { EUR: 1 } }, "str"]) assert.equal(readCache(bad), null, JSON.stringify(bad));
   const at = (ms) => ({ fetchedAt: NOW - ms });
   assert.ok(isFresh(at(0), NOW) && isFresh(at(FX_FRESH_MS - 1), NOW));
   assert.ok(!isFresh(at(FX_FRESH_MS), NOW) && !isFresh(at(-24 * 3600e3), NOW), "a day old, or from tomorrow (the clock moved)");
@@ -181,9 +171,9 @@ test("totalLine: two currencies → '≈ USD' + the exact breakdown and the date
   assert.equal(l.more, 0);
   assert.equal(l.full, "$1,695.70 + €20.00");
   assert.equal(l.note, "rates Oct 8");
-  assert.deepEqual([l.date, l.source], ["2026-10-08", SRC_ER]);
+  assert.deepEqual([l.date, l.source], ["2026-10-08", SRC_FX]);
   assert.equal("attribution" in l, false);
-  assert.ok(l.title.includes("$1,695.70 + €20.00") && l.title.includes("Oct 8, 2026") && !/Exchange Rate API/i.test(l.title) && /^\$1,695\.70/.test(l.title), l.title);
+  assert.ok(l.title.includes("$1,695.70 + €20.00") && l.title.includes("Oct 8, 2026") && !NO_CREDIT.test(l.title) && /^\$1,695\.70/.test(l.title), l.title);
   assert.deepEqual(l.parts.map((p) => p.cur), ["USD", "EUR"]);
 });
 
@@ -212,15 +202,8 @@ test("totalLine: no rates (null) or a currency without a rate → the exact sum,
   const missing = totalLine({ USD: 100, EUR: 20, XYZ: 5 }, TABLE);
   assert.equal(missing.approx, false);
   assert.equal(flat(missing.main), "$100.00 + €20.00 + XYZ 5.00", "insertion order, every currency, nothing dropped");
-  assert.equal(totalLine({ USD: 100, EUR: 20 }, { rates: { USD: 1 }, date: "2026-10-08", source: SRC_ER }).approx, false);
+  assert.equal(totalLine({ USD: 100, EUR: 20 }, { rates: { USD: 1 }, date: "2026-10-08", source: SRC_FX }).approx, false);
   assert.equal(totalLine({ USD: 100, EUR: 20 }, undefined).approx, false);
-});
-
-test("totalLine: the fallback source: the date only, like the primary", () => {
-  const l = totalLine({ USD: 100, EUR: 20 }, { ...TABLE, source: SRC_CDN });
-  assert.equal(l.approx, true);
-  assert.ok(!/Exchange Rate API/i.test(l.title), l.title);
-  assert.ok(l.title.includes("Oct 8, 2026"));
 });
 
 test("totalLine in Russian: the date is '08.10', the line is '≈ 1 770 $'", async () => {
@@ -230,7 +213,7 @@ test("totalLine in Russian: the date is '08.10', the line is '≈ 1 770 $'", asy
     assert.equal(flat(l.main), "≈ 1 770 $");
     assert.equal(l.note, "курс 08.10");
     assert.equal(flat(l.breakdown), "1 695,70 $ + 1,2 млн VND");
-    assert.ok(l.title.includes("Примерно") && !/Exchange Rate API/i.test(l.title), l.title);
+    assert.ok(l.title.includes("Примерно") && !NO_CREDIT.test(l.title), l.title);
   } finally { await setLang("en"); }
 });
 
@@ -258,7 +241,7 @@ test("rowAmount: one or two currencies are exact, three or more are '≈ USD'", 
   assert.equal(three.main, "≈ $1,770");
   assert.equal(three.approx, true);
   assert.equal(flat(three.full), "$1,695.70 + VND 1,234,567 + €20.00");
-  assert.ok(!/Exchange Rate API/i.test(three.title));
+  assert.ok(!NO_CREDIT.test(three.title));
   const noRates = rowAmount({ USD: 5, EUR: 20, VND: 1000 }, null);
   assert.deepEqual([noRates.approx, flat(noRates.main)], [false, "$5.00 + €20.00 + VND 1,000"]);
 });
@@ -291,23 +274,22 @@ function world({ store = {}, answer } = {}) {
   w.popup = () => import(`../fb-helper/js/money.js?popup=${++instance}`);   // a new module instance = a newly opened popup (its own memory)
   return w;
 }
-const ER = "https://open.er-api.com/v6/latest/USD";
-const CDN = "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json";
-const erBody = (rates = goodRates(), at = Date.now()) => ({ result: "success", base_code: "USD", time_last_update_unix: Math.floor(at / 1000), rates });
-const cdnBody = (rates = goodRates(), at = Date.now()) => ({ date: new Date(at).toISOString().slice(0, 10), usd: Object.fromEntries(Object.entries(rates).map(([k, v]) => [k.toLowerCase(), v])) });
-const answerOk = (url) => ({ body: url === ER ? erBody() : cdnBody() });
-const saved = (over = {}) => ({ fetchedAt: Date.now() - 3600e3, date: "2026-10-07", base: "USD", rates: { ...goodRates(), EUR: 0.9 }, source: SRC_ER, ...over });
+const PRIMARY = "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json";
+const FALLBACK = "https://latest.currency-api.pages.dev/v1/currencies/usd.json";
+const table = (rates = goodRates(), at = Date.now()) => ({ date: new Date(at).toISOString().slice(0, 10), usd: Object.fromEntries(Object.entries(rates).map(([k, v]) => [k.toLowerCase(), v])) });
+const answerOk = () => ({ body: table() });
+const saved = (over = {}) => ({ fetchedAt: Date.now() - 3600e3, date: "2026-10-07", base: "USD", rates: { ...goodRates(), EUR: 0.9 }, source: SRC_FX, ...over });
 
 test("rates(): an empty cache asks the primary source once, stores the table, and answers the next call from memory", async () => {
   const w = world({ answer: answerOk });
   const m = await w.popup();
   assert.equal(m.cachedRates(), null, "nothing before the first call");
   const r = await m.rates();
-  assert.deepEqual(w.calls.map((c) => c.url), [ER], "one request to the primary only");
-  assert.equal(r.source, SRC_ER); assert.equal(r.rates.EUR, 0.8); assert.match(r.date, /^\d{4}-\d{2}-\d{2}$/);
+  assert.deepEqual(w.calls.map((c) => c.url), [PRIMARY], "one request to the primary only, none to the fallback");
+  assert.equal(r.source, SRC_FX); assert.equal(r.rates.EUR, 0.8); assert.match(r.date, /^\d{4}-\d{2}-\d{2}$/);
   assert.deepEqual(Object.keys(r).sort(), ["date", "rates", "source"]);
   const st = w.store.fx;
-  assert.deepEqual([st.base, st.source, st.date, typeof st.fetchedAt, st.rates.VND], ["USD", SRC_ER, r.date, "number", 25000]);
+  assert.deepEqual([st.base, st.source, st.date, typeof st.fetchedAt, st.rates.VND], ["USD", SRC_FX, r.date, "number", 25000]);
   assert.ok(!("fxFail" in w.store));
   assert.equal(w.calls[0].init.credentials, "omit"); assert.equal(w.calls[0].init.referrerPolicy, "no-referrer"); assert.equal(w.calls[0].init.cache, "no-store");
   assert.ok(w.calls[0].init.signal instanceof AbortSignal, "a timeout guards the request");
@@ -326,7 +308,7 @@ test("rates(): a second popup within 24 h reads the saved table and sends nothin
   assert.ok(b.cachedRates());
   const c = await w.popup();
   const r = await c.rates();
-  assert.equal(r.source, SRC_ER);
+  assert.equal(r.source, SRC_FX);
   assert.equal(w.calls.length, 1, "…and rates() finds the table fresh");
 });
 
@@ -341,19 +323,31 @@ test("rates(): a table older than 24 h is asked for again; one younger is not", 
   assert.equal(w.store.fx.rates.EUR, 0.8, "and saved");
 });
 
+test("rates(): a table saved by an older version (another source id), however fresh, is not read: the primary is asked, and with both sources down nothing old is served", async () => {
+  const w = world({ store: { fx: saved({ source: "older-version" }) }, answer: answerOk });
+  const m = await w.popup();
+  assert.equal(await m.loadCachedRates(), null, "not read from storage");
+  const r = await m.rates();
+  assert.deepEqual(w.calls.map((c) => c.url), [PRIMARY], "asked once");
+  assert.deepEqual([r.source, r.rates.EUR, w.store.fx.source], [SRC_FX, 0.8, SRC_FX], "and replaced by a table of the current source");
+  const w2 = world({ store: { fx: saved({ source: "older-version" }) }, answer: () => ({ status: 503, body: {} }) });
+  assert.equal(await (await w2.popup()).rates(), null, "both down: no conversion rather than a table of unknown origin");
+  assert.deepEqual(w2.calls.map((c) => c.url), [PRIMARY, FALLBACK]);
+});
+
 test("rates(): the primary fails (HTTP error, network error, bad payload, oversize, not JSON) → the fallback source is used", async () => {
   const bads = [
-    { status: 500, body: {} }, "throw", { body: { result: "error", "error-type": "quota-reached" } },
-    { body: erBody({ ...goodRates(), EUR: -3, GBP: "x", VND: 0, UAH: null, RUB: NaN }) },   // nothing believable left
-    { body: erBody(), headers: { "content-length": "5000000" } }, { body: "<html>maintenance</html>" },
+    { status: 500, body: {} }, "throw", { body: { message: "quota reached" } },
+    { body: table({ ...goodRates(), EUR: -3, GBP: "x", VND: 0, UAH: null, RUB: NaN }) },   // nothing believable left
+    { body: table(), headers: { "content-length": "5000000" } }, { body: "<html>maintenance</html>" },
   ];
   for (const bad of bads) {
-    const w = world({ answer: (url) => (url === ER ? bad : { body: cdnBody() }) });
+    const w = world({ answer: (url) => (url === PRIMARY ? bad : { body: table() }) });
     const r = await (await w.popup()).rates();
-    assert.deepEqual(w.calls.map((c) => c.url), [ER, CDN], JSON.stringify(bad));
-    assert.equal(r?.source, SRC_CDN, JSON.stringify(bad));
+    assert.deepEqual(w.calls.map((c) => c.url), [PRIMARY, FALLBACK], JSON.stringify(bad));
+    assert.equal(r?.source, SRC_FX, JSON.stringify(bad));
     assert.equal(r.rates.EUR, 0.8);
-    assert.equal(w.store.fx.source, SRC_CDN);
+    assert.equal(w.store.fx.source, SRC_FX);
   }
 });
 
@@ -361,7 +355,7 @@ test("rates(): both sources fail → null, no throw, a failure mark; nothing mor
   const w = world({ answer: () => ({ status: 503, body: {} }) });
   const a = await w.popup();
   assert.equal(await a.rates(), null);
-  assert.deepEqual(w.calls.map((c) => c.url), [ER, CDN]);
+  assert.deepEqual(w.calls.map((c) => c.url), [PRIMARY, FALLBACK]);
   assert.ok(Math.abs(w.store.fxFail.at - Date.now()) < 5000 && !("fx" in w.store));
   assert.equal(await a.rates(), null);
   assert.equal(await (await w.popup()).rates(), null);          // another popup: reads the mark from storage
@@ -399,23 +393,22 @@ test("plausibleRates: nothing to compare (too few shared codes, nothing held) pa
 
 test("rates(): a table that disagrees wildly with the held one is not taken (the held one stays, the next source is tried, then the failure mark)", async () => {
   const wild = Object.fromEntries(Object.entries(goodRates()).map(([k, v]) => [k, k === "USD" ? 1 : v * 7]));
-  const w = world({ store: { fx: saved({ fetchedAt: Date.now() - FX_FRESH_MS - 3600e3 }) }, answer: () => ({ body: erBody(wild) }) });
-  w.answer = (url) => ({ body: url === ER ? erBody(wild) : cdnBody(wild) });
+  const w = world({ store: { fx: saved({ fetchedAt: Date.now() - FX_FRESH_MS - 3600e3 }) }, answer: () => ({ body: table(wild) }) });
   const r = await (await w.popup()).rates();
-  assert.deepEqual(w.calls.map((c) => c.url), [ER, CDN], "both were asked, neither was believed");
+  assert.deepEqual(w.calls.map((c) => c.url), [PRIMARY, FALLBACK], "both were asked, neither was believed");
   assert.equal(r.rates.EUR, 0.9, "the held table (stale but under a week old) is what answers");
   assert.equal(w.store.fx.rates.EUR, 0.9, "and it was not overwritten");
   assert.ok(w.store.fxFail?.at, "a rejection counts as a failed attempt: 20 minutes of silence");
   const again = await (await w.popup()).rates();
   assert.equal(w.calls.length, 2); assert.equal(again.rates.EUR, 0.9);
   // the first source is wild, the second agrees with the held table: the second is taken
-  const w2 = world({ store: { fx: saved({ fetchedAt: Date.now() - FX_FRESH_MS - 3600e3 }) }, answer: (url) => ({ body: url === ER ? erBody(wild) : cdnBody({ ...goodRates(), EUR: 0.91 }) }) });
+  const w2 = world({ store: { fx: saved({ fetchedAt: Date.now() - FX_FRESH_MS - 3600e3 }) }, answer: (url) => ({ body: url === PRIMARY ? table(wild) : table({ ...goodRates(), EUR: 0.91 }) }) });
   const r2 = await (await w2.popup()).rates();
-  assert.equal(r2.source, SRC_CDN); assert.equal(r2.rates.EUR, 0.91);
+  assert.deepEqual(w2.calls.map((c) => c.url), [PRIMARY, FALLBACK]); assert.equal(r2.source, SRC_FX); assert.equal(r2.rates.EUR, 0.91);
   // nothing held (or held too long ago to be used): the first table seen is taken, there is nothing to compare it with
-  const w3 = world({ answer: () => ({ body: erBody(wild) }) });
+  const w3 = world({ answer: () => ({ body: table(wild) }) });
   assert.equal((await (await w3.popup()).rates()).rates.EUR, 0.8 * 7);
-  const w4 = world({ store: { fx: saved({ fetchedAt: Date.now() - FX_STALE_OK_MS - 3600e3 }) }, answer: () => ({ body: erBody(wild) }) });
+  const w4 = world({ store: { fx: saved({ fetchedAt: Date.now() - FX_STALE_OK_MS - 3600e3 }) }, answer: () => ({ body: table(wild) }) });
   assert.equal((await (await w4.popup()).rates()).rates.EUR, 0.8 * 7, "a table older than a week is no yardstick");
 });
 
@@ -487,12 +480,12 @@ test("network: the only code that sends a request is graph.js and money.js, and 
   assert.equal(sources.length, 3, sources.join(" "));
   assert.ok(/^https:\/\/[a-z0-9.-]+$/.test(sources[0]) && sources[0].startsWith("https://graph."), "the Graph origin stays first (test/harness.mjs derives its mock from the first one)");
   const urls = sources.slice(1);
-  assert.deepEqual(urls.sort(), ["https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json", "https://open.er-api.com/v6/latest/USD"]);
+  assert.deepEqual(urls, [PRIMARY, FALLBACK], "the manifest lists them in the order money.js asks");
   assert.ok(urls.every((u) => /^https:\/\/[a-z0-9.-]+\/[\w@./-]+$/.test(u)), "each one is pinned to its path");
   const money = fs.readFileSync(new URL("js/money.js", dir), "utf8");
-  const used = new Set([...money.matchAll(/url: "(https:\/\/[^"]+)"/g)].map((m) => m[1]));
+  const used = [...money.matchAll(/url: "(https:\/\/[^"]+)"/g)].map((m) => m[1]);
   for (const o of used) assert.ok(urls.includes(o), `${o} is used by money.js but not allowed by the CSP`);
-  assert.equal(used.size, 2);
+  assert.deepEqual(used, [PRIMARY, FALLBACK], "primary first, fallback second");
   const senders = fs.readdirSync(new URL("js/", dir), { recursive: true }).filter((f) => f.endsWith(".js"))
     .filter((f) => /\b(fetch\(|XMLHttpRequest|WebSocket|sendBeacon|EventSource)/.test(fs.readFileSync(new URL(`js/${f}`, dir), "utf8"))).sort();
   assert.deepEqual(senders, ["graph.js", "money.js"]);

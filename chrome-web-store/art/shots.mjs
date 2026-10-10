@@ -122,9 +122,9 @@ await ctx.addCookies(Object.entries(jar).map(([name, value]) => ({ name, value, 
 await ctx.route("https://*.facebook.com/**", (r) => r.fulfill({ contentType: "text/html",
   body: r.request().url().includes("adsmanager") ? `<script>window.__accessToken=${JSON.stringify(TOKEN)}</script>Ads Manager` : "<p>feed</p>" }));
 // The exchange-rate sources (the total of several currencies asks for them): a fixed table, never the network.
-await ctx.route("https://open.er-api.com/**", (r) => r.fulfill({ contentType: "application/json", headers: { "access-control-allow-origin": "*" }, body: JSON.stringify({ result: "success", provider: "https://www.exchangerate-api.com", base_code: "USD",
-  time_last_update_unix: Math.floor(Date.now() / 1000), rates: { USD: 1, EUR: 0.92, GBP: 0.78, PLN: 3.95, UAH: 41.2, RUB: 91.5, VND: 25400 } }) }));
-await ctx.route("https://cdn.jsdelivr.net/**", (r) => r.abort("failed"));
+await ctx.route("https://cdn.jsdelivr.net/**", (r) => r.fulfill({ contentType: "application/json", headers: { "access-control-allow-origin": "*" }, body: JSON.stringify({ date: new Date().toISOString().slice(0, 10),
+  usd: { usd: 1, eur: 0.92, gbp: 0.78, pln: 3.95, uah: 41.2, rub: 91.5, vnd: 25400 } }) }));
+await ctx.route("https://latest.currency-api.pages.dev/**", (r) => r.abort("failed"));
 // The picture CDN: the generated tile of a business or Page (the id is in the path), nothing from the network.
 const svg = (body) => ({ status: 200, contentType: "image/svg+xml", headers: { "cache-control": "no-store" }, body });
 const artOf = (kind, id) => (kind === "biz" ? bizOf(id) : PAGES.find((p) => p.id === id))?.art;
