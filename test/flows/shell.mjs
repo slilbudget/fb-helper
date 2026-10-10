@@ -61,6 +61,11 @@ async function tabFlows() {
   ok("leaving the strip with the Tab key puts the tab stop back on the OPEN tab (Pages)", s.tabbable === "pages" && s.focus === null, JSON.stringify(s));
   await pop.click('[data-tab="token"]');
   ok("a click opens a tab at once (mouse users have no arrows)", (await look(pop)).tab === "token");
+  // The real popup closes itself on blur / when hidden (popup.js; checked by hand over CDP, the toolbar popup is out of Playwright's reach).
+  // popup.html in a tab, as here, has a tab and stays open.
+  await pop.evaluate(() => { window.dispatchEvent(new Event("blur")); Object.defineProperty(document, "hidden", { configurable: true, get: () => true }); document.dispatchEvent(new Event("visibilitychange")); });
+  await pop.waitForTimeout(300);
+  ok("popup.html in a tab stays open on blur and when hidden (only the toolbar popup closes itself)", !pop.isClosed());
 
   // the last tab is remembered (localStorage) and restored, at the same full height
   for (const name of ["cookies", "accounts", "bms", "pages", "token"]) {

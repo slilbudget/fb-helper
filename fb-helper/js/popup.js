@@ -110,3 +110,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   chrome.storage.session.onChanged?.addListener((ch) => emit("session", ch));
   setInterval(() => runRenders("tick"), 30000);
 });
+
+// The popup goes the moment it is out of sight or loses focus. A swipe to another macOS desktop does not always close it (Chrome stays the
+// active app); left open on the old desktop, whatever it does next (a list that finishes loading resizes the window) can pull macOS back there.
+// popup.html opened in a tab (the e2e tests) has a tab and stays.
+chrome.tabs.getCurrent((tab) => {
+  if (tab) return;
+  window.addEventListener("blur", () => window.close());
+  document.addEventListener("visibilitychange", () => { if (document.hidden) window.close(); });
+});
