@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "FB Helper",
-  "version": "2.5.0",
+  "version": "2.5.1",
   "description": "Facebook token, cookies, and the spend and problems of your ad accounts, businesses and Pages. Read-only, with rate limits.",
   "icons": {
     "16": "images/toolbar_16.png",

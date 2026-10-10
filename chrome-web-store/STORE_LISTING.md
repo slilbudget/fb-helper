@@ -1,4 +1,4 @@
-# Chrome Web Store listing — Ads Helper 2.5.0
+# Chrome Web Store listing — Ads Helper 2.5.1
 
 Copy each block into the Developer Dashboard. Every statement below matches the code of this version.
 

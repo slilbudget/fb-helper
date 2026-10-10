@@ -1,4 +1,4 @@
-# FB Helper 2.5.0
+# FB Helper 2.5.1
 
 [![CI](https://github.com/slilbudget/fb-helper/actions/workflows/ci.yml/badge.svg)](https://github.com/slilbudget/fb-helper/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/slilbudget/fb-helper)](https://github.com/slilbudget/fb-helper/releases/latest) [![License: MIT](https://img.shields.io/github/license/slilbudget/fb-helper)](LICENSE)
 
@@ -8,7 +8,7 @@ Chrome extension (MV3): Facebook access token, session cookies, and the spend an
 
 ## Install
 
-1. Download `fb-helper-2.5.0.zip` from [Releases](https://github.com/slilbudget/fb-helper/releases/latest) and unpack (or `git clone` and use the `fb-helper/` folder)
+1. Download `fb-helper-2.5.1.zip` from [Releases](https://github.com/slilbudget/fb-helper/releases/latest) and unpack (or `git clone` and use the `fb-helper/` folder)
 2. `chrome://extensions` → enable **Developer mode**
 3. **Load unpacked** → pick the unpacked folder (from a clone: `fb-helper/`; keep the folder after installing)
 
@@ -67,7 +67,7 @@ The links in the popup open Facebook pages in a new tab and send nothing.
 ## Build the archive
 
 ```
-git archive --format=zip -o fb-helper-2.5.0.zip HEAD:fb-helper && zip -qj fb-helper-2.5.0.zip LICENSE
+git archive --format=zip -o fb-helper-2.5.1.zip HEAD:fb-helper && zip -qj fb-helper-2.5.1.zip LICENSE
 ```
 
 Only committed files go in: anything else lying in the local `fb-helper/` folder stays out.

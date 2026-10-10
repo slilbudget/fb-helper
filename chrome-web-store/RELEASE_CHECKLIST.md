@@ -3,12 +3,12 @@
 The repo and GitHub stay **FB Helper** (`fb-helper/`). Only the store build is **Ads Helper** with the neutral logo (`chrome-web-store/icons/logo-source.png`, `chrome-web-store/icons/`).
 
 ## 1. Build
-- [ ] `chrome-web-store/build.sh` → `chrome-web-store/release/unpacked/` (exact ZIP contents) and `chrome-web-store/release/ads-helper-2.5.0.zip`
+- [ ] `chrome-web-store/build.sh` → `chrome-web-store/release/unpacked/` (exact ZIP contents) and `chrome-web-store/release/ads-helper-2.5.1.zip`
 - [ ] `node --test test/*.test.mjs` passes
 - [ ] `node --test test/docs.test.mjs` passes (the docs say what the extension does: every CSP origin in the privacy policy, English and Russian, no "only to the Graph host" claim, the CSP quoted in the listing is the manifest's; while `pending()` is still in that file the default run reports these checks as TODO)
 - [ ] `EXT_DIR=chrome-web-store/release/unpacked node test/e2e.mjs` passes (runs the store build, not the repo)
-- [ ] `manifest.json` is at the ZIP root (`unzip -l chrome-web-store/release/ads-helper-2.5.0.zip | grep -x '.*manifest.json'`), no comments in it
-- [ ] Version is higher than any previously uploaded version (2.1.0 and 2.2.0 are already in the store; every upload needs a bump — this one is 2.5.0)
+- [ ] `manifest.json` is at the ZIP root (`unzip -l chrome-web-store/release/ads-helper-2.5.1.zip | grep -x '.*manifest.json'`), no comments in it
+- [ ] Version is higher than any previously uploaded version (2.1.0 and 2.2.0 are already in the store; every upload needs a bump — this one is 2.5.1; 2.3.x–2.5.0 were never uploaded)
 - [ ] No `FB Helper`, no Facebook "f" logo in the package (the build script fails if the old name is left; icons come from `chrome-web-store/icons/`)
 
 ## 2. Manual test of the unpacked store build
@@ -37,7 +37,7 @@ The repo and GitHub stay **FB Helper** (`fb-helper/`). Only the store build is *
 - [ ] Trader / non-trader status declared honestly (Dashboard → Account)
 
 ## 5. Dashboard (copy from `STORE_LISTING.md`)
-- [ ] Package: upload `chrome-web-store/release/ads-helper-2.5.0.zip`
+- [ ] Package: upload `chrome-web-store/release/ads-helper-2.5.1.zip`
 - [ ] Store listing: description, category, language, store icon `chrome-web-store/icons/icon_128.png`, screenshots, small promo tile
 - [ ] Privacy: single purpose, justification for `cookies`, `storage`, `scripting`, host permission, remote code = **No**, data usage boxes (Authentication information, PII, Financial and payment information), three certifications, privacy policy URL
 - [ ] Distribution: visibility and regions
@@ -71,11 +71,12 @@ Rules from the Chrome docs: avoid text in promo images, fill the whole area, mak
 6. **More network destinations than "one API".** Besides Meta's Graph API the extension fetches pictures from Meta's image CDN and one public exchange-rate file a day. All three are in the manifest CSP, in the privacy policy (English and Russian) and in the listing, and the rate files are data, never code; a reviewer who expects a single host will still see them in the Network tab.
 7. **"antidetect" in the popup.** The tooltip of the JSON cookie button (`copyJson.title` in `fb-helper/js/i18n.js`, both languages) says the JSON is for import into an antidetect browser. The listing and the policy do not use the word; the popup does (a code change to drop it, not done).
 
-## 9. Release 2.5.0 (Businesses, Accounts and Pages as list tabs, next-step links, daily exchange rates)
+## 9. Release 2.5.0 / 2.5.1 (Businesses, Accounts and Pages as list tabs, next-step links, daily exchange rates)
 The docs pass is done: README, privacy policy, SECURITY, the listing and this checklist say what 2.5.0 does. What is left is the release step and the things only a live account can show.
 
 Release step
 - [x] Bump 2.4.1 → 2.5.0 in one commit: `fb-helper/manifest.json`, README (heading and the two zip names), the heading of `chrome-web-store/STORE_LISTING.md`, the zip names in this file, `chrome-web-store/art/{cover,cover-1280x800,social}.html`, the placeholder of `.github/ISSUE_TEMPLATE/bug.yml`. `test/docs.test.mjs` fails until every place agrees. The manifest `description` already has the 2.5.0 text (123 chars) and the listing's summary is the same string
+- [x] 2.5.1 (2026-10-11): the popup closes itself when it loses focus or is hidden (left open on another macOS desktop, it pulled the screen back). Bumped 2.5.0 → 2.5.1 in the same places; 2.5.0 went to GitHub only, the store gets 2.5.1
 - [ ] `node --test test/*.test.mjs` passes, and every docs check in it counts (the docs name every CSP origin in English and Russian, the listing quotes the manifest's CSP, no sentence says the extension talks "only" to the Graph host)
 - [x] Take `pending()` out of `test/docs.test.mjs` (and the "known to fail" wording of the CI step) so these three checks always count
 - [ ] `node test/e2e.mjs` and `EXT_DIR=chrome-web-store/release/unpacked node test/e2e.mjs` pass
