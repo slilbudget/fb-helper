@@ -156,8 +156,9 @@ export async function boot({ user = "1001", fb, graph, rates, pics, picture } = 
     });
   }
   const pg = await ctx.newPage(); await pg.goto("chrome://extensions");
-  const id = await pg.evaluate(() => document.querySelector("extensions-manager").shadowRoot
-    .querySelector("extensions-item-list").shadowRoot.querySelector("extensions-item").id);
+  // The list renders after load (on a busy CI runner the item may not be there yet): wait for it instead of reading once.
+  const id = await (await pg.waitForFunction(() => document.querySelector("extensions-manager")?.shadowRoot
+    ?.querySelector("extensions-item-list")?.shadowRoot?.querySelector("extensions-item")?.id)).jsonValue();
   await pg.close();
   // Requests to Graph that have started and not ended (answered, aborted, failed): b.inflight === 0 means nothing is on its way.
   page$.inflight = 0;
