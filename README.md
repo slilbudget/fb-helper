@@ -1,4 +1,4 @@
-# FB Helper 2.5.1
+# FB Helper
 
 [![CI](https://github.com/slilbudget/fb-helper/actions/workflows/ci.yml/badge.svg)](https://github.com/slilbudget/fb-helper/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/slilbudget/fb-helper)](https://github.com/slilbudget/fb-helper/releases/latest) [![License: MIT](https://img.shields.io/github/license/slilbudget/fb-helper)](LICENSE)
 
@@ -8,7 +8,7 @@ Chrome extension (MV3): Facebook access token, session cookies, and the spend an
 
 ## Install
 
-1. Download `fb-helper-2.5.1.zip` from [Releases](https://github.com/slilbudget/fb-helper/releases/latest) and unpack (or `git clone` and use the `fb-helper/` folder)
+1. Download `fb-helper-<version>.zip` from [Releases](https://github.com/slilbudget/fb-helper/releases/latest) and unpack (or `git clone` and use the `fb-helper/` folder)
 2. `chrome://extensions` → enable **Developer mode**
 3. **Load unpacked** → pick the unpacked folder (from a clone: `fb-helper/`; keep the folder after installing)
 
@@ -60,19 +60,28 @@ The links in the popup open Facebook pages in a new tab and send nothing.
 | Folder | What it is |
 |---|---|
 | `fb-helper/` | The extension (FB Helper): `manifest.json`, `popup.html`, `css`, `js`, `fonts`, `images` |
-| `chrome-web-store/` | The Chrome Web Store version (Ads Helper: other name and logo): build script, listing texts, checklist, artwork |
+| `chrome-web-store/` | The Chrome Web Store version (Ads Helper: other name and logo): listing texts, checklist, icons, store images |
+| `build.sh` | Builds both archives into `release/` (see below) |
 | `test/` | Unit and end-to-end tests |
 | `docs/` | Images for this README |
 
-## Build the archive
+## Build and release
+
+The version is written in one place, `fb-helper/manifest.json`. A release: bump it, then
 
 ```
-git archive --format=zip -o fb-helper-2.5.1.zip HEAD:fb-helper && zip -qj fb-helper-2.5.1.zip LICENSE
+bash build.sh    # or npm run build
 ```
 
-Only committed files go in: anything else lying in the local `fb-helper/` folder stays out.
+`release/` (git-ignored) then holds both archives, named after that version:
 
-The Chrome Web Store package (`chrome-web-store/release/ads-helper-<version>.zip`) comes from `chrome-web-store/build.sh`.
+| File | What it is |
+|---|---|
+| `release/fb-helper-<version>.zip` | FB Helper for the GitHub release: `fb-helper/` as it is, plus the licence |
+| `release/ads-helper-<version>.zip` | Ads Helper for the Chrome Web Store (other name and logo, nothing else differs) |
+| `release/ads-helper/` | the same store package unpacked, for Load unpacked and `EXT_DIR` |
+
+Store upload, texts and images: `chrome-web-store/` (`RELEASE_CHECKLIST.md`, `STORE_LISTING.md`, `images/`).
 
 ## Tests
 
@@ -84,7 +93,7 @@ node test/e2e.mjs             # real Chromium + the unpacked extension, Facebook
 node test/e2e.mjs --jobs 3    # the same, three flows at a time; --shard 2/4 runs one balanced slice (CI uses 4 shards)
 ```
 
-`EXT_DIR=chrome-web-store/release/unpacked node test/e2e.mjs` runs the same flows against the store build.
+`EXT_DIR=release/ads-helper node test/e2e.mjs` runs the same flows against the store build.
 
 Icons: Lucide (ISC). Font: Golos Text (SIL OFL 1.1). Licenses sit next to the files.
 

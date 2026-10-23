@@ -10,8 +10,8 @@
   "scripts": {
     "test": "node --test test/*.test.mjs",
     "e2e": "node test/e2e.mjs",
-    "e2e:store": "EXT_DIR=chrome-web-store/release/unpacked node test/e2e.mjs",
-    "build:store": "bash chrome-web-store/build.sh",
+    "e2e:store": "EXT_DIR=release/ads-helper node test/e2e.mjs",
+    "build": "bash build.sh",
     "docs": "node --test test/docs.test.mjs"
   },
   "devDependencies": {

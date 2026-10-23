@@ -6,7 +6,7 @@ body:
     id: version
     attributes:
       label: Extension version
-      placeholder: 2.5.1
+      placeholder: chrome://extensions → FB Helper → version
     validations:
       required: true
   - type: input

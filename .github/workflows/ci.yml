@@ -2,7 +2,7 @@ name: CI
 
 # unit      the manifest, the syntax of every module, the unit tests (plain Node, no dependencies)
 # e2e       the end-to-end flows in real Chromium with the unpacked extension, in 4 shards (node test/e2e.mjs --shard i/4)
-# build     chrome-web-store/build.sh, a look into the archive, then the store build through the flows that cover every tab's loading and states
+# build     build.sh (both archives), a look into the store archive, then the store build through the flows that cover every tab's loading and states
 # Facebook and Graph are mocked in the tests (nothing leaves the runner). The dev tooling is package.json (playwright-core, pinned in package-lock.json).
 
 on:
@@ -96,8 +96,8 @@ jobs:
       - name: build the store package
         shell: bash
         run: |
-          bash chrome-web-store/build.sh | tee build.log
-          ZIP=$(ls chrome-web-store/release/ads-helper-*.zip)
+          bash build.sh | tee build.log
+          ZIP=$(ls release/ads-helper-*.zip)
           echo "ZIP=$ZIP" >> "$GITHUB_ENV"
       - name: look into the archive (manifest at the root, the store's name, nothing of the old one)
         shell: bash
@@ -120,7 +120,7 @@ jobs:
           if [ "${{ steps.browsers.outputs.cache-hit }}" = "true" ]; then npx playwright-core install-deps chromium; else npx playwright-core install --with-deps chromium; fi
       - name: the store build through the flows (tabs, token, businesses, pages)
         shell: bash
-        run: EXT_DIR=chrome-web-store/release/unpacked node test/e2e.mjs tabs token bms pages --jobs 2 2>&1 | tee e2e-store.log
+        run: EXT_DIR=release/ads-helper node test/e2e.mjs tabs token bms pages --jobs 2 2>&1 | tee e2e-store.log
       - name: logs
         if: failure()
         uses: actions/upload-artifact@v4

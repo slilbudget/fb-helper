@@ -6,7 +6,7 @@
 //   node test/e2e.mjs --shard 2/4           the 2nd of 4 balanced slices of the flows (CI matrix); the slices together are every flow, once each
 //   node test/e2e.mjs --jobs 3              every flow, three at a time, each in its own child process (output is printed per flow when it ends)
 //   node test/e2e.mjs --list                the flows that would run, with their weight (--shard and names apply)
-//   EXT_DIR=chrome-web-store/release/unpacked node test/e2e.mjs tabs token bms pages     the store build
+//   EXT_DIR=release/ads-helper node test/e2e.mjs tabs token bms pages     the store build
 // Exit code: 0 all checks passed, 1 a check failed or a flow crashed, 2 a bad command line.
 //
 // The harness (boot, popup, until, mocks, tr()) is test/harness.mjs. The flows are every test/flows/*.mjs: each file exports

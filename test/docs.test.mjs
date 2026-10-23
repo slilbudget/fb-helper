@@ -1,6 +1,6 @@
 // What the documents promise, checked against what the extension is: the privacy policy names every origin the CSP allows, the store listing quotes
 // the manifest's CSP, no text says requests go ONLY to the Graph host (the extension also fetches exchange rates and pictures), the manifest's version
-// is in every place a release has to write it, the permissions are explained. Plain Node: `node --test test/*.test.mjs`
+// is written nowhere else, the permissions are explained. Plain Node: `node --test test/*.test.mjs`
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -60,20 +60,11 @@ test("no text says the extension's requests go ONLY to the Graph host: a sentenc
   assert.deepEqual(claims, [], "these sentences say 'only' about the Graph host");
 });
 
-test("the version of the manifest is written where a release writes it: README, STORE_LISTING, RELEASE_CHECKLIST, the three art pages, the bug form's placeholder", () => {
+test("the version is written in one place, manifest.json: a release bumps one line (build.sh names the archives after it)", () => {
   const v = manifest.version, bare = new RegExp(`(?<![\\d.])${esc(v)}(?![\\d.])`);
-  const places = ["README.md", "chrome-web-store/STORE_LISTING.md", "chrome-web-store/RELEASE_CHECKLIST.md", "chrome-web-store/art/cover.html", "chrome-web-store/art/cover-1280x800.html",
-    "chrome-web-store/art/social.html", ".github/ISSUE_TEMPLATE/bug.yml"];
-  const stale = places.filter((f) => !bare.test(read(f)));
-  assert.deepEqual(stale, [], `version ${v} is missing from`);
   assert.match(v, /^\d+\.\d+\.\d+$/);
-});
-
-test("no place names a version other than the manifest's as the current one (the art pages' badge, the bug form, the listing's heading, the README's heading)", () => {
-  const v = manifest.version;
-  const heads = [["README.md", /^# FB Helper (\S+)/m], ["chrome-web-store/STORE_LISTING.md", /^# Chrome Web Store listing — Ads Helper (\S+)/m], [".github/ISSUE_TEMPLATE/bug.yml", /placeholder: (\S+)/],
-    ["chrome-web-store/art/cover.html", /<span class="v">([^<]+)<\/span>/], ["chrome-web-store/art/cover-1280x800.html", /<span class="v">([^<]+)<\/span>/], ["chrome-web-store/art/social.html", /<span class="v">([^<]+)<\/span>/]];
-  for (const [file, re] of heads) assert.equal(re.exec(read(file))?.[1], v, file);
+  const places = ["README.md", "chrome-web-store/STORE_LISTING.md", "chrome-web-store/RELEASE_CHECKLIST.md", ".github/ISSUE_TEMPLATE/bug.yml", "CONTRIBUTING.md"];
+  assert.deepEqual(places.filter((f) => bare.test(read(f))), [], `version ${v} is written in`);
 });
 
 test("every permission of the manifest and its host pattern is explained in the privacy policy and in the store listing", () => {
@@ -87,6 +78,6 @@ test("every permission of the manifest and its host pattern is explained in the 
 test("the release checklist runs the tests that guard a release: the unit tests, the store build's end-to-end run, and this file", () => {
   const checklist = read("chrome-web-store/RELEASE_CHECKLIST.md");
   assert.match(checklist, /node --test test\/\*\.test\.mjs/);
-  assert.match(checklist, /EXT_DIR=chrome-web-store\/release\/unpacked node test\/e2e\.mjs/);
+  assert.match(checklist, /EXT_DIR=release\/ads-helper node test\/e2e\.mjs/);
   assert.match(checklist, /node --test test\/docs\.test\.mjs/);
 });

@@ -1,4 +1,4 @@
-// The Chrome Web Store build (chrome-web-store/build.sh): the repo's extension is "FB Helper" with the original logo; the store package is "Ads Helper"
+// The two archives of build.sh. The Chrome Web Store build: the repo's extension is "FB Helper" with the original logo; the store package is "Ads Helper"
 // with the neutral logo, and NOTHING else differs. Builds into a temporary folder (RELEASE_DIR), so a release already built is left alone.
 // Needs bash, python3, perl, zip and unzip (every runner of the CI and a Mac has them). Plain Node: `node --test test/*.test.mjs`
 import test from "node:test";
@@ -12,9 +12,9 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SRC = path.join(root, "fb-helper"), ICONS = path.join(root, "chrome-web-store/icons");
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ads-helper-build-"));
-const out = path.join(tmp, "unpacked");
+const out = path.join(tmp, "ads-helper");
 const NAME = "Ads Helper", SRC_NAME = "FB Helper";
-const buildLog = execFileSync("bash", [path.join(root, "chrome-web-store/build.sh")], { env: { ...process.env, RELEASE_DIR: tmp }, encoding: "utf8" });   // throws (and the file fails) if the build fails, e.g. an old name left in the package
+const buildLog = execFileSync("bash", [path.join(root, "build.sh")], { env: { ...process.env, RELEASE_DIR: tmp }, encoding: "utf8" });   // throws (and the file fails) if the build fails, e.g. an old name left in the package
 
 const read = (p) => fs.readFileSync(p);
 const text = (p) => fs.readFileSync(p, "utf8");
@@ -46,7 +46,7 @@ test("manifest: the name and the toolbar tooltip are 'Ads Helper'; version, desc
 test("the archive: manifest.json at its root, the same files as the unpacked folder, nothing that does not belong in a store package", () => {
   const listed = execFileSync("unzip", ["-Z1", zipPath], { encoding: "utf8" }).split("\n").filter((l) => l && !l.endsWith("/")).sort();
   assert.ok(listed.includes("manifest.json"), "manifest.json is in the root of the archive, not in a folder");
-  assert.ok(!listed.some((f) => /^(fb-helper|chrome-web-store|release|unpacked)\//.test(f)), "no wrapping folder");
+  assert.ok(!listed.some((f) => /^(fb-helper|chrome-web-store|release|ads-helper)\//.test(f)), "no wrapping folder");
   assert.deepEqual(listed, walk(out), "the archive is the unpacked folder");
   for (const f of ["popup.html", "LICENSE", "manifest.json", entry, "css/popup.css", "fonts/golostext-latin.woff2", ...PICTURES.map((p) => `images/${p}`)]) assert.ok(listed.includes(f), f);
   const junk = listed.filter((f) => /(^|\/)(\.DS_Store|__MACOSX|node_modules|\.git|test|docs)(\/|$)|\.(zip|map|mjs|md|log|bak|orig|swp)$|~$/i.test(f));
@@ -87,4 +87,13 @@ test("the logo is the neutral one: the five pictures are the store's icons, not 
     assert.ok(read(path.join(out, "images", p)).equals(read(path.join(ICONS, p))), `${p} is chrome-web-store/icons/${p}`);
     assert.ok(!read(path.join(out, "images", p)).equals(read(path.join(SRC, "images", p))), `${p} is not the original`);
   }
+});
+
+test("the FB Helper archive is fb-helper/ as it is plus the licence: the same files, byte for byte, at the root of the archive", () => {
+  const devZip = path.join(tmp, `fb-helper-${srcManifest.version}.zip`);
+  assert.match(buildLog, new RegExp(`built .*fb-helper-${srcManifest.version.replace(/\./g, "\\.")}\\.zip \\(\\d+ files\\)`));
+  const listed = execFileSync("unzip", ["-Z1", devZip], { encoding: "utf8" }).split("\n").filter((l) => l && !l.endsWith("/")).sort();
+  assert.deepEqual(listed, [...walk(SRC), "LICENSE"].sort());
+  for (const f of ["manifest.json", entry, "images/icon_128.png"]) assert.ok(execFileSync("unzip", ["-p", devZip, f]).equals(read(path.join(SRC, f))), f);
+  assert.equal(execFileSync("unzip", ["-p", devZip, "LICENSE"], { encoding: "utf8" }), text(path.join(root, "LICENSE")));
 });
