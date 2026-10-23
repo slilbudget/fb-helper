@@ -161,11 +161,8 @@ async function grabTokenNow({ toClipboard = true, silent = false } = {}) {
   // A token change during the write above (this window or another) supersedes us; if it happened, don't report success.
   if (!current()) return null;
   renderToken();
-  if (toClipboard) {
-    const ok = await copy(pick, t("grab.copied"));
-    // Only warn for a token we know can't launch ads (EAAH/EAAd); ads-capable and unknown stay quiet.
-    if (ok && TOKEN_KIND[pick.slice(0, 4)]?.ads === false) toast(t("grab.notAds", { k: pick.slice(0, 4) }));
-  }
+  // One message for every kind of token; what the token can do is shown on the Token tab, not in the toast.
+  if (toClipboard) await copy(pick, t("grab.copied"));
   return pick;
 }
 // The list tabs show the Token tab's reason for having no token (state.tokenHint): "token-hint" tells them when it changes.

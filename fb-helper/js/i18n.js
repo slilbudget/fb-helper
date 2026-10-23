@@ -68,7 +68,7 @@ const D = {
 
     "grab.noTab": "Открой Facebook в этом профиле", "grab.noAccess": "Нет доступа к вкладке FB — обнови её",
     "grab.notFound": "Токен не найден на {where}", "grab.thisTab": "этой вкладке", "grab.openTabs": "открытых вкладках Facebook",
-    "grab.copied": "Токен скопирован", "grab.notAds": "Скопирован {k} — рекламу не запускает",
+    "grab.copied": "Токен скопирован",
 
     "check.checking": "Проверка",
     "check.noPerms": "Токен этого приложения не отдаёт список прав — это нормально для Events и Commerce Manager. Что он умеет — видно в блоке «Типы токенов».",
@@ -164,7 +164,7 @@ const D = {
 
     "grab.noTab": "Open Facebook in this profile", "grab.noAccess": "No access to the FB tab — reload it",
     "grab.notFound": "No token found on {where}", "grab.thisTab": "this tab", "grab.openTabs": "the open Facebook tabs",
-    "grab.copied": "Token copied", "grab.notAds": "Copied {k} — it cannot run ads",
+    "grab.copied": "Token copied",
 
     "check.checking": "Checking",
     "check.noPerms": "Tokens of this app do not expose their permission list — normal for Events and Commerce Manager. See “Token types” for what it can do.",
