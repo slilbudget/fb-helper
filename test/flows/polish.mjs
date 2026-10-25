@@ -120,7 +120,7 @@ async function rowLabFlow() {
   // ---- keyboard focus is a ring ----
   await pop.focus('[data-tab="token"]'); await pop.keyboard.press("ArrowRight");
   const ring = await q(pop, () => { const cs = getComputedStyle(document.activeElement); return { tab: document.activeElement.dataset.tab, style: cs.outlineStyle, width: cs.outlineWidth, color: cs.outlineColor }; });
-  ok("keyboard focus on a tab draws a 2 px accent ring (not hover's look)", ring.tab === "cookies" && ring.style === "solid" && ring.width === "2px" && ring.color === "rgb(66, 103, 178)", JSON.stringify(ring));
+  ok("keyboard focus on a tab draws a 2 px accent ring (not hover's look)", ring.tab === "cookies" && ring.style === "solid" && ring.width === "2px" && ring.color === "rgb(53, 120, 198)", JSON.stringify(ring));
   await pop.click(`${R("problem")} .lrow-title`);
   await pop.keyboard.press("Shift"); await pop.focus(`${R("problem")} .lrow-head .lrow-fix`);
   const fr = await q(pop, () => { const a = document.activeElement, cs = getComputedStyle(a), sub = a.closest(".lrow-sub"), r = a.getBoundingClientRect(), s = sub.getBoundingClientRect();

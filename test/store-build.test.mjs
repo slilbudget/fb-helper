@@ -18,7 +18,8 @@ const buildLog = execFileSync("bash", [path.join(root, "build.sh")], { env: { ..
 
 const read = (p) => fs.readFileSync(p);
 const text = (p) => fs.readFileSync(p, "utf8");
-const walk = (dir, base = dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name), base) : [path.relative(base, path.join(dir, e.name))])).sort();
+// .DS_Store: Finder drops it into fb-helper/ whenever the folder is opened; build.sh leaves it out, so the comparisons do too
+const walk = (dir, base = dir) => fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.name !== ".DS_Store").flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name), base) : [path.relative(base, path.join(dir, e.name))])).sort();
 const srcManifest = JSON.parse(text(path.join(SRC, "manifest.json"))), built = JSON.parse(text(path.join(out, "manifest.json")));
 const zipPath = path.join(tmp, `ads-helper-${srcManifest.version}.zip`);
 // The entry file is the one popup.html loads; build.sh renames line 1 of it. Found here the way the browser finds it.

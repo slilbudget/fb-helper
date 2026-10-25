@@ -831,7 +831,9 @@ async function bodyFlow() {
   ok("…with the values: 310 clicks · $4.00 per click, spent $11,165, to pay $120.00, threshold $250.00, limit $2,500, Visa, the pixel ID only (no name)",
     kv[tr("acc.clicksCpc")] === "310 · $4.00" && kv[tr("acc.spent")] === "$11,165" && kv[tr("acc.balance")] === "$120.00" && kv[tr("acc.threshold")] === "$250.00" && kv[tr("acc.daily")] === "$2,500"
     && kv[tr("acc.funding")] === "Visa ·· 4242" && kv[tr("acc.pixels")] === "55501", JSON.stringify(kv));
-  ok("…the muted line: 'UTC+3 <city> · US · created Mar 4, 2025' (one line, 12 px, secondary grey)", new RegExp(`^UTC\\+3 \\S.* · US · ${trx("acc.createdOn", { d: "Mar 4, 2025" }).source}$`).test(bd.meta), String(bd.meta));
+  // Kyiv is UTC+3 in summer and UTC+2 in winter: the offset of today, as the extension computes it
+  const kyiv = new Intl.DateTimeFormat("en", { timeZone: "Europe/Kiev", timeZoneName: "shortOffset" }).formatToParts().find((p) => p.type === "timeZoneName").value.replace("GMT", "UTC");
+  ok("…the muted line: 'UTC±N <city> · US · created Mar 4, 2025' (one line, 12 px, secondary grey)", new RegExp(`^${kyiv.replace("+", "\\+")} \\S.* · US · ${trx("acc.createdOn", { d: "Mar 4, 2025" }).source}$`).test(bd.meta), String(bd.meta));
   ok("…and not one value is a dash", bd.kvs.every((x) => x[1] && x[1] !== "—"));
   ok("the body has no ID line (the ID with its copy button is first on line 2 of the row); 'Ads Manager ↗ · Billing ↗' keep their icons and go to this account", !bd.idIn && JSON.stringify(bd.links) === JSON.stringify([[tr("next.adsManager"), LINKS.adsManager("1001"), true], [tr("next.billing"), LINKS.billing("1001"), true]]), JSON.stringify(bd.links));
   ok("two columns at 560 px", bd.cols === 2, String(bd.cols));

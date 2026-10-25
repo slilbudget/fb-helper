@@ -1,10 +1,10 @@
 /* Light, flat, hairline-only. Layout: Meta Astryx spacing/radius. Colours: Facebook. Icons: Lucide, ISC. Font: Golos Text, OFL 1.1. */
 :root {
   color-scheme: light;
-  /* Facebook palette: brand blue #4267B2 (PMS 2131 C), UI grays / status colours from facebook.com */
-  --color-accent: #4267B2;
-  --color-accent-hover: #3A5DA5;   /* one small step darker than the accent */
-  --color-accent-muted: #4267B21A;
+  /* Facebook palette: primary blue #3578C6 (the primary button of Meta's ads tools), UI grays / status colours from facebook.com */
+  --color-accent: #3578C6;
+  --color-accent-hover: #2F6CB3;   /* one small step darker than the accent */
+  --color-accent-muted: #3578C61A;
   --color-on-accent: #FFFFFF;
   --color-background-surface: #FFFFFF;
   --color-background-muted: #F0F2F5;
